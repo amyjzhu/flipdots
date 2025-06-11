@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+      // other options...
+      "target": "ESNext",
+      "module": "ESNext",
+      "lib": ["ESNext", "DOM"],
+      "moduleResolution": "Node",
+      "strict": true,
+      "sourceMap": true,
+      "resolveJsonModule": true,
+      "esModuleInterop": true,
+      "noEmit": true,
+      "noUnusedLocals": true,
+      "noUnusedParameters": true,
+      "noImplicitReturns": true,
+      "paths": {
+        "three/webgpu": ["./node_modules/three/build/three.webgpu.js"],
+        "three/tsl": ["./node_modules/three/build/three.tsl.js"],
+      },
+    },
+    "include": ["./src"]
+  }
