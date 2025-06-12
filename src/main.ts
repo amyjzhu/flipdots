@@ -1,263 +1,91 @@
-import * as THREE from 'three';
-// need to figure out what to do for the type defns 
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
-import { Sky } from 'three/addons/objects/Sky.js';
+import { RowOfDiscs } from "./flipdisc";
+import { WIDTH, HEIGHT } from "./constants";
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+let rowOfDiscs = new RowOfDiscs();
 
-const renderer = new THREE.WebGLRenderer();
-renderer.setSize( window.innerWidth, window.innerHeight );
-renderer.setAnimationLoop( animate );
-document.body.appendChild( renderer.domElement );
-const controls = new OrbitControls( camera, renderer.domElement );
-
-// skybox
-const geometry = new THREE.BoxGeometry(450,450,450);
-var materials = [
-     new THREE.MeshBasicMaterial({
-          map : new THREE.TextureLoader().load('../public/skybox/Daylight Box_Left.bmp'),
-          side : THREE.BackSide,
-     }),
-     new THREE.MeshBasicMaterial({
-          map : new THREE.TextureLoader().load('../public/skybox/Daylight Box_Right.bmp'),
-          side : THREE.BackSide,
-     }),
-     new THREE.MeshBasicMaterial({
-          map : new THREE.TextureLoader().load('../public/skybox/Daylight Box_Top.bmp'),
-          side : THREE.BackSide,
-     }),
-     new THREE.MeshBasicMaterial({
-          map : new THREE.TextureLoader().load('../public/skybox/Daylight Box_Bottom.bmp'),
-          side : THREE.BackSide,
-     }),
-     new THREE.MeshBasicMaterial({
-          map : new THREE.TextureLoader().load('../public/skybox/Daylight Box_Back.bmp'),
-          side : THREE.BackSide,
-     }),
-     new THREE.MeshBasicMaterial({
-          map : new THREE.TextureLoader().load('../public/skybox/Daylight Box_Front.bmp'),
-          side : THREE.BackSide,
-     }),
-];
-const cube = new THREE.Mesh(geometry,materials);
-
-scene.add( cube );
-
-const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
-scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
-directionalLight.position.set(1, 1, 1);
-scene.add(directionalLight);
-const directionalLight2 = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight2.position.set(1, 1, -1);
-scene.add(directionalLight2);
+type RGB = [number, number, number];
 
 
+class VideoIndexGenerator {
+    // imagine we have a simple image...
 
-let rowsOfDiscs: THREE.Mesh[][] = []
-let idxToUpdate: number[][] = [];
-
-let makeDisc = (x: number, y: number, z: number) => {
-
-
-    let circleShape = new THREE.Shape();
-    circleShape.ellipse(0,0,3,3,0,2*3.14);
-    
-    const extrudeSettings = {
-        steps: 2,
-        depth: 0.5,
-        bevelEnabled: false
-        // bevelEnabled: true,
-        // bevelThickness: 0.1,
-        // bevelSize: 1,
-        // bevelOffset: 0,
-        // bevelSegments: 1
-    };
-    console.log(circleShape.getPoints())
-    const geometry = new THREE.ExtrudeGeometry( circleShape, extrudeSettings );
-    
-    
-    // const material1 = new THREE.ShaderMaterial({
-    //     uniforms: {
-    //         diffuse: { value: new THREE.Color(0xffffff) }
-    //     },
-    //     vertexShader: `
-    //         void main() {
-    //             gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-                
-    //         }`,
-    //     fragmentShader: `
-    //         uniform vec3 diffuse;
-    //         void main() {
-    //             gl_FragColor = vec4( diffuse, 1.0 );
-    //         }`
-    // });
-    
-    // material1.uniforms.diffuse.value = new THREE.Color(0,1,0);
-    
-    
-    // const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-    // const material = new THREE.MeshPhongMaterial( { color: 0x00ff00 } );
-    // const material = new THREE.MeshStandardMaterial( { color: 0x00ff00, wireframe: true } );
-    const materials = [
-        new THREE.MeshLambertMaterial({ color: 0xffabca }), 
-        new THREE.MeshLambertMaterial({ color: 0x14a620 }), 
-        new THREE.MeshLambertMaterial({ color: 0x000000 })  
-    ];
-    
-    console.log(geometry.groups)
-    
-
-    function setThreeDiscGroups(geometry: any) {
-        geometry.computeVertexNormals();
-        let normals = geometry.getAttribute("normal");
-    
-        let group1 = geometry.groups[0];
-        let group3 = geometry.groups[1];
-                
-        let group2Start = 0;
-        let startingPositive = normals.getZ(0) > 0
-        for( let i=0; i<group1.count; i++ ){
-            let nz = normals.getZ(i);
-            
-            if (nz < -0.8 && startingPositive) {
-                group2Start = i;
-                break;
-            } else if (nz > 0.8 && !startingPositive) {
-                group2Start = i;
-                break;
-            } 
-                    
-        }
-    
-        geometry.clearGroups();
-        geometry.addGroup(group1.start, group2Start - group1.start, 0);
-        geometry.addGroup(group2Start, group1.count - group2Start, 1);
-        geometry.addGroup(group3.start, group3.count, 2);
+    convertFromIndexMode(input: [number, number][]): number[][] {
+        // take every (x,y) coordinate pair
+        // and convert it to [[1,2,3],[1,3],[],[1,2,3]] type format idk what it's called
         
-        // geometry.setAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ));
-    }
-    
-    setThreeDiscGroups(geometry)
-    const cube = new THREE.Mesh( geometry, materials );
-    console.log(geometry.getAttribute("normal"));
-    // let cube = triColourDisc(geometry)
-    
-    scene.add(cube);
-    cube.position.set(x,y,z);
-    return cube;
-    
-    
-    
-}
-
-// const axesHelper = new THREE.AxesHelper( 5 );
-// scene.add( axesHelper );
-
-// var vnh = new VertexNormalsHelper( cube, 1, 0xff0000 );
-// scene.add( vnh );
-
-
-let SPACING = 7;
-let makeRowOfDiscs = (numWide: number, numTall: number) => {
-
-    for (let j = 0; j < numTall; j++) {
-        let row = [];
-        for (let i = 0; i < numWide; i++) {
-            let mesh = makeDisc(i * SPACING - width * SPACING / 2, j * SPACING - height * SPACING / 2, 0);
-            row.push(mesh);
+        // what are the input dimensions?
+        
+        let ret: number[][] = [...Array(HEIGHT)].map(_ => []);
+        console.log(ret)
+        for (let [a, b] of input) {
+            // because this isn't row, column but x,y in the input
+            ret[b].push(a);
         }
-        rowsOfDiscs.push(row);
-    }
 
-    idxToUpdate = rowsOfDiscs.map(row => row.map((_, i) => i));
-}
-
-let width = 5;
-let height = 7;
-makeRowOfDiscs(width, height);
-
-// where to put the camera? depends... 
-// not really sure how to automatically calculate z...
-camera.position.z = 60;
-
-
-let frame1Flips = idxToUpdate = rowsOfDiscs.map((row, idx) => idx % 2 ? [] : row.map((_, i) => i % 2 ? i : -1).filter(i => i != -1));
-let frame2Flips = idxToUpdate = rowsOfDiscs.map((row, idx) => idx % 2 ? row.map((_, i) => i % 2 ? -1 : i).filter(i => i != -1): []);
-let frame3Flips = idxToUpdate = rowsOfDiscs.map((row, idx) => idx % 2 ? row.map((_, i) => i % 2 ? i : -1).filter(i => i != -1): []);
-let frame4Flips = idxToUpdate = rowsOfDiscs.map((row, idx) => idx % 2 ? [] : row.map((_, i) => i % 2 ? -1 : i).filter(i => i != -1));
-let setNextToUpdate = (i: number) => { 
-    if (i % 4 == 0) {
-        idxToUpdate = frame1Flips;
-    } else if (i % 4 == 1) {
-        idxToUpdate = frame2Flips;
-    } else if (i % 4 == 2) {
-        idxToUpdate = frame3Flips;
-    } else {
-        idxToUpdate = frame4Flips;
-    }
-}
-
-let setNextRipple = (i : number) => {
-    if (i % 6 == 0) {
-        idxToUpdate = [[0, 1, 2],[],[],[],[],[],[]];
-    } else if (i % 6 == 1) {
-        idxToUpdate = [[0, 1, 2, 3, 4], [0, 1, 2], [0, 1], [],[],[],[]];
-    } else if (i % 6 == 2) {
-        idxToUpdate = [[0,1,2,3,4], [0,1,2,3,4], [0,1,2,3], [0,1], [0], [], []];
-    } else if (i % 6 == 3) {
-        idxToUpdate = [[0,1,2,3,4], [0,1,2,3,4], [0,1,2,3,4], [0,1,2,3],[0,1,2],[0,1],[0]];
-    } else if (i % 6 == 4) {
-        idxToUpdate = [[0,1,2,3,4], [0,1,2,3,4], [0,1,2,3,4], [0,1,2,3,4],[0,1,2,3,4], [0,1,2,3],[0,1,2]];
-    } else if (i % 6 == 5) {
-        idxToUpdate = [[0,1,2,3,4], [0,1,2,3,4], [0,1,2,3,4], [0,1,2,3,4],[0,1,2,3,4], [0,1,2,3,4],[0,1,2,3,4]];
-    }
-}
-// what's the easiest way to make it two-colours?
-// probably some kind of texturing setup...
-
-// let rotationRate = 0.1;
-// let rotationRate = 0.01;
-let animationFrameCounter = 0;
-
-let numFramesRotating = 12;
-// I need to make a half rotation in 20 frames. How much do I rotate by?
-let rotationRate = Math.PI / numFramesRotating;
-console.log(rotationRate)
-let fullCycleLength = numFramesRotating * 6;
-let flipCycles = 0;
-function animate() {
-    
-    for (let row in rowsOfDiscs) {
-        for (let idx of idxToUpdate[row]) {
-            if (animationFrameCounter < numFramesRotating) {
-                rowsOfDiscs[row][idx].rotation.y += rotationRate;
-            } // else do nothing 
-            
+        for (let row of ret) {
+            row.sort();
         }
+
+        return ret;
     }
 
-    // how many frames for a full cycle?
-    if (animationFrameCounter >= fullCycleLength) {
-        animationFrameCounter = 0;
-        flipCycles += 1;
-        // setNextToUpdate(flipCycles);
-        if (flipCycles > 10) {
-            setNextToUpdate(flipCycles);
-        } else {
-            setNextRipple(flipCycles);
+    generateFlipsFromBWImage(input: RGB[][], a: RGB): number[][] {
+        // let the first colour encountered
+        let result: number[][] = [];
+        for (let row of input) {
+            let curRow: number[] = [];
+            for (let colIdx = 0; colIdx < row.length; colIdx++) {
+                let col = row[colIdx];
+                if (col[0] == a[0] && col[1] == a[1] && col[2] == a[2]) {
+                    curRow.push(colIdx);
+                }
+            }
+            result.push(curRow);
         }
-    } else {
-        animationFrameCounter += 1;
+
+        return result;
     }
-
     
-  
+} 
 
-  renderer.render( scene, camera );
 
-}
+// should be [[],[],[1],[],[3],[],[]]
+console.log(new VideoIndexGenerator().convertFromIndexMode([[1,2],[3,4]])) 
 
-animate()
+import * as THREE from 'three';
+let loader = new THREE.ImageBitmapLoader();
+loader.setOptions({ imageOrientation: 'flipY' })
+
+
+var canvas = document.createElement('canvas');
+var context2d = canvas.getContext('2d')!;
+canvas.width = WIDTH;
+canvas.height = HEIGHT;
+
+loader.load(
+	// resource URL
+	'./public/smiley.png',
+	// onLoad callback
+	function ( imageBitmap: ImageBitmap ) {
+        context2d.drawImage(imageBitmap, 0, 0,imageBitmap.width, imageBitmap.height);
+        let rgba = context2d.getImageData(0,0,imageBitmap.width, imageBitmap.height).data;
+        console.log(rgba)
+        let resultingImg: RGB[][] = [];
+        for (let i = 0; i < imageBitmap.height; i++) {
+            let curRow: [number, number, number][] = [];
+            for (let j = 0; j < imageBitmap.width; j++) {
+                curRow.push([rgba[(i * imageBitmap.width + j) * 4], rgba[(i * imageBitmap.width + j) * 4 + 1], rgba[(i * imageBitmap.width + j) * 4 + 2]]);
+            }
+            resultingImg.push(curRow);
+        }
+        console.log(resultingImg);
+        let newPattern = new VideoIndexGenerator().generateFlipsFromBWImage(resultingImg, [255, 255, 255]);
+        let newPattern2 = new VideoIndexGenerator().generateFlipsFromBWImage(resultingImg, [0,0,0]);
+        console.log(newPattern);
+        rowOfDiscs.resetAnimation((i) => i % 2 == 0 ? newPattern : newPattern2);
+	},
+	undefined,
+	function ( err: any ) {
+		console.log( 'An error happened' ); 
+	}
+);
