@@ -3,12 +3,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { WIDTH, HEIGHT } from './constants';
+import { WIDTH, HEIGHT, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE } from './constants';
 
 export class RowOfDiscs {
     scene: THREE.Scene;
     camera: THREE.Camera;
     renderer: THREE.WebGLRenderer;
+    listener: THREE.AudioListener;
     
     SPACING = 7;
     DEPTH = 0.5;
@@ -28,9 +29,13 @@ export class RowOfDiscs {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
+        // create an AudioListener and add it to the camera
+        this.listener = new THREE.AudioListener();
+        this.camera.add( this.listener );
+
         // where to put the camera? depends... 
         // not really sure how to automatically calculate z...
-        this.camera.position.z = 60;
+        this.camera.position.z = CAMERA_DISTANCE;
         this.renderer = new THREE.WebGLRenderer();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setAnimationLoop(this.animate);
@@ -100,8 +105,6 @@ export class RowOfDiscs {
 
 
     makeDisc(x: number, y: number, z: number) {
-
-
         let circleShape = new THREE.Shape();
         circleShape.ellipse(0, 0, this.RADX, this.RADY, 0, 2 * 3.14);
 
@@ -114,8 +117,8 @@ export class RowOfDiscs {
         const geometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
 
         const materials = [
-            new THREE.MeshLambertMaterial({ color: 0xffabca }),
-            new THREE.MeshLambertMaterial({ color: 0x14a620 }),
+            new THREE.MeshLambertMaterial({ color: 0xffeaf3 }),
+            new THREE.MeshLambertMaterial({ color: 0x02f516 }),
             new THREE.MeshLambertMaterial({ color: 0x000000 })
         ];
 
@@ -156,10 +159,30 @@ export class RowOfDiscs {
         
         // let cube = triColourDisc(geometry)
 
+        
         this.scene.add(cube);
         cube.position.set(x, y, z);
+        
+        // create the PositionalAudio object (passing in the listener)
+        const sound = new THREE.PositionalAudio( this.listener );
+
+        // load a sound and set it as the PositionalAudio object's buffer
+        const audioLoader = new THREE.AudioLoader();
+        audioLoader.load( 'public/click.mp3', function( buffer ) {
+        	sound.setBuffer( buffer );
+        	sound.setRefDistance( 20 );
+        	// sound.play();
+        });
+
+        // finally add the sound to the mesh
+        cube.add( sound );
+
+        console.log(cube.children)
+
+
         return cube;
 
+        
     }
 
     // const axesHelper = new THREE.AxesHelper( 5 );
@@ -254,23 +277,26 @@ export class RowOfDiscs {
     // let rotationRate = 0.01;
     animationFrameCounter = 0;
 
-    numFramesRotating = 12;
+    
     // I need to make a half rotation in 20 frames. How much do I rotate by?
-    rotationRate = Math.PI / this.numFramesRotating;
-    fullCycleLength = this.numFramesRotating * 6;
+    rotationRate = Math.PI / NUM_FRAMES_ROTATING;
     flipCycles = 0;
     animate = () => {
         for (let row in this.rowsOfDiscs) {
             for (let idx of this.idxToUpdate[row]) {
-                if (this.animationFrameCounter < this.numFramesRotating) {
-                    this.rowsOfDiscs[row][idx].rotation.y += this.rotationRate;
+                if (this.animationFrameCounter < NUM_FRAMES_ROTATING) {
+                    let disc = this.rowsOfDiscs[row][idx];
+                    disc.rotation.y += this.rotationRate;
+                    (disc.children[0] as THREE.PositionalAudio).stop();
+                    let randDelay = (Math.random() - 0.5) / 100;
+                    (disc.children[0] as THREE.PositionalAudio).play(randDelay);
                 } // else do nothing 
 
             }
         }
 
         // how many frames for a full cycle?
-        if (this.animationFrameCounter >= this.fullCycleLength) {
+        if (this.animationFrameCounter >= FULL_CYCLE_LENGTH) {
             this.animationFrameCounter = 0;
             // setNextToUpdate(flipCycles);
             this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);

@@ -186,4 +186,14 @@ class VideoIndexGenerator {
 
 // should be [[],[],[1],[],[3],[],[]]
 console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
-new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
+new VideoIndexGenerator().loadImages(["./public/ball1.png", 
+                                      "./public/ball2.png", 
+                                      "./public/ball3.png",
+                                      "./public/ball4.png",
+                                      "./public/ball5.png",
+                                      "./public/ball6.png",
+                                      "./public/ball7.png",
+                                      "./public/ball8.png",
+                                      "./public/ball9.png",
+                                    ]);
+// new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
