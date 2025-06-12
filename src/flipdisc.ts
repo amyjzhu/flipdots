@@ -11,6 +11,9 @@ export class RowOfDiscs {
     renderer: THREE.WebGLRenderer;
     
     SPACING = 7;
+    DEPTH = 0.5;
+    RADX = 3
+    RADY = 3;
     rowsOfDiscs: THREE.Mesh[][] = []
     
     frame1Flips: number[][];
@@ -100,51 +103,22 @@ export class RowOfDiscs {
 
 
         let circleShape = new THREE.Shape();
-        circleShape.ellipse(0, 0, 3, 3, 0, 2 * 3.14);
+        circleShape.ellipse(0, 0, this.RADX, this.RADY, 0, 2 * 3.14);
 
         const extrudeSettings = {
             steps: 2,
-            depth: 0.5,
+            depth: this.DEPTH,
             bevelEnabled: false
-            // bevelEnabled: true,
-            // bevelThickness: 0.1,
-            // bevelSize: 1,
-            // bevelOffset: 0,
-            // bevelSegments: 1
         };
-        console.log(circleShape.getPoints())
+
         const geometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
 
-
-        // const material1 = new THREE.ShaderMaterial({
-        //     uniforms: {
-        //         diffuse: { value: new THREE.Color(0xffffff) }
-        //     },
-        //     vertexShader: `
-        //         void main() {
-        //             gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-        //         }`,
-        //     fragmentShader: `
-        //         uniform vec3 diffuse;
-        //         void main() {
-        //             gl_FragColor = vec4( diffuse, 1.0 );
-        //         }`
-        // });
-
-        // material1.uniforms.diffuse.value = new THREE.Color(0,1,0);
-
-
-        // const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-        // const material = new THREE.MeshPhongMaterial( { color: 0x00ff00 } );
-        // const material = new THREE.MeshStandardMaterial( { color: 0x00ff00, wireframe: true } );
         const materials = [
             new THREE.MeshLambertMaterial({ color: 0xffabca }),
             new THREE.MeshLambertMaterial({ color: 0x14a620 }),
             new THREE.MeshLambertMaterial({ color: 0x000000 })
         ];
 
-        console.log(geometry.groups)
 
 
         function setThreeDiscGroups(geometry: any) {
@@ -179,7 +153,7 @@ export class RowOfDiscs {
 
         setThreeDiscGroups(geometry)
         const cube = new THREE.Mesh(geometry, materials);
-        console.log(geometry.getAttribute("normal"));
+        
         // let cube = triColourDisc(geometry)
 
         this.scene.add(cube);
@@ -197,16 +171,29 @@ export class RowOfDiscs {
 
     makeRowOfDiscs(numWide: number, numTall: number) {
 
+        let offsetX = WIDTH * this.SPACING / 2;
+        let offsetY = HEIGHT * this.SPACING / 2
         for (let j = 0; j < numTall; j++) {
             let row = [];
             for (let i = 0; i < numWide; i++) {
-                let mesh = this.makeDisc(i * this.SPACING - WIDTH * this.SPACING / 2, j * this.SPACING - HEIGHT * this.SPACING / 2, 0);
+                let mesh = this.makeDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
                 row.push(mesh);
             }
             this.rowsOfDiscs.push(row);
         }
 
+        // this.idxToUpdate = this.rowsOfDiscs.map(row => []);
         this.idxToUpdate = this.rowsOfDiscs.map(row => row.map((_, i) => i));
+
+        let offsetZ = -5; 
+        let backingBorder = 2;
+        // also, make a black rectangle behind it
+        let backing = new THREE.BoxGeometry(numWide * this.SPACING + backingBorder, numTall * this.SPACING + backingBorder, 4);
+        let backingMaterial = new THREE.MeshPhongMaterial({ color: 0x111111 })
+        let backingPiece = new THREE.Mesh(backing, backingMaterial);
+        this.scene.add(backingPiece)
+        // should be behind the discs.
+        backingPiece.position.set(-this.RADX - backingBorder / 2, -this.RADY - backingBorder / 2, offsetZ)
     }
 
 
@@ -255,6 +242,7 @@ export class RowOfDiscs {
         }
 
         this.flipCycles = 0;
+        console.log(this.flipCycles)
         this.animationFrameCounter = 0;
         this.nextFlipGenerator = newFlip;
     }
@@ -284,18 +272,13 @@ export class RowOfDiscs {
         // how many frames for a full cycle?
         if (this.animationFrameCounter >= this.fullCycleLength) {
             this.animationFrameCounter = 0;
-            this.flipCycles += 1;
             // setNextToUpdate(flipCycles);
-            if (this.flipCycles > 10) {
-                this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
-            } else {
-                this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
-            }
+            this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
+            this.flipCycles += 1;
+            
         } else {
             this.animationFrameCounter += 1;
         }
-
-
 
 
         this.renderer.render(this.scene, this.camera);
