@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 // need to figure out what to do for the type defns 
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
-import { Sky } from 'three/addons/objects/Sky.js';
+import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
+
+
 import { WIDTH, HEIGHT, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE } from './constants';
 
 export class RowOfDiscs {
@@ -23,6 +25,8 @@ export class RowOfDiscs {
     frame4Flips: number[][];
     nextFlipGenerator: (i: number) => number[][];
     
+    groupSnapshot: number[] = [];
+
     idxToUpdate: number[][] = [];
     constructor() {
         
@@ -63,27 +67,27 @@ export class RowOfDiscs {
         const geometry = new THREE.BoxGeometry(450, 450, 450);
         var materials = [
             new THREE.MeshBasicMaterial({
-                map: new THREE.TextureLoader().load('../public/skybox/Daylight Box_Left.bmp'),
+                map: new THREE.TextureLoader().load('/skybox/Daylight Box_Left.bmp'),
                 side: THREE.BackSide,
             }),
             new THREE.MeshBasicMaterial({
-                map: new THREE.TextureLoader().load('../public/skybox/Daylight Box_Right.bmp'),
+                map: new THREE.TextureLoader().load('/skybox/Daylight Box_Right.bmp'),
                 side: THREE.BackSide,
             }),
             new THREE.MeshBasicMaterial({
-                map: new THREE.TextureLoader().load('../public/skybox/Daylight Box_Top.bmp'),
+                map: new THREE.TextureLoader().load('/skybox/Daylight Box_Top.bmp'),
                 side: THREE.BackSide,
             }),
             new THREE.MeshBasicMaterial({
-                map: new THREE.TextureLoader().load('../public/skybox/Daylight Box_Bottom.bmp'),
+                map: new THREE.TextureLoader().load('/skybox/Daylight Box_Bottom.bmp'),
                 side: THREE.BackSide,
             }),
             new THREE.MeshBasicMaterial({
-                map: new THREE.TextureLoader().load('../public/skybox/Daylight Box_Back.bmp'),
+                map: new THREE.TextureLoader().load('/skybox/Daylight Box_Back.bmp'),
                 side: THREE.BackSide,
             }),
             new THREE.MeshBasicMaterial({
-                map: new THREE.TextureLoader().load('../public/skybox/Daylight Box_Front.bmp'),
+                map: new THREE.TextureLoader().load('/skybox/Daylight Box_Front.bmp'),
                 side: THREE.BackSide,
             }),
         ];
@@ -99,12 +103,15 @@ export class RowOfDiscs {
         const directionalLight2 = new THREE.DirectionalLight(0xffffff, 1);
         directionalLight2.position.set(1, 1, -1);
         this.scene.add(directionalLight2);
+
+            // const axesHelper = new THREE.AxesHelper( 5 );
+    // scene.add( axesHelper );
+
+    // var vnh = new VertexNormalsHelper( cube, 1, 0xff0000 );
+    // this.scene.add( vnh );
     }
 
-
-
-
-    makeDisc(x: number, y: number, z: number) {
+    makeDiscGeometry(): THREE.Mesh {
         let circleShape = new THREE.Shape();
         circleShape.ellipse(0, 0, this.RADX, this.RADY, 0, 2 * 3.14);
 
@@ -122,9 +129,7 @@ export class RowOfDiscs {
             new THREE.MeshLambertMaterial({ color: 0x000000 })
         ];
 
-
-
-        function setThreeDiscGroups(geometry: any) {
+        let setThreeDiscGroups = (geometry: any) => {
             geometry.computeVertexNormals();
             let normals = geometry.getAttribute("normal");
 
@@ -150,15 +155,76 @@ export class RowOfDiscs {
             geometry.addGroup(group1.start, group2Start - group1.start, 0);
             geometry.addGroup(group2Start, group1.count - group2Start, 1);
             geometry.addGroup(group3.start, group3.count, 2);
+            // theoretically these should be the same for each disk.
+            this.groupSnapshot = [group1.start, group2Start - group1.start, group2Start, group1.count - group2Start, group3.start, group3.count];
 
             // geometry.setAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ));
         }
 
         setThreeDiscGroups(geometry)
         const cube = new THREE.Mesh(geometry, materials);
-        
-        // let cube = triColourDisc(geometry)
 
+        return cube;
+    }
+
+    makeXDisc(x: number, y: number, z: number) {
+        // make two discs
+        let disc1 = this.makeDiscGeometry()
+        let disc2 = this.makeDiscGeometry();
+        // disc2.position.set(3,4,2,)
+        disc2.geometry.rotateY(Math.PI / 2)
+        // disc2.rotation.y = Math.PI / 2;
+
+        let newGeom = mergeGeometries([disc1.geometry, disc2.geometry], true);
+        newGeom.clearGroups()
+        newGeom.addGroup(this.groupSnapshot[0], this.groupSnapshot[1], 0)
+        newGeom.addGroup(this.groupSnapshot[2], this.groupSnapshot[3], 1)
+        newGeom.addGroup(this.groupSnapshot[4], this.groupSnapshot[5], 2)
+        // the second group should have everything added...
+        let startingIdx = this.groupSnapshot[4] + this.groupSnapshot[5];
+        newGeom.addGroup(startingIdx, this.groupSnapshot[2], 3)
+        newGeom.addGroup(startingIdx + this.groupSnapshot[2], this.groupSnapshot[4], 4)
+        newGeom.addGroup(startingIdx + this.groupSnapshot[2] + this.groupSnapshot[4], this.groupSnapshot[5], 5)
+
+        console.log(newGeom.groups)
+
+        const materials = [
+            new THREE.MeshLambertMaterial({ color: 0xffeaf3 }),
+            new THREE.MeshLambertMaterial({ color: 0x02f516 }),
+            new THREE.MeshLambertMaterial({ color: 0x000000 }),
+            new THREE.MeshLambertMaterial({ color: 0xffeaf3 }),
+            new THREE.MeshLambertMaterial({ color: 0x02f516 }),
+            new THREE.MeshLambertMaterial({ color: 0x000000 }),
+        ];
+
+        let newShape = new THREE.Mesh(newGeom, materials);
+
+        this.scene.add(newShape);
+        newShape.position.set(x, y, z);
+
+
+
+        // create the PositionalAudio object (passing in the listener)
+        const sound = new THREE.PositionalAudio( this.listener );
+
+        // load a sound and set it as the PositionalAudio object's buffer
+        const audioLoader = new THREE.AudioLoader();
+        audioLoader.load( 'click.mp3', function( buffer ) {
+        	sound.setBuffer( buffer );
+        	sound.setRefDistance( 20 );
+        	// sound.play();
+        });
+
+        // finally add the sound to the mesh
+        newShape.add( sound );
+
+        return newShape;
+        
+    }
+
+    makeDisc(x: number, y: number, z: number) {
+        // let cube = triColourDisc(geometry)
+        let cube = this.makeDiscGeometry();
         
         this.scene.add(cube);
         cube.position.set(x, y, z);
@@ -168,7 +234,7 @@ export class RowOfDiscs {
 
         // load a sound and set it as the PositionalAudio object's buffer
         const audioLoader = new THREE.AudioLoader();
-        audioLoader.load( 'public/click.mp3', function( buffer ) {
+        audioLoader.load( 'click.mp3', function( buffer ) {
         	sound.setBuffer( buffer );
         	sound.setRefDistance( 20 );
         	// sound.play();
@@ -185,11 +251,7 @@ export class RowOfDiscs {
         
     }
 
-    // const axesHelper = new THREE.AxesHelper( 5 );
-    // scene.add( axesHelper );
 
-    // var vnh = new VertexNormalsHelper( cube, 1, 0xff0000 );
-    // scene.add( vnh );
 
 
     makeRowOfDiscs(numWide: number, numTall: number) {
@@ -199,7 +261,8 @@ export class RowOfDiscs {
         for (let j = 0; j < numTall; j++) {
             let row = [];
             for (let i = 0; i < numWide; i++) {
-                let mesh = this.makeDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                let mesh = this.makeXDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                // let mesh = this.makeDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
                 row.push(mesh);
             }
             this.rowsOfDiscs.push(row);
@@ -288,7 +351,7 @@ export class RowOfDiscs {
                     let disc = this.rowsOfDiscs[row][idx];
                     disc.rotation.y += this.rotationRate;
                     (disc.children[0] as THREE.PositionalAudio).stop();
-                    let randDelay = (Math.random() - 0.5) / 100;
+                    let randDelay = (Math.random() / 100);
                     (disc.children[0] as THREE.PositionalAudio).play(randDelay);
                 } // else do nothing 
 

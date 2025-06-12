@@ -16,6 +16,8 @@
       "paths": {
         "three/webgpu": ["./node_modules/three/build/three.webgpu.js"],
         "three/tsl": ["./node_modules/three/build/three.tsl.js"],
+        "three/addons/*": ["./node_modules/@types/three/examples/jsm/*"],
+        "three/examples/jsm/*": ["./node_modules/@types/three/examples/jsm/*"],
       },
     },
     "include": ["./src"]
