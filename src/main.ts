@@ -216,4 +216,4 @@ class VideoIndexGenerator {
 console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
 // new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 // new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
-// new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE_STRING_10FPS_32x24.replace(/\'/g,''));
+new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE_STRING_10FPS_32x24.replace(/\'/g,''));

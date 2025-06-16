@@ -2,8 +2,8 @@
 export let WIDTH = 32;
 export let HEIGHT = 24;
 
-export let SOUND_ENABLED = true;
-export let USE_X_DISC = false;
+export let SOUND_ENABLED = false;
+export let USE_X_DISC = true;
 
 // export let WIDTH = 5;
 // export let HEIGHT = 7;

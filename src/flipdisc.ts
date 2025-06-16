@@ -161,13 +161,13 @@ export class RowOfDiscs {
             // geometry.setAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ));
         }
 
-        setThreeDiscGroups(geometry)
+        setThreeDiscGroups(geometry);
         const cube = new THREE.Mesh(geometry, materials);
 
         return cube;
     }
 
-    makeXDisc(x: number, y: number, z: number) {
+    makeXDiscGeometry() {
         // make two discs
         let disc1 = this.makeDiscGeometry()
         let disc2 = this.makeDiscGeometry();
@@ -199,59 +199,10 @@ export class RowOfDiscs {
 
         let newShape = new THREE.Mesh(newGeom, materials);
 
-        this.scene.add(newShape);
-        newShape.position.set(x, y, z);
-
-
-
-        // create the PositionalAudio object (passing in the listener)
-        const sound = new THREE.PositionalAudio( this.listener );
-
-        // load a sound and set it as the PositionalAudio object's buffer
-        const audioLoader = new THREE.AudioLoader();
-        audioLoader.load( 'click.mp3', function( buffer ) {
-        	sound.setBuffer( buffer );
-        	sound.setRefDistance( 20 );
-        	// sound.play();
-        });
-
-        // finally add the sound to the mesh
-        newShape.add( sound );
 
         return newShape;
         
     }
-
-    makeDisc(x: number, y: number, z: number) {
-        // let cube = triColourDisc(geometry)
-        let cube = this.makeDiscGeometry();
-        
-        this.scene.add(cube);
-        cube.position.set(x, y, z);
-        
-        // create the PositionalAudio object (passing in the listener)
-        const sound = new THREE.PositionalAudio( this.listener );
-
-        // load a sound and set it as the PositionalAudio object's buffer
-        const audioLoader = new THREE.AudioLoader();
-        audioLoader.load( 'click.mp3', function( buffer ) {
-        	sound.setBuffer( buffer );
-        	sound.setRefDistance( 20 );
-        	// sound.play();
-        });
-
-        // finally add the sound to the mesh
-        cube.add( sound );
-
-        // console.log(cube.children)
-
-
-        return cube;
-
-        
-    }
-
-
 
 
     makeRowOfDiscs(numWide: number, numTall: number) {
@@ -263,10 +214,29 @@ export class RowOfDiscs {
             for (let i = 0; i < numWide; i++) {
                 let mesh;
                 if (USE_X_DISC) {
-                    mesh = this.makeXDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                    mesh = this.makeXDiscGeometry();
                 } else {
-                    mesh = this.makeDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                    mesh = this.makeDiscGeometry();
                 }
+
+                this.scene.add(mesh);
+                mesh.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+
+                // create the PositionalAudio object (passing in the listener)
+                const sound = new THREE.PositionalAudio( this.listener );
+
+                // load a sound and set it as the PositionalAudio object's buffer
+                const audioLoader = new THREE.AudioLoader();
+                audioLoader.load( 'click.mp3', function( buffer ) {
+                	sound.setBuffer( buffer );
+                	sound.setRefDistance( 20 );
+                	// sound.play();
+                });
+            
+                // finally add the sound to the mesh
+                mesh.add( sound );
+        
+
                 row.push(mesh);
             }
             this.rowsOfDiscs.push(row);
