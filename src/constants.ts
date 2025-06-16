@@ -29,7 +29,8 @@ export let FULL_CYCLE_LENGTH = fastFrames[1];
 // originally 60 
 export let CAMERA_DISTANCE = 400;
 
-let pink = 0xffeaf3;
+let pink = "#ee3030";
+// let pink = 0xffeaf3;
 let green = 0x02f516;
 // export let DISC_FRONT_COLOUR = pink;
 // export let DISC_BACK_COLOUR = green;

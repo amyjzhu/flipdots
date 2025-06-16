@@ -12,19 +12,19 @@ export class RowOfDiscs {
     camera: THREE.Camera;
     renderer: THREE.WebGLRenderer;
     listener: THREE.AudioListener;
-    
+
     SPACING = 7;
     DEPTH = 0.5;
     RADX = 3
     RADY = 3;
     rowsOfDiscs: THREE.Mesh[][] = []
-    
+
     frame1Flips: number[][];
     frame2Flips: number[][];
     frame3Flips: number[][];
     frame4Flips: number[][];
     nextFlipGenerator: (i: number) => number[][];
-    
+
     groupSnapshot: number[] = [];
 
     idxToUpdate: number[][] = [];
@@ -36,13 +36,13 @@ export class RowOfDiscs {
     audios: THREE.Object3D[] = [];
 
     constructor() {
-        
+
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
         // create an AudioListener and add it to the camera
         this.listener = new THREE.AudioListener();
-        this.camera.add( this.listener );
+        this.camera.add(this.listener);
 
         // where to put the camera? depends... 
         // not really sure how to automatically calculate z...
@@ -113,11 +113,11 @@ export class RowOfDiscs {
         directionalLight2.position.set(1, 1, -1);
         this.scene.add(directionalLight2);
 
-            // const axesHelper = new THREE.AxesHelper( 5 );
-    // scene.add( axesHelper );
+        // const axesHelper = new THREE.AxesHelper( 5 );
+        // scene.add( axesHelper );
 
-    // var vnh = new VertexNormalsHelper( cube, 1, 0xff0000 );
-    // this.scene.add( vnh );
+        // var vnh = new VertexNormalsHelper( cube, 1, 0xff0000 );
+        // this.scene.add( vnh );
     }
 
     makeDiscGeometry(): THREE.Mesh {
@@ -132,79 +132,87 @@ export class RowOfDiscs {
 
         const geometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
 
-// https://stackoverflow.com/questions/65974267/instancedmesh-with-unique-texture-per-instance/65975558#65975558 2024 answer 
-        
-// maybe worth trying to merge these two 
-let backMaterial = new THREE.ShaderMaterial({
-    vertexShader: `
-            attribute vec3 instanceBackColour;
-            varying vec3 vColor;
+        // https://stackoverflow.com/questions/65974267/instancedmesh-with-unique-texture-per-instance/65975558#65975558 2024 answer 
 
-            void main() {
-            vColor = instanceBackColour;
-            vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-            gl_Position = projectionMatrix * mvPosition;
-            }
-        `,
-    fragmentShader: `
-            varying vec3 vColor;
+        // maybe worth trying to merge these two 
 
-            void main() {
-            gl_FragColor = vec4(vColor, 1); 
-            }
-        `,
-        // transparent: true,
-        // opacity: 0.9, // this is the opacity of the shader
-    });
+        let backMaterial = new THREE.MeshLambertMaterial();
+        // lol this is slightly cursed: https://threejs.org/examples/webgl_materials_modified
+
+        backMaterial.onBeforeCompile = shader => {
+            // console.log(shader.vertexShader);
+            shader.vertexShader = `attribute vec3 instanceBackColour;
+varying vec3 vColor;
+` + shader.vertexShader;
+
+            shader.vertexShader = shader.vertexShader.replace(`void main() {`,
+                `void main() {
+            vColor = instanceBackColour;`)
+
+            // console.log(shader.fragmentShader)
+            shader.fragmentShader = `varying vec3 vColor;
+` + shader.fragmentShader;
+
+            shader.fragmentShader = shader.fragmentShader.replace(`vec4 diffuseColor = vec4( diffuse, opacity );`,
+                `vec4 diffuseColor = vec4( vColor, opacity );`
+            )
+
+            backMaterial.userData.shader = shader;
+            console.log(shader)
+        };
 
 
-    let frontMaterial = new THREE.ShaderMaterial({
-        vertexShader: `
-                attribute vec3 instanceFrontColour;
-                varying vec3 vColor;
-    
-                void main() {
-                vColor = instanceFrontColour;
-                vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-                gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-        fragmentShader: `
-                varying vec3 vColor;
-    
-                void main() {
-                gl_FragColor = vec4(vColor, 1);
-                }
-            `,
-            // transparent: true,
-            // opacity: 0.9, // this is the opacity of the shader
-        });
-    
-    
-    let count = WIDTH * HEIGHT;
+        let frontMaterial = new THREE.MeshLambertMaterial();
+        // lol this is slightly cursed: https://threejs.org/examples/webgl_materials_modified
 
-    var instanceBackColours = new Float32Array(count * 3);
-    var instanceFrontColours = new Float32Array(count * 3);
+        frontMaterial.onBeforeCompile = shader => {
+            // console.log(shader.vertexShader);
+            shader.vertexShader = `attribute vec3 instanceFrontColour;
+varying vec3 vColor;
+` + shader.vertexShader;
 
-    for (let i = 0; i < count; i++) {
-        let backColour = DISC_BACK_COLOUR(i);
-        instanceBackColours[i * 3] = backColour[0];
-        instanceBackColours[i * 3 + 1] = backColour[1];
-        instanceBackColours[i * 3 + 2] = backColour[2];
+            shader.vertexShader = shader.vertexShader.replace(`void main() {`,
+                `void main() {
+                vColor = instanceFrontColour;`)
 
-        let frontColour = DISC_FRONT_COLOUR(i);
-        instanceFrontColours[i * 3] = frontColour[0];
-        instanceFrontColours[i * 3 + 1] = frontColour[1];
-        instanceFrontColours[i * 3 + 2] = frontColour[2];
-    }
+            // console.log(shader.fragmentShader)
+            shader.fragmentShader = `varying vec3 vColor;
+` + shader.fragmentShader;
 
-    geometry.setAttribute('instanceBackColour',
-    new THREE.InstancedBufferAttribute(instanceBackColours, 3));
-    geometry.setAttribute('instanceFrontColour',
-    new THREE.InstancedBufferAttribute(instanceFrontColours, 3));
+            shader.fragmentShader = shader.fragmentShader.replace(`vec4 diffuseColor = vec4( diffuse, opacity );`,
+                `vec4 diffuseColor = vec4( vColor, opacity );`
+            )
+
+            frontMaterial.userData.shader = shader;
+            console.log(shader)
+        };
+
+
+        let count = WIDTH * HEIGHT;
+
+        var instanceBackColours = new Float32Array(count * 3);
+        var instanceFrontColours = new Float32Array(count * 3);
+
+        for (let i = 0; i < count; i++) {
+            let backColour = DISC_BACK_COLOUR(i);
+            instanceBackColours[i * 3] = backColour[0];
+            instanceBackColours[i * 3 + 1] = backColour[1];
+            instanceBackColours[i * 3 + 2] = backColour[2];
+
+            let frontColour = DISC_FRONT_COLOUR(i);
+            instanceFrontColours[i * 3] = frontColour[0];
+            instanceFrontColours[i * 3 + 1] = frontColour[1];
+            instanceFrontColours[i * 3 + 2] = frontColour[2];
+        }
+
+        geometry.setAttribute('instanceBackColour',
+            new THREE.InstancedBufferAttribute(instanceBackColours, 3));
+        geometry.setAttribute('instanceFrontColour',
+            new THREE.InstancedBufferAttribute(instanceFrontColours, 3));
 
 
         const materials = [
+            // frontMaterialL,
             frontMaterial,
             // new THREE.MeshLambertMaterial({ color: 0xff0110 }),
             // new THREE.MeshLambertMaterial({ color: DISC_FRONT_COLOUR }),
@@ -285,7 +293,7 @@ let backMaterial = new THREE.ShaderMaterial({
 
 
         return newShape;
-        
+
     }
 
 
@@ -301,10 +309,10 @@ let backMaterial = new THREE.ShaderMaterial({
         for (let j = 0; j < numTall; j++) {
             // let row = [];
             for (let i = 0; i < numWide; i++) {
-                
+
                 this.dummy.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
                 this.dummy.updateMatrix();
-                
+
                 // may have to update colours here in the future
                 this.instanced!.setMatrixAt(j * WIDTH + i, this.dummy.matrix);
                 // instanced.setColorAt()
@@ -316,7 +324,7 @@ let backMaterial = new THREE.ShaderMaterial({
         this.idxToUpdate = [...Array(HEIGHT)].map(_ => []);
         console.log(this.idxToUpdate)
 
-        let offsetZ = -5; 
+        let offsetZ = -5;
         let backingBorder = 2;
         // also, make a black rectangle behind it
         let backing = new THREE.BoxGeometry(numWide * this.SPACING + backingBorder, numTall * this.SPACING + backingBorder, 4);
@@ -336,18 +344,18 @@ let backMaterial = new THREE.ShaderMaterial({
                 // create the PositionalAudio object (passing in the listener)
                 let audio = new THREE.Object3D();
                 audio.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0)
-                
-                const sound = new THREE.PositionalAudio( this.listener );
+
+                const sound = new THREE.PositionalAudio(this.listener);
 
                 // load a sound and set it as the PositionalAudio object's buffer
                 const audioLoader = new THREE.AudioLoader();
-                audioLoader.load( 'click.mp3', function( buffer ) {
-                	sound.setBuffer( buffer );
-                	sound.setRefDistance( 20 );
-                	// sound.play();
+                audioLoader.load('click.mp3', function (buffer) {
+                    sound.setBuffer(buffer);
+                    sound.setRefDistance(20);
+                    // sound.play();
                 });
-            
-                audio.add( sound );
+
+                audio.add(sound);
                 this.audios.push(audio)
             }
         }
@@ -412,7 +420,7 @@ let backMaterial = new THREE.ShaderMaterial({
     // let rotationRate = 0.01;
     animationFrameCounter = 0;
 
-    
+
     // I need to make a half rotation in 20 frames. How much do I rotate by?
     rotationRate = Math.PI / NUM_FRAMES_ROTATING;
     flipCycles = 0;
@@ -427,7 +435,7 @@ let backMaterial = new THREE.ShaderMaterial({
                     this.instanced!.getMatrixAt(row * WIDTH + idx, this.dummy.matrix);
                     // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
-                    let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0,1,0), this.rotationRate)
+                    let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0, 1, 0), this.rotationRate)
                     // console.log(t)
                     // this.dummy.rotation.y += this.rotationRate;
                     this.dummy.matrix.multiply(rotation)
@@ -453,7 +461,7 @@ let backMaterial = new THREE.ShaderMaterial({
             // setNextToUpdate(flipCycles);
             this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
             this.flipCycles += 1;
-            
+
         } else {
             this.animationFrameCounter += 1;
         }
