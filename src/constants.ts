@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 
 // export let WIDTH = 32;
 // export let HEIGHT = 24;
@@ -30,11 +31,14 @@ export let CAMERA_DISTANCE = 400;
 
 let pink = 0xffeaf3;
 let green = 0x02f516;
-export let DISC_FRONT_COLOUR = pink;
-export let DISC_BACK_COLOUR = green;
+// export let DISC_FRONT_COLOUR = pink;
+// export let DISC_BACK_COLOUR = green;
 export let DISC_SIDE_COLOUR = 0x000000;
 
 
+export let DISC_FRONT_COLOUR = (i: number) => new THREE.Color(pink).toArray();
+// export let DISC_BACK_COLOUR = (i: number) => new THREE.Color(green).toArray();
+export let DISC_BACK_COLOUR = (i: number) => i % 2 ? new THREE.Color(green).toArray() : new THREE.Color("#1754fd").toArray();
 
 
 export let INV_Y_ON_LOAD = true;

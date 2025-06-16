@@ -134,17 +134,14 @@ export class RowOfDiscs {
 
 // https://stackoverflow.com/questions/65974267/instancedmesh-with-unique-texture-per-instance/65975558#65975558 2024 answer 
         
+// maybe worth trying to merge these two 
 let backMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-        colours: { value: [new THREE.Color(DISC_BACK_COLOUR)] }
-    },
-    
     vertexShader: `
-            attribute vec3 instanceColor;
+            attribute vec3 instanceBackColour;
             varying vec3 vColor;
 
             void main() {
-            vColor = instanceColor;
+            vColor = instanceBackColour;
             vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
             gl_Position = projectionMatrix * mvPosition;
             }
@@ -153,37 +150,64 @@ let backMaterial = new THREE.ShaderMaterial({
             varying vec3 vColor;
 
             void main() {
-            gl_FragColor = vec4(vColor, 0.5); // 0.5 here is the opacity of the color
+            gl_FragColor = vec4(vColor, 1); 
             }
         `,
-        transparent: true,
-        opacity: 0.9, // this is the opacity of the shader
+        // transparent: true,
+        // opacity: 0.9, // this is the opacity of the shader
     });
 
 
+    let frontMaterial = new THREE.ShaderMaterial({
+        vertexShader: `
+                attribute vec3 instanceFrontColour;
+                varying vec3 vColor;
+    
+                void main() {
+                vColor = instanceFrontColour;
+                vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+        fragmentShader: `
+                varying vec3 vColor;
+    
+                void main() {
+                gl_FragColor = vec4(vColor, 1);
+                }
+            `,
+            // transparent: true,
+            // opacity: 0.9, // this is the opacity of the shader
+        });
+    
+    
     let count = WIDTH * HEIGHT;
 
-    var instanceColors = new Float32Array(count * 3);
+    var instanceBackColours = new Float32Array(count * 3);
+    var instanceFrontColours = new Float32Array(count * 3);
 
     for (let i = 0; i < count; i++) {
-        if (i % 2 == 0) {
-            instanceColors[i * 3] = 0;
-            instanceColors[i * 3 + 1] = 1;
-            instanceColors[i * 3 + 2] = 2;
-        } else {
-            instanceColors[i * 3] = 1;
-        instanceColors[i * 3 + 1] = 1;
-        instanceColors[i * 3 + 2] = 0;
-        }
-        
+        let backColour = DISC_BACK_COLOUR(i);
+        instanceBackColours[i * 3] = backColour[0];
+        instanceBackColours[i * 3 + 1] = backColour[1];
+        instanceBackColours[i * 3 + 2] = backColour[2];
+
+        let frontColour = DISC_FRONT_COLOUR(i);
+        instanceFrontColours[i * 3] = frontColour[0];
+        instanceFrontColours[i * 3 + 1] = frontColour[1];
+        instanceFrontColours[i * 3 + 2] = frontColour[2];
     }
 
-    geometry.setAttribute('instanceColor',
-    new THREE.InstancedBufferAttribute(instanceColors, 3));
+    geometry.setAttribute('instanceBackColour',
+    new THREE.InstancedBufferAttribute(instanceBackColours, 3));
+    geometry.setAttribute('instanceFrontColour',
+    new THREE.InstancedBufferAttribute(instanceFrontColours, 3));
 
 
         const materials = [
-            new THREE.MeshLambertMaterial({ color: DISC_FRONT_COLOUR }),
+            frontMaterial,
+            // new THREE.MeshLambertMaterial({ color: 0xff0110 }),
+            // new THREE.MeshLambertMaterial({ color: DISC_FRONT_COLOUR }),
             // new THREE.MeshLambertMaterial({ color: DISC_BACK_COLOUR }),
             backMaterial,
             new THREE.MeshLambertMaterial({ color: DISC_SIDE_COLOUR })
