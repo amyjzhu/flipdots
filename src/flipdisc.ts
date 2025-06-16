@@ -132,9 +132,60 @@ export class RowOfDiscs {
 
         const geometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
 
+// https://stackoverflow.com/questions/65974267/instancedmesh-with-unique-texture-per-instance/65975558#65975558 2024 answer 
+        
+let backMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        colours: { value: [new THREE.Color(DISC_BACK_COLOUR)] }
+    },
+    
+    vertexShader: `
+            attribute vec3 instanceColor;
+            varying vec3 vColor;
+
+            void main() {
+            vColor = instanceColor;
+            vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+            }
+        `,
+    fragmentShader: `
+            varying vec3 vColor;
+
+            void main() {
+            gl_FragColor = vec4(vColor, 0.5); // 0.5 here is the opacity of the color
+            }
+        `,
+        transparent: true,
+        opacity: 0.9, // this is the opacity of the shader
+    });
+
+
+    let count = WIDTH * HEIGHT;
+
+    var instanceColors = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+        if (i % 2 == 0) {
+            instanceColors[i * 3] = 0;
+            instanceColors[i * 3 + 1] = 1;
+            instanceColors[i * 3 + 2] = 2;
+        } else {
+            instanceColors[i * 3] = 1;
+        instanceColors[i * 3 + 1] = 1;
+        instanceColors[i * 3 + 2] = 0;
+        }
+        
+    }
+
+    geometry.setAttribute('instanceColor',
+    new THREE.InstancedBufferAttribute(instanceColors, 3));
+
+
         const materials = [
             new THREE.MeshLambertMaterial({ color: DISC_FRONT_COLOUR }),
-            new THREE.MeshLambertMaterial({ color: DISC_BACK_COLOUR }),
+            // new THREE.MeshLambertMaterial({ color: DISC_BACK_COLOUR }),
+            backMaterial,
             new THREE.MeshLambertMaterial({ color: DISC_SIDE_COLOUR })
         ];
 

@@ -1,9 +1,9 @@
 
-export let WIDTH = 32;
-export let HEIGHT = 24;
+// export let WIDTH = 32;
+// export let HEIGHT = 24;
 
-// export let WIDTH = 5;
-// export let HEIGHT = 7;
+export let WIDTH = 5;
+export let HEIGHT = 7;
 
 export let SOUND_ENABLED = false;
 export let USE_X_DISC = false;
