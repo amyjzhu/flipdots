@@ -1,7 +1,8 @@
 import { RowOfDiscs } from "./flipdisc";
-import { WIDTH, HEIGHT, ANIMATION_PATHS } from "./constants";
+import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD } from "./constants";
 
 import * as THREE from 'three';
+import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
 
 let rowOfDiscs = new RowOfDiscs();
 
@@ -41,6 +42,21 @@ class VideoIndexGenerator {
         }
 
         return ret;
+    }
+
+    readBitmapVideoState(str: string): boolean[][][] {
+        let frames: boolean[][][] = [];
+        let lines = str.split("\n").filter(s => s.trim() != "");
+        for (let line of lines) {
+            let ndarray: boolean[][] = JSON.parse(line);
+            if (INV_Y_ON_LOAD) {
+                ndarray.reverse();
+            }
+            frames.push(ndarray);
+        };
+        
+        frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
+        return frames;
     }
 
     generateFlipBitmap(input: RGB[][], a: RGB): boolean[][] {
@@ -111,6 +127,8 @@ class VideoIndexGenerator {
             let endFrame = inputFrames[end];
             // I basically need to do a big XOR, I guess this would be easier with pytorch
             let newFrame = endFrame.map((row,i) => row.map((cell,j) => cell != startFrame[i][j]))
+            // let changes = newFrame.map(rows => rows.map(a => a ? "1" : "0").join("")).join("\n");
+            // console.log(changes)
             newSequence.push(newFrame);
             start++;
             end++;
@@ -142,6 +160,16 @@ class VideoIndexGenerator {
 
             }
         };
+    }
+
+    loadVideoFromStr(str: string) {
+        let frames = this.readBitmapVideoState(str);
+        frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
+        let boolFrames = this.takeFlipSequenceDifference(frames);
+        console.log(boolFrames.filter(x => x.filter(y => y.some(a => !a)).length != 0));
+        let sequence = boolFrames.map(frame => this.generateFlipsFromBitmap(frame));
+        console.log(sequence)
+        rowOfDiscs.resetAnimation(this.generateUniformFlipFunctionForSequence(sequence));
     }
 
     // wait, but this isn't right. it just loads the frames that should be flipped.
@@ -186,5 +214,6 @@ class VideoIndexGenerator {
 
 // should be [[],[],[1],[],[3],[],[]]
 console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
-new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
+// new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 // new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
+// new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE_STRING_10FPS_32x24.replace(/\'/g,''));

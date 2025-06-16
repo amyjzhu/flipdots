@@ -5,7 +5,7 @@ import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js
 import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
 
 
-import { WIDTH, HEIGHT, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE } from './constants';
+import { WIDTH, HEIGHT, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED, USE_X_DISC, DISC_SIDE_COLOUR, DISC_FRONT_COLOUR, DISC_BACK_COLOUR } from './constants';
 
 export class RowOfDiscs {
     scene: THREE.Scene;
@@ -124,9 +124,9 @@ export class RowOfDiscs {
         const geometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
 
         const materials = [
-            new THREE.MeshLambertMaterial({ color: 0xffeaf3 }),
-            new THREE.MeshLambertMaterial({ color: 0x02f516 }),
-            new THREE.MeshLambertMaterial({ color: 0x000000 })
+            new THREE.MeshLambertMaterial({ color: DISC_FRONT_COLOUR }),
+            new THREE.MeshLambertMaterial({ color: DISC_BACK_COLOUR }),
+            new THREE.MeshLambertMaterial({ color: DISC_SIDE_COLOUR })
         ];
 
         let setThreeDiscGroups = (geometry: any) => {
@@ -243,7 +243,7 @@ export class RowOfDiscs {
         // finally add the sound to the mesh
         cube.add( sound );
 
-        console.log(cube.children)
+        // console.log(cube.children)
 
 
         return cube;
@@ -261,8 +261,12 @@ export class RowOfDiscs {
         for (let j = 0; j < numTall; j++) {
             let row = [];
             for (let i = 0; i < numWide; i++) {
-                let mesh = this.makeXDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
-                // let mesh = this.makeDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                let mesh;
+                if (USE_X_DISC) {
+                    mesh = this.makeXDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                } else {
+                    mesh = this.makeDisc(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                }
                 row.push(mesh);
             }
             this.rowsOfDiscs.push(row);
@@ -313,10 +317,11 @@ export class RowOfDiscs {
             }
         }
 
+        return setNextToUpdate;
         if (i > 10) {
             return setNextToUpdate;
         } else {
-            return setNextRipple;
+            return setNextRipple; // temporarily ignore as it only works for 5x7
         }
     }
 
@@ -329,6 +334,7 @@ export class RowOfDiscs {
 
         this.flipCycles = 0;
         console.log(this.flipCycles)
+        // console.log(this.idxToUpdate)
         this.animationFrameCounter = 0;
         this.nextFlipGenerator = newFlip;
     }
@@ -346,13 +352,16 @@ export class RowOfDiscs {
     flipCycles = 0;
     animate = () => {
         for (let row in this.rowsOfDiscs) {
+            // console.log(this.idxToUpdate)
             for (let idx of this.idxToUpdate[row]) {
                 if (this.animationFrameCounter < NUM_FRAMES_ROTATING) {
                     let disc = this.rowsOfDiscs[row][idx];
                     disc.rotation.y += this.rotationRate;
-                    (disc.children[0] as THREE.PositionalAudio).stop();
-                    let randDelay = (Math.random() / 100);
-                    (disc.children[0] as THREE.PositionalAudio).play(randDelay);
+                    if (SOUND_ENABLED) {
+                        (disc.children[0] as THREE.PositionalAudio).stop();
+                        let randDelay = (Math.random() / 100);
+                        (disc.children[0] as THREE.PositionalAudio).play(randDelay);
+                    }
                 } // else do nothing 
 
             }
