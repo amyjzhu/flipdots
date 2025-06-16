@@ -2,11 +2,12 @@
 export let WIDTH = 32;
 export let HEIGHT = 24;
 
-export let SOUND_ENABLED = false;
-export let USE_X_DISC = true;
-
 // export let WIDTH = 5;
 // export let HEIGHT = 7;
+
+export let SOUND_ENABLED = false;
+export let USE_X_DISC = false;
+
 export let ANIMATION_PATHS = ["/ball1.png", 
     "/ball2.png", 
     "/ball3.png",
@@ -29,7 +30,7 @@ export let CAMERA_DISTANCE = 400;
 
 let pink = 0xffeaf3;
 let green = 0x02f516;
-export let DISC_FRONT_COLOUR = 0x000000;
+export let DISC_FRONT_COLOUR = pink;
 export let DISC_BACK_COLOUR = green;
 export let DISC_SIDE_COLOUR = 0x000000;
 

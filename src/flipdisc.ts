@@ -28,6 +28,13 @@ export class RowOfDiscs {
     groupSnapshot: number[] = [];
 
     idxToUpdate: number[][] = [];
+
+    dummy = new THREE.Object3D();
+    instanced: THREE.InstancedMesh | undefined;
+    clock = new THREE.Clock();
+
+    audios: THREE.Object3D[] = [];
+
     constructor() {
         
         this.scene = new THREE.Scene();
@@ -49,12 +56,14 @@ export class RowOfDiscs {
         this.initScene();
         this.makeRowOfDiscs(WIDTH, HEIGHT);
 
+        this.addAudio();
 
-        
-        this.frame1Flips = this.rowsOfDiscs.map((row, idx) => idx % 2 ? [] : row.map((_, i) => i % 2 ? i : -1).filter(i => i != -1));
-        this.frame2Flips = this.rowsOfDiscs.map((row, idx) => idx % 2 ? row.map((_, i) => i % 2 ? -1 : i).filter(i => i != -1) : []);
-        this.frame3Flips = this.rowsOfDiscs.map((row, idx) => idx % 2 ? row.map((_, i) => i % 2 ? i : -1).filter(i => i != -1) : []);
-        this.frame4Flips = this.rowsOfDiscs.map((row, idx) => idx % 2 ? [] : row.map((_, i) => i % 2 ? -1 : i).filter(i => i != -1));
+
+        let basic: number[][] = [...Array(HEIGHT)].map(_ => [...Array(WIDTH)].map((_, i) => i));
+        this.frame1Flips = basic.map((row, idx) => idx % 2 ? [] : row.map((_, i) => i % 2 ? i : -1).filter(i => i != -1));
+        this.frame2Flips = basic.map((row, idx) => idx % 2 ? row.map((_, i) => i % 2 ? -1 : i).filter(i => i != -1) : []);
+        this.frame3Flips = basic.map((row, idx) => idx % 2 ? row.map((_, i) => i % 2 ? i : -1).filter(i => i != -1) : []);
+        this.frame4Flips = basic.map((row, idx) => idx % 2 ? [] : row.map((_, i) => i % 2 ? -1 : i).filter(i => i != -1));
         this.nextFlipGenerator = i => this.getNextFlip(i)(i);
 
         this.animate();
@@ -207,43 +216,30 @@ export class RowOfDiscs {
 
     makeRowOfDiscs(numWide: number, numTall: number) {
 
+        let basicGeometry = USE_X_DISC ? this.makeXDiscGeometry() : this.makeDiscGeometry();
+        this.instanced = new THREE.InstancedMesh(basicGeometry.geometry, basicGeometry.material, WIDTH * HEIGHT);
+        this.instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.scene.add(this.instanced);
+
         let offsetX = WIDTH * this.SPACING / 2;
         let offsetY = HEIGHT * this.SPACING / 2
         for (let j = 0; j < numTall; j++) {
-            let row = [];
+            // let row = [];
             for (let i = 0; i < numWide; i++) {
-                let mesh;
-                if (USE_X_DISC) {
-                    mesh = this.makeXDiscGeometry();
-                } else {
-                    mesh = this.makeDiscGeometry();
-                }
+                
+                this.dummy.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
+                this.dummy.updateMatrix();
+                
+                // may have to update colours here in the future
+                this.instanced!.setMatrixAt(j * WIDTH + i, this.dummy.matrix);
+                // instanced.setColorAt()
 
-                this.scene.add(mesh);
-                mesh.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
-
-                // create the PositionalAudio object (passing in the listener)
-                const sound = new THREE.PositionalAudio( this.listener );
-
-                // load a sound and set it as the PositionalAudio object's buffer
-                const audioLoader = new THREE.AudioLoader();
-                audioLoader.load( 'click.mp3', function( buffer ) {
-                	sound.setBuffer( buffer );
-                	sound.setRefDistance( 20 );
-                	// sound.play();
-                });
-            
-                // finally add the sound to the mesh
-                mesh.add( sound );
-        
-
-                row.push(mesh);
             }
-            this.rowsOfDiscs.push(row);
         }
 
         // this.idxToUpdate = this.rowsOfDiscs.map(row => []);
-        this.idxToUpdate = this.rowsOfDiscs.map(row => row.map((_, i) => i));
+        this.idxToUpdate = [...Array(HEIGHT)].map(_ => []);
+        console.log(this.idxToUpdate)
 
         let offsetZ = -5; 
         let backingBorder = 2;
@@ -256,6 +252,31 @@ export class RowOfDiscs {
         backingPiece.position.set(-this.RADX - backingBorder / 2, -this.RADY - backingBorder / 2, offsetZ)
     }
 
+    addAudio() {
+        let offsetX = WIDTH * this.SPACING / 2;
+        let offsetY = HEIGHT * this.SPACING / 2
+        for (let j = 0; j < HEIGHT; j++) {
+            // let row = [];
+            for (let i = 0; i < WIDTH; i++) {
+                // create the PositionalAudio object (passing in the listener)
+                let audio = new THREE.Object3D();
+                audio.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0)
+                
+                const sound = new THREE.PositionalAudio( this.listener );
+
+                // load a sound and set it as the PositionalAudio object's buffer
+                const audioLoader = new THREE.AudioLoader();
+                audioLoader.load( 'click.mp3', function( buffer ) {
+                	sound.setBuffer( buffer );
+                	sound.setRefDistance( 20 );
+                	// sound.play();
+                });
+            
+                audio.add( sound );
+                this.audios.push(audio)
+            }
+        }
+    }
 
 
     getNextFlip = (i: number): (f: number) => number[][] => {
@@ -321,17 +342,31 @@ export class RowOfDiscs {
     rotationRate = Math.PI / NUM_FRAMES_ROTATING;
     flipCycles = 0;
     animate = () => {
-        for (let row in this.rowsOfDiscs) {
+        // let t = this.clock.getDelta();
+
+        for (let row = 0; row < HEIGHT; row++) {
             // console.log(this.idxToUpdate)
+            // console.log(row)
             for (let idx of this.idxToUpdate[row]) {
                 if (this.animationFrameCounter < NUM_FRAMES_ROTATING) {
-                    let disc = this.rowsOfDiscs[row][idx];
-                    disc.rotation.y += this.rotationRate;
+                    this.instanced!.getMatrixAt(row * WIDTH + idx, this.dummy.matrix);
+                    // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
+
+                    let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0,1,0), this.rotationRate)
+                    // console.log(t)
+                    // this.dummy.rotation.y += this.rotationRate;
+                    this.dummy.matrix.multiply(rotation)
+                    // this.dummy.updateMatrix();
+
                     if (SOUND_ENABLED) {
-                        (disc.children[0] as THREE.PositionalAudio).stop();
+                        let audio = this.audios[row * WIDTH + idx];
+                        (audio.children[0] as THREE.PositionalAudio).stop();
                         let randDelay = (Math.random() / 100);
-                        (disc.children[0] as THREE.PositionalAudio).play(randDelay);
+                        (audio.children[0] as THREE.PositionalAudio).play(randDelay);
                     }
+
+                    this.instanced!.setMatrixAt(row * WIDTH + idx, this.dummy.matrix);
+                    this.instanced!.instanceMatrix.needsUpdate = true;
                 } // else do nothing 
 
             }
