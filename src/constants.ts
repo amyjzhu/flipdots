@@ -13,8 +13,13 @@ export let BAD_APPLE = BAD_APPLE_STRING_10FPS_32x24;
 // export let WIDTH = 5;
 // export let HEIGHT = 7;
 
-export let SOUND_ENABLED = true;
+export let SOUND_ENABLED = false;
+// slightly worse imo but much faster for big, at least works for 32x24 (not 64x48 yet). normal sound enabled is only viable for 5x7
+export let PERFORMANT_SOUND_ENABLED = true;
 export let USE_X_DISC = false;
+
+export let PERFORMANT_NUM_X_SPEAKERS = 4;
+export let PERFORMANT_NUM_Y_SPEAKERS = 4;
 
 export let ANIMATION_PATHS = ["/ball1.png", 
     "/ball2.png", 

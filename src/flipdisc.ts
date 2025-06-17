@@ -5,7 +5,7 @@ import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js
 import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
 
 
-import { WIDTH, HEIGHT, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED, USE_X_DISC, DISC_SIDE_COLOUR, DISC_FRONT_COLOUR, DISC_BACK_COLOUR } from './constants';
+import { WIDTH, HEIGHT, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED, USE_X_DISC, DISC_SIDE_COLOUR, DISC_FRONT_COLOUR, DISC_BACK_COLOUR, PERFORMANT_SOUND_ENABLED, PERFORMANT_NUM_X_SPEAKERS, PERFORMANT_NUM_Y_SPEAKERS } from './constants';
 
 export class RowOfDiscs {
     scene: THREE.Scene;
@@ -56,8 +56,11 @@ export class RowOfDiscs {
         this.initScene();
         this.makeRowOfDiscs(WIDTH, HEIGHT);
 
-        if (SOUND_ENABLED) {
-            this.addPerformantAudio();
+        // performant takes precedence 
+        if (PERFORMANT_SOUND_ENABLED) {
+            this.addPerformantAudio()
+        } else if (SOUND_ENABLED) {
+            this.addAudio();
         }
 
 
@@ -337,19 +340,44 @@ varying vec3 vColor;
         backingPiece.position.set(-this.RADX - backingBorder / 2, -this.RADY - backingBorder / 2, offsetZ)
     }
 
-    addPerformantAudio() {
+    addAudio() {
         let offsetX = WIDTH * this.SPACING / 2;
         let offsetY = HEIGHT * this.SPACING / 2;
-        let numXSpeakers = Math.floor(WIDTH * this.SPACING / 20);
-        let numYSpeakers = Math.floor(HEIGHT * this.SPACING / 20);
         // console.log(numXSpeakers)
 
-        for (let j = 0; j < numXSpeakers; j++) {
+        for (let j = 0; j < WIDTH; j++) {
             // let row = [];
-            for (let i = 0; i < numYSpeakers; i++) {
+            for (let i = 0; i < HEIGHT; i++) {
                 // create the PositionalAudio object (passing in the listener)
                 let audio = new THREE.Object3D();
                 audio.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0)
+
+                const sound = new THREE.PositionalAudio(this.listener);
+
+                // load a sound and set it as the PositionalAudio object's buffer
+                const audioLoader = new THREE.AudioLoader();
+                audioLoader.load('click.mp3', function (buffer) {
+                    sound.setBuffer(buffer);
+                    sound.setRefDistance(20);
+                    // sound.play();
+                });
+
+                audio.add(sound);
+                this.audios.push(audio)
+            }
+        }
+    }
+
+    addPerformantAudio() {
+        let newXSpacing = Math.floor(WIDTH * this.SPACING / PERFORMANT_NUM_X_SPEAKERS);
+        let newYSpacing = Math.floor(HEIGHT * this.SPACING / PERFORMANT_NUM_Y_SPEAKERS);
+
+        for (let j = 0; j < PERFORMANT_NUM_X_SPEAKERS; j++) {
+            // let row = [];
+            for (let i = 0; i < PERFORMANT_NUM_Y_SPEAKERS; i++) {
+                // create the PositionalAudio object (passing in the listener)
+                let audio = new THREE.Object3D();
+                audio.position.set(i * newYSpacing, j * newXSpacing, 0)
 
                 const sound = new THREE.PositionalAudio(this.listener);
 
@@ -433,17 +461,19 @@ varying vec3 vColor;
     animate = () => {
         // let t = this.clock.getDelta();
 
-        if (SOUND_ENABLED) {
-            // console.log(this.idxToUpdate.reduce((a,b) => a + b.length,0))
-            // console.log(this.audios.length)
-            for (let i = 0; i < this.audios.length && i < this.idxToUpdate.reduce((a,b) => a + b.length, 0); i++) {
-                // todo: at some point, figure out which audio is closest
-                let audio = this.audios[i];
-                (audio.children[0] as THREE.PositionalAudio).stop();
-                let randDelay = (Math.random() / 100);
-                (audio.children[0] as THREE.PositionalAudio).play(randDelay);
-            }
-        }
+        // this could work... but I think it's like, 
+        // if (SOUND_ENABLED) {
+        //     // console.log(this.idxToUpdate.reduce((a,b) => a + b.length,0))
+        //     // console.log(this.audios.length)
+        //     for (let i = 0; i < this.audios.length && i < this.idxToUpdate.reduce((a,b) => a + b.length, 0); i++) {
+        //         // todo: at some point, figure out which audio is closest
+        //         let audio = this.audios[i];
+        //         // let audio = this.audios[row * WIDTH + idx];
+        //         (audio.children[0] as THREE.PositionalAudio).stop();
+        //         let randDelay = (Math.random() / 100);
+        //         (audio.children[0] as THREE.PositionalAudio).play(randDelay);
+        //     }
+        // }
 
 
         for (let row = 0; row < HEIGHT; row++) {
@@ -462,7 +492,34 @@ varying vec3 vColor;
 
                     this.instanced!.setMatrixAt(row * WIDTH + idx, this.dummy.matrix);
                     this.instanced!.instanceMatrix.needsUpdate = true;
+
+                    if (SOUND_ENABLED) {
+                        // console.log(this.idxToUpdate.reduce((a,b) => a + b.length,0))
+                        // console.log(this.audios.length)
+                        // for (let i = 0; i < this.audios.length && i < this.idxToUpdate.reduce((a,b) => a + b.length, 0); i++) {
+                        // todo: at some point, figure out which audio is closest
+                        // let audio = this.audios[i];
+                        let audio = this.audios[row * WIDTH + idx];
+                        (audio.children[0] as THREE.PositionalAudio).stop();
+                        let randDelay = (Math.random() / 100);
+                        (audio.children[0] as THREE.PositionalAudio).play(randDelay);
+
+                    } else if (PERFORMANT_SOUND_ENABLED) {
+                        // have two sets to give them time to play out.
+                        let cutoff = Math.floor(this.audios.length / 2);
+                        for (let i = 0; i < cutoff && i < this.idxToUpdate.reduce((a,b) => a + b.length, 0); i++) {
+                            let audio = this.audios[i + cutoff]
+                            if (this.animationFrameCounter % 2 == 0) {
+                                audio = this.audios[i];
+                            } 
+                            (audio.children[0] as THREE.PositionalAudio).stop();
+                            let randDelay = (Math.random() / 100);
+                            (audio.children[0] as THREE.PositionalAudio).play(randDelay);
+                        }
+                    }
+
                 } // else do nothing 
+
 
             }
         }
