@@ -1,5 +1,5 @@
 import { RowOfDiscs } from "./flipdisc";
-import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD } from "./constants";
+import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE } from "./constants";
 
 import * as THREE from 'three';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
@@ -31,7 +31,7 @@ class VideoIndexGenerator {
         // what are the input dimensions?
 
         let ret: number[][] = [...Array(HEIGHT)].map(_ => []);
-        console.log(ret)
+        // console.log(ret)
         for (let [a, b] of input) {
             // because this isn't row, column but x,y in the input
             ret[b].push(a);
@@ -55,7 +55,7 @@ class VideoIndexGenerator {
             frames.push(ndarray);
         };
         
-        frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
+        // frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
         return frames;
     }
 
@@ -164,11 +164,11 @@ class VideoIndexGenerator {
 
     loadVideoFromStr(str: string) {
         let frames = this.readBitmapVideoState(str);
-        frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
+        // frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
         let boolFrames = this.takeFlipSequenceDifference(frames);
-        console.log(boolFrames.filter(x => x.filter(y => y.some(a => !a)).length != 0));
+        // console.log(boolFrames.filter(x => x.filter(y => y.some(a => !a)).length != 0));
         let sequence = boolFrames.map(frame => this.generateFlipsFromBitmap(frame));
-        console.log(sequence)
+        // console.log(sequence)
         rowOfDiscs.resetAnimation(this.generateUniformFlipFunctionForSequence(sequence));
     }
 
@@ -217,3 +217,4 @@ console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]]))
 // new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 // new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
 // new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE_STRING_10FPS_32x24.replace(/\'/g,''));
+new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE.replace(/\'/g,''));

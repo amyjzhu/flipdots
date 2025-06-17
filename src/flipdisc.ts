@@ -56,7 +56,9 @@ export class RowOfDiscs {
         this.initScene();
         this.makeRowOfDiscs(WIDTH, HEIGHT);
 
-        this.addAudio();
+        if (SOUND_ENABLED) {
+            this.addPerformantAudio();
+        }
 
 
         let basic: number[][] = [...Array(HEIGHT)].map(_ => [...Array(WIDTH)].map((_, i) => i));
@@ -335,12 +337,16 @@ varying vec3 vColor;
         backingPiece.position.set(-this.RADX - backingBorder / 2, -this.RADY - backingBorder / 2, offsetZ)
     }
 
-    addAudio() {
+    addPerformantAudio() {
         let offsetX = WIDTH * this.SPACING / 2;
-        let offsetY = HEIGHT * this.SPACING / 2
-        for (let j = 0; j < HEIGHT; j++) {
+        let offsetY = HEIGHT * this.SPACING / 2;
+        let numXSpeakers = Math.floor(WIDTH * this.SPACING / 20);
+        let numYSpeakers = Math.floor(HEIGHT * this.SPACING / 20);
+        // console.log(numXSpeakers)
+
+        for (let j = 0; j < numXSpeakers; j++) {
             // let row = [];
-            for (let i = 0; i < WIDTH; i++) {
+            for (let i = 0; i < numYSpeakers; i++) {
                 // create the PositionalAudio object (passing in the listener)
                 let audio = new THREE.Object3D();
                 audio.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0)
@@ -427,6 +433,19 @@ varying vec3 vColor;
     animate = () => {
         // let t = this.clock.getDelta();
 
+        if (SOUND_ENABLED) {
+            // console.log(this.idxToUpdate.reduce((a,b) => a + b.length,0))
+            // console.log(this.audios.length)
+            for (let i = 0; i < this.audios.length && i < this.idxToUpdate.reduce((a,b) => a + b.length, 0); i++) {
+                // todo: at some point, figure out which audio is closest
+                let audio = this.audios[i];
+                (audio.children[0] as THREE.PositionalAudio).stop();
+                let randDelay = (Math.random() / 100);
+                (audio.children[0] as THREE.PositionalAudio).play(randDelay);
+            }
+        }
+
+
         for (let row = 0; row < HEIGHT; row++) {
             // console.log(this.idxToUpdate)
             // console.log(row)
@@ -440,13 +459,6 @@ varying vec3 vColor;
                     // this.dummy.rotation.y += this.rotationRate;
                     this.dummy.matrix.multiply(rotation)
                     // this.dummy.updateMatrix();
-
-                    if (SOUND_ENABLED) {
-                        let audio = this.audios[row * WIDTH + idx];
-                        (audio.children[0] as THREE.PositionalAudio).stop();
-                        let randDelay = (Math.random() / 100);
-                        (audio.children[0] as THREE.PositionalAudio).play(randDelay);
-                    }
 
                     this.instanced!.setMatrixAt(row * WIDTH + idx, this.dummy.matrix);
                     this.instanced!.instanceMatrix.needsUpdate = true;
