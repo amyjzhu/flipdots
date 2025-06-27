@@ -1,10 +1,10 @@
 import { RowOfDiscs } from "./flipdisc";
-import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE } from "./constants";
+import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM } from "./constants";
 
 import * as THREE from 'three';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
 
-let rowOfDiscs = new RowOfDiscs();
+let rowOfDiscs = new RowOfDiscs(WIDTH, HEIGHT);
 
 type RGB = [number, number, number];
 
@@ -162,6 +162,36 @@ class VideoIndexGenerator {
         };
     }
 
+    // TODO: not sure how to propagate this down... 
+    generateKeyPressSequence(inputFrames: number[][][]): (i: number) => number[][] {
+        let currentIdx = 0;
+        let usableFrames: number[][][] = [];
+
+        let body = document.getElementById("app");
+        body!.addEventListener("keydown", e => {
+            console.log(e)
+            if (e.key == " ") {
+                usableFrames[0] = inputFrames[currentIdx];
+                currentIdx++;
+                updated["k"] = true;
+                console.log("making updated")
+            }
+        })
+
+        let updated = {"k": false};
+        
+
+        return (seq: number) => {
+            if (updated["k"]) {
+                console.log("huh")
+                updated["k"] = false;
+                return usableFrames[0];
+            } else {
+                return [...Array(HEIGHT)].map(_ => []);
+            }
+        };
+    }
+
     loadVideoFromStr(str: string) {
         let frames = this.readBitmapVideoState(str);
         // frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
@@ -205,7 +235,14 @@ class VideoIndexGenerator {
 
         let sequence = this.takeFlipSequenceDifference(nextFlips).map(frame => this.generateFlipsFromBitmap(frame));
         console.log(sequence)
-        rowOfDiscs.resetAnimation(this.generateUndulatingFlipFunctionForSequence(sequence));
+        if (CONTROL_ANIM) {
+            rowOfDiscs.resetAnimation(this.generateKeyPressSequence(sequence));
+        }
+        else if (REVERSE_ANIM) {
+            rowOfDiscs.resetAnimation(this.generateUndulatingFlipFunctionForSequence(sequence));
+        } else {
+            rowOfDiscs.resetAnimation(this.generateUniformFlipFunctionForSequence(sequence));
+        }
         
     }
 
@@ -216,5 +253,8 @@ class VideoIndexGenerator {
 console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
 // new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 // new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
+
 // new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE_STRING_10FPS_32x24.replace(/\'/g,''));
-new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE.replace(/\'/g,''));
+// new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE.replace(/\'/g,''));
+
+new VideoIndexGenerator().loadImages(ALL_ANIMATIONS);
