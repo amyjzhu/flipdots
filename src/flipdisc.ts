@@ -21,6 +21,8 @@ export class RowOfDiscs {
     RADY = 3;
     rowsOfDiscs: THREE.Mesh[][] = []
 
+    discStates: boolean[][] = []
+
     frame1Flips: number[][];
     frame2Flips: number[][];
     frame3Flips: number[][];
@@ -332,6 +334,7 @@ varying vec3 vColor;
 
         // this.idxToUpdate = this.rowsOfDiscs.map(row => []);
         this.idxToUpdate = [...Array(this.height)].map(_ => []);
+        this.discStates = [...Array(this.height)].map(_ => [...Array(this.width)].map(_ => false));
         console.log(this.idxToUpdate)
 
         let offsetZ = -5;
@@ -490,7 +493,9 @@ varying vec3 vColor;
                     this.instanced!.getMatrixAt(row * this.width + idx, this.dummy.matrix);
                     // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
-                    let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0, 1, 0), this.rotationRate)
+                    let rot = (!this.discStates[row][idx] ? -1 : 1) * this.rotationRate 
+                    
+                    let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2)/2, Math.sqrt(2)/2, 0), rot)
                     // console.log(t)
                     // this.dummy.rotation.y += this.rotationRate;
                     this.dummy.matrix.multiply(rotation)
@@ -535,6 +540,8 @@ varying vec3 vColor;
             this.animationFrameCounter = 0;
             // setNextToUpdate(flipCycles);
             this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
+            // for each...
+            this.idxToUpdate.forEach((row, idx) => row.forEach(i => this.discStates[idx][i] = !this.discStates[idx][i]))
             this.flipCycles += 1;
 
         } else {
