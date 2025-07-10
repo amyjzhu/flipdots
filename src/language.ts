@@ -84,8 +84,8 @@ class FlipDotTransition implements TransitionSystem {
 
     moveTo(at: FlipDotState, desiredState: FlipDotState): FlipDotState[] {
         // but if I'm already there, then I think it should be empty
-        console.log(at);
-        console.log(desiredState);
+        // console.log(at);
+        // console.log(desiredState);
         if (at.eq(desiredState)) {
             return [];
         }
@@ -259,6 +259,7 @@ class FlipDotHardware implements Hardware {
         this.pixels.forEach((v,i) => this.channelsToValues.set(i,0))
     }
 
+
     draw(idx: number, desiredState: FlipDotState): void {
         // need to use the transition to do this?
         let seq = this.pixelTransitions[idx].moveTo(this.pixels[idx], desiredState);
@@ -358,104 +359,325 @@ interface Timing {
 
 interface AnimationStrategy {
     numFrames: number;
+    hardware: Hardware;
 
-    generateFrames(size: number, startAt:[number, number], endAt: [number, number], hardware: Hardware): number[][];
+    generateFrames(obj: Target, startAt:[number, number], endAt: [number, number]): Colour[][][];
+    
+    convertColourToUpdateIdx(frames: Colour[][][]): number[][];
 }
 
 class UniformInterpolateStrategy implements AnimationStrategy {
     numFrames: number;
+    hardware: Hardware;
 
-    constructor(numFrames: number) {
+    constructor(numFrames: number, hardware: Hardware) {
         this.numFrames = numFrames;
+        this.hardware = hardware;
     }
 
-    generateFrames(size: number, startAt:[number, number], endAt: [number, number], hardware: Hardware): number[][] {
+    
+    // potentially genericize... 
+    convertColourToUpdateIdx(frames: boolean[][][]): number[][] {
+        let updatedFrames: number[][] = [];
+        for (let frame of frames) {
+            let newFrame: number[] = frame.map((r,i) => r.reduce((acc: number[], curr: boolean, idx: number) => {
+                    if (curr) { 
+                        acc.push(i * this.hardware.dimensions[1] + idx)
+                    } 
+                    return acc;
+                }, [] as number[])).reduce((o, n) => o.concat(n), []);
+            updatedFrames.push(newFrame);
+        }
+
+        return updatedFrames;
+    }
+
+    generateFrames(obj: Target, startAt:[number, number], endAt: [number, number]): boolean[][][] {
         let xInc = (endAt[0] - startAt[0]) / this.numFrames;
         let yInc = (endAt[1] - startAt[1]) / this.numFrames;
     
-        let frames: number[][] = [];
+        let frames: boolean[][][] = [];
         for (let i = 0; i < this.numFrames; i++) {
             // drawFrame(rectSize, [, ], hardware);
-            let updateFrames: number[] = [];
         
-            for (let x = startAt[0] + xInc * i; x < (startAt[0] + xInc * i)+size; x++) {
-                for (let y = startAt[1] + yInc * i; y < (startAt[1] + yInc * i)+size; y++) {
-                    if (x < hardware.dimensions[1] && y < hardware.dimensions[0]) {
-                        // console.log(y * hardware.dimensions[1] + x)
-                        // console.log(x,y)
-                        // hardware.draw(y * hardware.dimensions[1] + x, FlipDotState.coloured())
-                        updateFrames.push(Math.round(y) * hardware.dimensions[1] + Math.round(x));
-                    }
-                }
-            }
+            let x = Math.round(startAt[0] + xInc * i); 
+            let y = Math.round(startAt[1]+yInc * i);
+    
+            let frame = obj.draw([x,y]);
             
-            frames.push(updateFrames);
-        
+            
+            frames.push(frame);
         }
         return frames;
     }
 }
 
-class AccelerateInterpolationStrategy {
+class AccelerateInterpolationStrategy implements AnimationStrategy {
     numFrames: number;
+    hardware: Hardware;
     accelerationRate = 1.3
 
-    constructor(numFrames: number) {
+    constructor(numFrames: number, hardware: Hardware) {
         this.numFrames = numFrames;
+        this.hardware = hardware;
+    }
+    
+    // potentially genericize... 
+    convertColourToUpdateIdx(frames: boolean[][][]): number[][] {
+        let updatedFrames: number[][] = [];
+        for (let frame of frames) {
+            let newFrame: number[] = frame.map((r,i) => r.reduce((acc: number[], curr: boolean, idx: number) => {
+                    if (curr) { 
+                        acc.push(i * this.hardware.dimensions[1] + idx)
+                    } 
+                    return acc;
+                }, [] as number[])).reduce((o, n) => o.concat(n), []);
+            updatedFrames.push(newFrame);
+        }
+
+        return updatedFrames;
     }
 
-    generateFrames(size: number, startAt:[number, number], endAt: [number, number], hardware: Hardware): number[][] {
+    generateFrames(obj: Target, startAt:[number, number], endAt: [number, number]): boolean[][][] {
         let xIncs = [...new Array(this.numFrames)].map((_, i) => Math.round((endAt[0] - startAt[0]) * Math.pow(i / (this.numFrames - 1),this.accelerationRate)));
         let yIncs = [...new Array(this.numFrames)].map((_, i) => Math.round((endAt[1] - startAt[1]) * Math.pow(i / (this.numFrames - 1),this.accelerationRate)));
     
         console.log(xIncs)
         console.log(yIncs)
-        let frames: number[][] = [];
+        let frames: boolean[][][] = [];
         for (let i = 0; i < this.numFrames; i++) {
             // drawFrame(rectSize, [, ], hardware);
-            let updateFrames: number[] = [];
         
-            for (let x = startAt[0] + xIncs[i]; x < (startAt[0] + xIncs[i])+size; x++) {
-                for (let y = startAt[1] + yIncs[i]; y < (startAt[1] + yIncs[i])+size; y++) {
-                    if (x < hardware.dimensions[1] && y < hardware.dimensions[0]) {
-                        // console.log(y * hardware.dimensions[1] + x)
-                        console.log(x,y)
-                        // hardware.draw(y * hardware.dimensions[1] + x, FlipDotState.coloured())
-                        updateFrames.push(y * hardware.dimensions[1] + x);
-                    } else {
-                        console.log("too big", x, y)
-                        console.log(hardware.dimensions)
-                    }
-                }
-            }
+    
+            let frame = obj.draw([startAt[0] + xIncs[i], startAt[1]+yIncs[i]]);
             
-            frames.push(updateFrames);
+            // filter the positions 
+            
         
+            frames.push(frame);
         }
         return frames;
     }
 }
 
     
+interface Target {
+    size: number[];
+    canvasSize: [number, number];
+
+    draw(startAt: [number, number]): boolean[][];
+}
+
+class Rect implements Target {
+    size: number[];
+    canvasSize: [number, number];
+
+
+    constructor(size: number, canvasSize: [number, number]) {
+        this.size = [size];
+        this.canvasSize = canvasSize;
+    }
+
+    draw(startAt: [number, number]): boolean[][] {
+        let frame: boolean[][] = [...Array(this.canvasSize[0])].map(_ => [...Array(this.canvasSize[1])].map(_ => false));
+        console.log(startAt)
+        console.log(this.size)
+        
+        for (let y = startAt[1]; y < startAt[1]+this.size[0]; y++) {
+            for (let x = startAt[0]; x < startAt[0]+this.size[0]; x++) {
+                    if (x < this.canvasSize[1] && y < this.canvasSize[0]) {
+                        frame[y][x] = true;
+                }
+            }
+            
+        }
+
+        console.log(frame)
+        return frame;
+    }
+}
+
+class Background implements Target {
+    size: number[];
+    canvasSize: [number, number];
+    otherObjects: boolean[][][]
+
+    constructor(canvasSize:[number, number], otherObjects: boolean[][][]) {
+        this.size = canvasSize;
+        this.canvasSize = canvasSize;
+        this.otherObjects = otherObjects;
+    }
+
+    drawBackground(otherObjects: boolean[][][]): boolean[][] {
+        this.otherObjects = otherObjects;
+        return this.draw([0,0]);
+    }
+
+    draw(startAt: [number, number]): boolean[][] {
+        // startAt is irrelevant
+        // just go through all of them and find the ones that are negative everywhere 
+        // let's flatten the arrays first
+        
+        let allBackground = [...Array(this.canvasSize[0])].map(_ => [...Array(this.canvasSize[1])].map(_ => true));
+        let length = this.canvasSize[0] * this.canvasSize[1];
+        if (this.otherObjects.length == 0) {
+            return allBackground;
+        }
+        
+        for (let e = 0; e < length; e++) {
+            let y = Math.floor(e / this.canvasSize[1]);
+            let x = e % this.canvasSize[1];
+
+            let unoccupied = true;
+            for (let o of this.otherObjects) {
+               if (o[y][x]) {
+                    unoccupied = false;
+               }
+            }
+            allBackground[y][x] = unoccupied;
+        }
+
+        console.log(allBackground)
+        return allBackground;
+    }
+
+    // frames of all the other objects.
+    // object, frame, row, col
+    compose(otherObjects: boolean[][][][], self: boolean[][][]): boolean[][][] {
+        if (otherObjects.length == 0 || otherObjects.every(o => o.length == 0)) {
+            return self;
+        }
+
+        let newFrames = [];
+        
+        for (let f = 0; f < self.length; f++) {
+            let newFrame = self[f].map(e => e);
+            for (let e = 0; e < length; e++) {
+                let y = Math.floor(e / this.canvasSize[1]);
+                let x = e % this.canvasSize[1];
+
+                for (let o of otherObjects[f]) {
+                   if (o[y][x]) {
+                        newFrame[y][x] = true;
+                        break;
+                   }
+                }
+                
+            }
+            console.log(self[f])
+            console.log(newFrame)
+            newFrames.push(newFrame);
+        }
+
+        return self;
+    }
+
+}
+
+
+// style could be genericized?
+interface Style<T> {
+    // targets may have styles
+    // styles impact how they are drawn!
+    // but a style might impact more than just the target area...
+    // what if multiple conflicting styles are applied to different targets?
+    // there might be some kind of global coordination in play 
+    apply(basic: T[][][]): T[][][];
+}
+
+
+class Flutter implements Style<boolean> {
+    flutterPeriod: number = 1;
+    animCycle: number = 0;
+
+    constructor(flutterPeriod: number) {
+        this.flutterPeriod = flutterPeriod;
+    }
+
+    apply(inFrames: boolean[][][]): boolean[][][] {
+        // within the space, we should alternate from frame-to-frame
+        // but also, don't we need to account for where this was previously...?
+        let editedFrames = [];
+        let animCycle = 0;
+        for (let frame of inFrames) {
+            let edited = frame.map(r => r.map(s => s));
+            for (let y = 0; y < frame.length; y++) {
+                let row = frame[y];
+                for (let x = 0; x < row.length; x++) {
+                    if (row[x] && ((x % 2 == y % 2 && animCycle % 2 == 0) || (x % 2 != y % 2 && animCycle % 2 != 0))) { // depends on period 
+                        edited[y][x] = true;
+                    } else if (row[x] && ((x % 2 == y % 2 && animCycle % 2 != 0) || (x % 2 != y % 2 && animCycle % 2 == 0))) {
+                        edited[y][x] = false;
+                    }
+                }
+            }
+            animCycle += 1;
+            editedFrames.push(edited);
+            console.log(edited)
+        }
+        return editedFrames 
+    }
+}
+
+
+
+
+
+
 
 
 /////////////////////////////////////////
 /// now I want to make like, a rectangle language...
 // and I want to apply different effects when moving.
 
-function moveRectangle(rectSize: number, startAt:[number, number], endAt: [number, number], hardware: Hardware) {
+// function moveRectangle(rectSize: number, startAt:[number, number], endAt: [number, number], hardware: Hardware) {
+//     // how to interpolate?
+//     // choose different starting points
+//     let numFrames = 3;
+
+//     // let frames = new UniformInterpolateStrategy(numFrames).generateFrames(rectSize, startAt, endAt, hardware);
+//     let frames = new AccelerateInterpolationStrategy(numFrames).generateFrames(rectSize, startAt, endAt, hardware);
+
+//     let drawFrame = (frame: number[]) => {
+//         frame.forEach(pix => {
+//             hardware.draw(pix, FlipDotState.coloured()); 
+//         });
+//         hardware.refresh(); 
+
+//     }
+
+//     frames.forEach(frame => drawFrame(frame));
+
+//     // somehow this just works, I think it's because there have been no updates since last call 
+//     hardware.refresh()
+// }
+
+
+function move(obj: Target, startAt:[number, number], endAt: [number, number], hardware: Hardware) {
     // how to interpolate?
     // choose different starting points
     let numFrames = 3;
 
-    let frames = new AccelerateInterpolationStrategy(numFrames).generateFrames(rectSize, startAt, endAt, hardware);
+    let interp = new AccelerateInterpolationStrategy(numFrames, hardware);
+    let framesColour = interp.generateFrames(obj, startAt, endAt);
+    let bg = new Background(hardware.dimensions, framesColour);
+    // wait, how do these things get combined...?
+    let flutter = new Flutter(2);
+    let withEffect = flutter.apply(framesColour.map(f => bg.drawBackground([f])));
+    console.log(withEffect)
+    let composed = bg.compose([framesColour], withEffect);
+    // console.log(withEffect)
+    console.log(composed)
+
+    let frames = interp.convertColourToUpdateIdx(composed);
+
+    // let frames = new AccelerateInterpolationStrategy(numFrames).generateFrames(obj, startAt, endAt, hardware);
 
     let drawFrame = (frame: number[]) => {
         frame.forEach(pix => {
             hardware.draw(pix, FlipDotState.coloured()); 
         });
         hardware.refresh(); 
-
     }
 
     frames.forEach(frame => drawFrame(frame));
@@ -465,8 +687,13 @@ function moveRectangle(rectSize: number, startAt:[number, number], endAt: [numbe
 }
 
 
+
+let sim = new SimulationHardware(5,7);
+let real = new FlipDotHardware(5,7);
 // moveRectangle(2, [0,0],[5,5], new SimulationHardware(5,7));
-moveRectangle(2, [0,0],[4,4], new SimulationHardware(5,7));
+// moveRectangle(2, [0,0],[4,4], new SimulationHardware(5,7));
+move(new Rect(2, sim.dimensions), [2,0],[2,5], sim);
+// moveRectangle(2, [2,0],[2,5], new FlipDotHardware(5,7));
 // moveRectangle(2, [0,0],[5,5], new FlipDotHardware(5,7));
 
 // npx vite-node language.ts

@@ -467,7 +467,13 @@ varying vec3 vColor;
     rotationRate = Math.PI / NUM_FRAMES_ROTATING;
     flipCycles = 0;
     animate = () => {
-        // let t = this.clock.getDelta();
+        // okay, so if it's like, 15 flips per second...
+        let t = this.clock.getElapsedTime();
+        // let fullFlip = Math.PI;
+        // // how much should I flip? If the requisite time has elapsed, I flip the whole amount. 
+        // let ratio = t * fullFlip / (30 / NUM_FRAMES_ROTATING);
+        // console.log(t)
+        // console.log(ratio)
 
         // this could work... but I think it's like, 
         // if (SOUND_ENABLED) {
@@ -483,6 +489,8 @@ varying vec3 vColor;
         //     }
         // }
 
+        
+
 
         for (let row = 0; row < this.height; row++) {
             // console.log(this.idxToUpdate)
@@ -493,6 +501,7 @@ varying vec3 vColor;
                     this.instanced!.getMatrixAt(row * this.width + idx, this.dummy.matrix);
                     // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
+                    // let rot = (!this.discStates[row][idx] ? -1 : 1) * ratio
                     let rot = (!this.discStates[row][idx] ? -1 : 1) * this.rotationRate 
                     
                     let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2)/2, Math.sqrt(2)/2, 0), rot)
@@ -537,13 +546,15 @@ varying vec3 vColor;
 
         // how many frames for a full cycle?
         if (this.animationFrameCounter >= FULL_CYCLE_LENGTH) {
+            this.clock.stop()
             this.animationFrameCounter = 0;
             // setNextToUpdate(flipCycles);
+            
             this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
             // for each...
             this.idxToUpdate.forEach((row, idx) => row.forEach(i => this.discStates[idx][i] = !this.discStates[idx][i]))
             this.flipCycles += 1;
-
+            this.clock.start()
         } else {
             this.animationFrameCounter += 1;
         }

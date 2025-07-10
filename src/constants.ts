@@ -53,8 +53,8 @@ export let CONTROL_ANIM = false;
 let slowishFrames = [12, 24];
 let fastFrames = [4,12]; // fast frames is the best default for now imo
 let fastestFrames = [2, 12];
-export let NUM_FRAMES_ROTATING = slowishFrames[0];
-export let FULL_CYCLE_LENGTH = slowishFrames[1];
+export let NUM_FRAMES_ROTATING = fastFrames[0];
+export let FULL_CYCLE_LENGTH = fastFrames[1];
 
 // originally 60 
 export let CAMERA_DISTANCE = 400;
