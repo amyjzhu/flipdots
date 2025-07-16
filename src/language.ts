@@ -392,7 +392,7 @@ class UniformInterpolateStrategy implements AnimationStrategy {
         return updatedFrames;
     }
 
-    generateFrames(obj: Target, startAt:[number, number], endAt: [number, number]): boolean[][][] {
+    generateFrames(obj: DrawableTarget, startAt:[number, number], endAt: [number, number]): boolean[][][] {
         let xInc = (endAt[0] - startAt[0]) / this.numFrames;
         let yInc = (endAt[1] - startAt[1]) / this.numFrames;
     
@@ -403,7 +403,8 @@ class UniformInterpolateStrategy implements AnimationStrategy {
             let x = Math.round(startAt[0] + xInc * i); 
             let y = Math.round(startAt[1]+yInc * i);
     
-            let frame = obj.draw([x,y]);
+            obj.setStartAt([x,y])
+            let frame = obj.draw();
             
             
             frames.push(frame);
@@ -438,7 +439,7 @@ class AccelerateInterpolationStrategy implements AnimationStrategy {
         return updatedFrames;
     }
 
-    generateFrames(obj: Target, startAt:[number, number], endAt: [number, number]): boolean[][][] {
+    generateFrames(obj: DrawableTarget, startAt:[number, number], endAt: [number, number]): boolean[][][] {
         let xIncs = [...new Array(this.numFrames)].map((_, i) => Math.round((endAt[0] - startAt[0]) * Math.pow(i / (this.numFrames - 1),this.accelerationRate)));
         let yIncs = [...new Array(this.numFrames)].map((_, i) => Math.round((endAt[1] - startAt[1]) * Math.pow(i / (this.numFrames - 1),this.accelerationRate)));
     
@@ -448,8 +449,8 @@ class AccelerateInterpolationStrategy implements AnimationStrategy {
         for (let i = 0; i < this.numFrames; i++) {
             // drawFrame(rectSize, [, ], hardware);
         
-    
-            let frame = obj.draw([startAt[0] + xIncs[i], startAt[1]+yIncs[i]]);
+            obj.setStartAt([startAt[0] + xIncs[i], startAt[1]+yIncs[i]])
+            let frame = obj.draw();
             
             // filter the positions 
             
@@ -465,12 +466,18 @@ interface Target {
     size: number[];
     canvasSize: [number, number];
 
-    draw(startAt: [number, number]): boolean[][];
+    draw(): boolean[][];
 }
 
-class Rect implements Target {
+interface DrawableTarget extends Target {
+    startAt: undefined | [number, number];
+    setStartAt(startAt: [number, number]): void;
+}
+
+class Rect implements DrawableTarget {
     size: number[];
     canvasSize: [number, number];
+    startAt: [number, number] | undefined;
 
 
     constructor(size: number, canvasSize: [number, number]) {
@@ -478,13 +485,20 @@ class Rect implements Target {
         this.canvasSize = canvasSize;
     }
 
-    draw(startAt: [number, number]): boolean[][] {
+    setStartAt(startAt: [number, number]): void {
+        this.startAt = startAt;
+    }
+
+    draw(): boolean[][] {
+        if (this.startAt == undefined) {
+            throw new Error("Start at has not been defined")
+        }
         let frame: boolean[][] = [...Array(this.canvasSize[0])].map(_ => [...Array(this.canvasSize[1])].map(_ => false));
-        console.log(startAt)
+        console.log(this.startAt)
         console.log(this.size)
         
-        for (let y = startAt[1]; y < startAt[1]+this.size[0]; y++) {
-            for (let x = startAt[0]; x < startAt[0]+this.size[0]; x++) {
+        for (let y = this.startAt[1]; y < this.startAt[1]+this.size[0]; y++) {
+            for (let x = this.startAt[0]; x < this.startAt[0]+this.size[0]; x++) {
                     if (x < this.canvasSize[1] && y < this.canvasSize[0]) {
                         frame[y][x] = true;
                 }
@@ -495,6 +509,145 @@ class Rect implements Target {
         console.log(frame)
         return frame;
     }
+}
+
+class Path implements Target {
+    size: number[];
+    canvasSize: [number, number];
+    targetFrames: boolean[][][]
+
+    constructor(size: number[], canvasSize: [number, number], targetFrames: boolean[][][]) {
+        this.size = size;
+        this.canvasSize = canvasSize;
+        this.targetFrames = targetFrames;
+    }
+
+    
+    
+    draw(): boolean[][] {
+        let updatedFrame = [...Array(this.canvasSize[0])].map(_ => [...Array(this.canvasSize[1])].map(_ => false));
+        let newFrame = this.targetFrames.reduce((acc, f) => {
+            f.forEach((r, ri) => r.forEach((c, ci) => {
+                if (c) {
+                    acc[ri][ci] = true
+                }
+            }));
+            return acc
+        }, updatedFrame);
+
+        return newFrame;
+    }
+
+    /// hmm... this doesn't work because there's no interpolation, annoyingly 
+    //
+    drawSequence(): boolean[][][] {
+        let updatedFrames = this.targetFrames.map(f => f.map(r => r.map(c => c)));
+        // for each frame, I need to put on the previous frame's path 
+
+        for (let fIdx = 0; fIdx < this.targetFrames.length; fIdx++) {
+            let prevFrame = fIdx - 1;
+            if (prevFrame == -1) {
+                continue;
+            }
+
+            for (let r = 0; r < this.targetFrames[fIdx].length; r++) {
+                for (let c = 0; c < this.targetFrames[fIdx][0].length; c++) {
+                    // just take the previous frame and copy it
+                    if (updatedFrames[prevFrame][r][c]) {
+                        updatedFrames[fIdx][r][c] = true;
+                    }
+                }
+            }
+        }
+        
+
+        return updatedFrames;
+    }
+
+}
+
+class AreaEffect implements Target {
+    size: number[];
+    canvasSize: [number, number];
+    target: boolean[][] | undefined;
+
+    constructor(size: number[], canvasSize: [number, number]) {
+        this.size = size;
+        this.canvasSize = canvasSize;
+    }
+
+    setDrawableTarget(target: boolean[][]) {
+        this.target = target;
+    }
+
+    draw(): boolean[][] {
+        // I basically have to affect radius distance around the target, if it's posisble.
+        if (this.target == undefined) {
+            return [...Array(this.canvasSize[0]).map(_ => [...Array(this.canvasSize[1])].map(_ => false))]
+        };
+
+        let affectedCells = this.target.map(x => x.map(c => c))
+        for (let row = 0; row < this.target.length; row++) {
+            for (let col = 0; col < this.target[0].length; col++) {
+                if (this.target[row][col]) {
+                    console.log("!")
+                    for (let extV = 1; extV <= this.size[0]; extV++) {
+                        console.log("extv is "), extV;
+                        if (row - extV >= 0) {
+                            console.log("a")
+                            affectedCells[row - extV][col] = true;
+                        }
+                        if (row + extV < this.target.length) {
+                            console.log("b")
+                            affectedCells[row + extV][col] = true;
+                        }
+                        for (let extH = 1; extH <= this.size[0]; extH++) {
+                            console.log("extH is ", extH)
+                            console.log("c")
+                            if (col - extV >= 0) {
+                                    console.log("d")
+                                affectedCells[row][col - extH] = true;
+                                if (row - extV >= 0) {
+                                    console.log("e")
+                                    affectedCells[row - extV][col - extH] = true;
+                                }   
+                                if (row + extV < this.target.length) {
+                                    console.log("f")
+                                   affectedCells[row + extV][col - extH] = true;
+                                }
+                            }
+                            if (col + extV < this.target[0].length) {
+                                console.log("g")
+                                affectedCells[row][col + extH] = true;      
+                                if (row - extV >= 0) {
+                                    console.log("h")
+                                    affectedCells[row - extV][col + extH] = true;
+                                }   
+                                if (row + extV < this.target.length) {
+                                    console.log("i")
+                                   affectedCells[row + extV][col + extH] = true;
+                                } 
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (let row = 0; row < this.target.length; row++) {
+            for (let col = 0; col < this.target[0].length; col++) {
+                if (this.target[row][col]) {
+                    affectedCells[row][col] = false;
+                }
+            }
+        }
+        // need to negate the actual shape 
+
+        return affectedCells;
+
+    }
+
+    
 }
 
 class Background implements Target {
@@ -510,10 +663,10 @@ class Background implements Target {
 
     drawBackground(otherObjects: boolean[][][]): boolean[][] {
         this.otherObjects = otherObjects;
-        return this.draw([0,0]);
+        return this.draw();
     }
 
-    draw(startAt: [number, number]): boolean[][] {
+    draw(): boolean[][] {
         // startAt is irrelevant
         // just go through all of them and find the ones that are negative everywhere 
         // let's flatten the arrays first
@@ -564,12 +717,11 @@ class Background implements Target {
                 }
                 
             }
-            console.log(self[f])
-            console.log(newFrame)
+            
             newFrames.push(newFrame);
         }
 
-        return self;
+        return newFrames;
     }
 
 }
@@ -586,7 +738,7 @@ interface Style<T> {
 }
 
 
-class Flutter implements Style<boolean> {
+class Static implements Style<boolean> {
     flutterPeriod: number = 1;
     animCycle: number = 0;
 
@@ -653,7 +805,7 @@ class Flutter implements Style<boolean> {
 // }
 
 
-function move(obj: Target, startAt:[number, number], endAt: [number, number], hardware: Hardware) {
+function move(obj: DrawableTarget, startAt:[number, number], endAt: [number, number], hardware: Hardware) {
     // how to interpolate?
     // choose different starting points
     let numFrames = 3;
@@ -661,15 +813,37 @@ function move(obj: Target, startAt:[number, number], endAt: [number, number], ha
     let interp = new AccelerateInterpolationStrategy(numFrames, hardware);
     let framesColour = interp.generateFrames(obj, startAt, endAt);
     let bg = new Background(hardware.dimensions, framesColour);
+    let bgFrames = framesColour.map(f => bg.drawBackground([f]));
     // wait, how do these things get combined...?
-    let flutter = new Flutter(2);
-    let withEffect = flutter.apply(framesColour.map(f => bg.drawBackground([f])));
-    console.log(withEffect)
-    let composed = bg.compose([framesColour], withEffect);
-    // console.log(withEffect)
-    console.log(composed)
+    let flutter = new Static(2);
 
+    let effect = "area-flutter";
+    let composed;
+    let withEffect
+    switch (effect) {
+        case "obj-flutter":
+            composed = flutter.apply(framesColour);
+            break;
+        case "bg-flutter":
+            withEffect = flutter.apply(bgFrames);
+            composed = bg.compose([framesColour], withEffect);
+            break;
+        case "area-flutter":
+            let area = new AreaEffect([1,1], hardware.dimensions);
+            let areaFrame = framesColour.map(f => { area.setDrawableTarget(f); return area.draw() });
+            console.log(areaFrame)
+            withEffect = flutter.apply(areaFrame);
+
+            composed = bg.compose([framesColour], withEffect);
+            console.log(composed)
+            break;
+        default:
+            composed = framesColour;
+    }
+    
+    // let frames = interp.convertColourToUpdateIdx(framesColour);
     let frames = interp.convertColourToUpdateIdx(composed);
+
 
     // let frames = new AccelerateInterpolationStrategy(numFrames).generateFrames(obj, startAt, endAt, hardware);
 
@@ -688,11 +862,33 @@ function move(obj: Target, startAt:[number, number], endAt: [number, number], ha
 
 
 
-let sim = new SimulationHardware(5,7);
+// let sim = new SimulationHardware(5,7);
 let real = new FlipDotHardware(5,7);
+
+
+
+// let rect = new Rect(2, real.dimensions);
+// rect.setStartAt([2,0])
+// let area = new AreaEffect([1,1], real.dimensions);
+// area.setDrawableTarget(rect.draw());
+// console.log(area.draw())
+
+let rect = new Rect(2, real.dimensions);
+rect.setStartAt([2,0]);
+let interp = new AccelerateInterpolationStrategy(3, real);
+let framesColour = interp.generateFrames(rect, [2,0], [2,5]);
+
+let area = new Path([1,1], real.dimensions, framesColour);
+let seq = area.drawSequence();
+console.log(seq)
+
+
+// move(new Rect(2, sim.dimensions), [2,0],[2,5], sim);
+
+
 // moveRectangle(2, [0,0],[5,5], new SimulationHardware(5,7));
 // moveRectangle(2, [0,0],[4,4], new SimulationHardware(5,7));
-move(new Rect(2, sim.dimensions), [2,0],[2,5], sim);
+
 // moveRectangle(2, [2,0],[2,5], new FlipDotHardware(5,7));
 // moveRectangle(2, [0,0],[5,5], new FlipDotHardware(5,7));
 
