@@ -5,7 +5,7 @@ import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js
 import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
 
 
-import { FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED, USE_X_DISC, DISC_SIDE_COLOUR, DISC_FRONT_COLOUR, DISC_BACK_COLOUR, PERFORMANT_SOUND_ENABLED, PERFORMANT_NUM_X_SPEAKERS, PERFORMANT_NUM_Y_SPEAKERS } from './constants';
+import { FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED, USE_X_DISC, DISC_SIDE_COLOUR, DISC_FRONT_COLOUR, DISC_BACK_COLOUR, PERFORMANT_SOUND_ENABLED, PERFORMANT_NUM_X_SPEAKERS, PERFORMANT_NUM_Y_SPEAKERS, RENDERER_SIZE_SCALEDOWN } from './constants';
 
 export class RowOfDiscs {
     width: number;
@@ -54,9 +54,9 @@ export class RowOfDiscs {
         // not really sure how to automatically calculate z...
         this.camera.position.z = CAMERA_DISTANCE;
         this.renderer = new THREE.WebGLRenderer();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setSize(window.innerWidth / RENDERER_SIZE_SCALEDOWN, window.innerHeight /RENDERER_SIZE_SCALEDOWN);
         this.renderer.setAnimationLoop(this.animate);
-        document.body.appendChild(this.renderer.domElement);
+        document.getElementById("render")!.appendChild(this.renderer.domElement);
         const controls = new OrbitControls(this.camera, this.renderer.domElement);
 
         this.initScene();
@@ -447,6 +447,16 @@ varying vec3 vColor;
                 disc.rotation.y = 0;
             }
         }
+
+        this.flipCycles = 0;
+        // console.log(this.flipCycles)
+        // console.log(this.idxToUpdate)
+        this.animationFrameCounter = 0;
+        this.nextFlipGenerator = newFlip;
+    }
+
+    setFlipSequenceWithoutResetting = (newFlip: (i: number) => number[][]) => {
+        
 
         this.flipCycles = 0;
         // console.log(this.flipCycles)

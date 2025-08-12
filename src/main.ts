@@ -3,6 +3,7 @@ import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIO
 
 import * as THREE from 'three';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
+import { SplitFlapDisplay } from "./splitflap";
 
 let rowOfDiscs = new RowOfDiscs(WIDTH, HEIGHT);
 
@@ -251,10 +252,12 @@ class VideoIndexGenerator {
 
 // should be [[],[],[1],[],[3],[],[]]
 console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
-// new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
+new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 // new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
 
 // new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE_STRING_10FPS_32x24.replace(/\'/g,''));
 // new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE.replace(/\'/g,''));
 
-new VideoIndexGenerator().loadImages(ALL_ANIMATIONS);
+// new VideoIndexGenerator().loadImages(ALL_ANIMATIONS);
+
+new SplitFlapDisplay(10,20);

@@ -2,17 +2,6 @@ import * as THREE from 'three';
 import { BAD_APPLE_STRING_10FPS_64x48 } from './badapple64x48';
 import { BAD_APPLE_STRING_10FPS_32x24 } from './programs';
 
-// export let WIDTH = 64;
-// export let HEIGHT = 48;
-// export let BAD_APPLE = BAD_APPLE_STRING_10FPS_64x48;
-
-export let WIDTH = 32;
-export let HEIGHT = 24;
-// export let BAD_APPLE = BAD_APPLE_STRING_10FPS_32x24;
-
-// export let WIDTH = 5;
-// export let HEIGHT = 7;
-
 export let SOUND_ENABLED = false;
 // slightly worse imo but much faster for big, at least works for 32x24 (not 64x48 yet). normal sound enabled is only viable for 5x7
 export let PERFORMANT_SOUND_ENABLED = false;
@@ -22,6 +11,30 @@ export let PERFORMANT_NUM_X_SPEAKERS = 4;
 export let PERFORMANT_NUM_Y_SPEAKERS = 4;
 
 let BALL_ANIM = [...Array(9)].map((_,i) => `/ball${i + 1}.png`)
+
+let GOLFHEIGHT = 50;
+let GOLFWIDTH = 100;
+
+let GOLF_ANIM = [...Array(9)].map((_,i) => `/animations/golf${i + 1}.png`)
+let TEXT_WAVE = [...Array(5)].map((_,i) => `/animations/text${i + 1}.png`)
+let TEXT_FALL_WAVE = [...Array(15)].map((_,i) => `/animations/textfall${i + 1}.png`)
+let TEXT_SWIPE = [...Array(7)].map((_,i) => `/animations/textswipe${i + 1}.png`)
+let TEXT_LINE = [...Array(6)].map((_,i) => `/animations/textline${i + 1}.png`)
+
+
+// export let WIDTH = 64;
+// export let HEIGHT = 48;
+// export let BAD_APPLE = BAD_APPLE_STRING_10FPS_64x48;
+
+// export let WIDTH = 32;
+// export let HEIGHT = 24;
+// export let BAD_APPLE = BAD_APPLE_STRING_10FPS_32x24;
+
+// export let WIDTH = 5;
+// export let HEIGHT = 7;
+
+export let WIDTH = GOLFWIDTH;
+export let HEIGHT = GOLFHEIGHT;
 
 // these anims are 32x24
 let ALL_ANIMS = {
@@ -45,7 +58,7 @@ let ALL_ANIMS = {
 
 export let ALL_ANIMATIONS = Object.values(ALL_ANIMS).flat()
 
-export let ANIMATION_PATHS = BALL_ANIM;
+export let ANIMATION_PATHS = TEXT_LINE;
 
 export let REVERSE_ANIM = false;
 export let CONTROL_ANIM = false;
@@ -56,6 +69,9 @@ let fastestFrames = [2, 12];
 export let NUM_FRAMES_ROTATING = fastFrames[0];
 export let FULL_CYCLE_LENGTH = fastFrames[1];
 
+export let SPLIT_FLAP_CYCLE_LENGTH = 60;
+
+export let RENDERER_SIZE_SCALEDOWN = 2;
 // originally 60 
 export let CAMERA_DISTANCE = 400;
 
