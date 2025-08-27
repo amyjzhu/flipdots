@@ -6,6 +6,8 @@ import { RowOfDiscs } from "./flipdisc";
 
 export interface Colour { }
 
+export class DColour<T> implements Colour { }
+
 export interface State {
     getColour(): Colour
     eq(other: State): boolean;
@@ -36,7 +38,7 @@ export interface Hardware {
     pixels: State[];
     pixelTransitions: TransitionSystem[];
     dimensions: [number, number]
-    refreshingTimingMs: number;
+    // refreshingTimingMs: number;
 
     draw(idx: number, desiredState: State): void;
     // how to put constraints on this part?
@@ -44,6 +46,8 @@ export interface Hardware {
     // draw specifies a desired state update -> indicating that we're setting the foreground pixels, basically!!!!!
     // think how drawFrame only draws the relevant pieces, but we expect the background to be updated automatically
     refresh(): void;
+
+    programSequence(input: [number, State][][]): void;
 }
 
 /// =============
@@ -119,6 +123,7 @@ export class SimulationHardware implements Hardware {
         this.transitionIdx = [...Array(height)].map(i => []);
         console.log(this.transitionIdx)
 
+        console.log(width, height)
         this.sim = new RowOfDiscs(width, height);
 
         // I need to create a flip instance or something
@@ -127,6 +132,43 @@ export class SimulationHardware implements Hardware {
             return [...Array(height)].map(_ => []);
         };
         this.sim.resetAnimation(this.flipSeq);
+    }
+
+    // input should be what you want to see (not the dots you want to flip)
+    programSequence(input: [number, FlipDotState][][]): void {
+        // we sh
+        let frames = [];
+        let tempPixels = this.pixels.map(r => r);
+        for (let frame of input) {
+            let frameSetup: number[][] = [...Array(this.dimensions[1])].map(_ => [])
+            // let frameSetup = [...Array(this.dimensions[1])].map(_ => [...Array(this.dimensions[0])].map(_ => false))
+            // let frameSetup = [];
+            for (let inputs of frame) {
+                let idx: number = inputs[0];
+                let state: FlipDotState = inputs[1];
+
+                let seq = this.pixelTransitions[idx].moveTo(tempPixels[idx], state);
+                tempPixels[idx] = state;
+                // console.log(seq)
+                // hm... this might not be right 
+                // right now I'm only drawing what I want to be visible. but I also need to flip BACK anything that was visible 
+                if (seq.length >= 1) {
+                    let x: number = idx % this.dimensions[0];
+                    let y: number = Math.floor(idx / this.dimensions[0]);
+                    frameSetup[y].push(x);
+                }
+            }
+            frames.push(frameSetup);
+        }
+
+        this.flipSeq = (seqNum: number) => {
+            return frames[seqNum % frames.length];
+        };
+        console.log(frames)
+        this.sim.resetAnimation(this.flipSeq);
+        // this.sim.setFlipSequenceWithoutResetting(this.flipSeq)
+        // this.transitionIdx = [...Array(this.dimensions[1])].map(i => []);
+
     }
 
     // TODO: right now this is only updating the drawing area.
@@ -204,6 +246,8 @@ export class SimulationHardware implements Hardware {
         this.transitionIdx[Math.floor(idx / this.dimensions[0])].push(idx % this.dimensions[0]);
         // console.log(this.transitionIdx)
     }
+
+
 }
 
 // okay, we have hardware (sort of basic anyway)
@@ -495,6 +539,12 @@ export interface Target {
     draw(): boolean[][];
 }
 
+export interface DerivedTarget extends Target {
+    targetFrames: boolean[][][] | undefined;
+
+    setTargetFrames(targetFrames: boolean[][][]): void;
+}
+
 export interface DrawableTarget extends Target {
     startAt: undefined | [number, number];
     setStartAt(startAt: [number, number]): void;
@@ -575,7 +625,7 @@ export class PixelArtTarget implements DrawableTarget {
             let x = obj[0] + this.startAt[0];
             let y = obj[1] + this.startAt[1];
             // console.log(x, y)
-            if (inBounds([x,y], this.dimensions)) {
+            if (inBounds([x, y], this.dimensions)) {
                 frame[y][x] = true;
             }
         }
@@ -595,7 +645,7 @@ export class PixelArtTarget implements DrawableTarget {
 }
 
 
-export class Path implements Target {
+export class Path implements DerivedTarget {
     size: number[];
     dimensions: [number, number];
     targetFrames: boolean[][][] | undefined;
@@ -668,10 +718,10 @@ export class Path implements Target {
 
 }
 
-export class AnticipatedPath implements Target {
+export class AnticipatedPath implements DerivedTarget {
     size: number[];
     dimensions: [number, number];
-    nextFrames: boolean[][][] | undefined;
+    targetFrames: boolean[][][] | undefined;
     style: Effect | undefined;
 
     constructor(dimensions: [number, number],) {
@@ -680,16 +730,16 @@ export class AnticipatedPath implements Target {
     }
 
     setTargetFrames(targetFrames: boolean[][][]) {
-        this.nextFrames = targetFrames;
+        this.targetFrames = targetFrames;
     }
 
     draw(): boolean[][] {
-        if (!this.nextFrames) {
+        if (!this.targetFrames) {
             throw new Error("target frames not set");
         }
 
         let updatedFrame = [...Array(this.dimensions[1])].map(_ => [...Array(this.dimensions[0])].map(_ => false));
-        let newFrame = this.nextFrames.reduce((acc, f) => {
+        let newFrame = this.targetFrames.reduce((acc, f) => {
             f.forEach((r, ri) => r.forEach((c, ci) => {
                 if (c) {
                     acc[ri][ci] = true
@@ -704,22 +754,22 @@ export class AnticipatedPath implements Target {
     /// hmm... this doesn't work because there's no interpolation, annoyingly 
     //
     drawSequence(): boolean[][][] {
-        if (!this.nextFrames) {
+        if (!this.targetFrames) {
             throw new Error("target frames not set");
         }
 
-        let updatedFrames = this.nextFrames.map(f => f.map(r => r.map(c => c)));
+        let updatedFrames = this.targetFrames.map(f => f.map(r => r.map(c => c)));
         // for each frame, I need to put on the previous frame's path 
 
-        for (let fIdx = 0; fIdx < this.nextFrames.length; fIdx++) {
+        for (let fIdx = 0; fIdx < this.targetFrames.length; fIdx++) {
             // go in opposite direction!
             let prevFrame = fIdx + 1;
-            if (prevFrame >= this.nextFrames.length) {
+            if (prevFrame >= this.targetFrames.length) {
                 break;
             }
 
-            for (let r = 0; r < this.nextFrames[fIdx].length; r++) {
-                for (let c = 0; c < this.nextFrames[fIdx][0].length; c++) {
+            for (let r = 0; r < this.targetFrames[fIdx].length; r++) {
+                for (let c = 0; c < this.targetFrames[fIdx][0].length; c++) {
                     // just take the previous frame and copy it
                     if (updatedFrames[prevFrame][r][c]) {
                         updatedFrames[fIdx][r][c] = true;
@@ -734,10 +784,12 @@ export class AnticipatedPath implements Target {
 
 }
 
-export class AreaEffect implements Target {
+
+export class AreaEffect implements DerivedTarget {
     size: number[];
     dimensions: [number, number];
     target: boolean[][] | undefined;
+    targetFrames: boolean[][][] = [];
     style: Effect | undefined;
 
     constructor(size: number[], dimensions: [number, number]) {
@@ -745,8 +797,14 @@ export class AreaEffect implements Target {
         this.dimensions = dimensions;
     }
 
-    setDrawableTarget(target: boolean[][]) {
+    setDrawableTargetSingle(target: boolean[][]) {
         this.target = target;
+        this.targetFrames = [target]
+    }
+
+    setTargetFrames(target: boolean[][][]) {
+        this.targetFrames = target;
+        this.target = target[0];
     }
 
     draw(): boolean[][] {
@@ -954,7 +1012,7 @@ export class MovingNoise implements Style<boolean> {
         let editedFrames = [];
         let animCycle = 0;
         for (let frame of inFrames) {
-            
+
             let xMins = frame.map(r => r.indexOf(true));
             // what's the earliest position? it's actually the bounding box...
             // the first non-negative example?
@@ -963,7 +1021,7 @@ export class MovingNoise implements Style<boolean> {
             let xMin = yAndXMin[0];
 
             // okay, now we know that xMin and yMin correspond to [0,0] on the pattern!
-            
+
             let edited = frame.map(r => r.map(s => s));
             for (let y = 0; y < frame.length; y++) {
                 let row = frame[y];
@@ -1074,6 +1132,19 @@ export class Static implements Style<boolean> {
 }
 
 
+let keyframeIds = 0;
+// so this will organize all the instances of objects 
+class Keyframe {
+    objects: [Target, number][] = [];
+    order: number;
+
+    constructor() {
+        this.order = keyframeIds++;
+    }
+
+}
+
+// instead of building up frames in the queue-refresh system, I should take in a bunch of keyframes, display them all at once! 
 
 
 
@@ -1135,7 +1206,7 @@ function move(obj: DrawableTarget, startAt: [number, number], endAt: [number, nu
             break;
         case "area-flutter":
             let area = new AreaEffect([2, 2], hardware.dimensions);
-            let areaFrame = framesColour.map(f => { area.setDrawableTarget(f); return area.draw() });
+            let areaFrame = framesColour.map(f => { area.setDrawableTargetSingle(f); return area.draw() });
             console.log(areaFrame)
             withEffect = flutter.apply(areaFrame);
 
@@ -1186,6 +1257,8 @@ function move(obj: DrawableTarget, startAt: [number, number], endAt: [number, nu
 }
 
 
+
+
 if (false) {
 
     let sim = new SimulationHardware(34, 28);
@@ -1224,3 +1297,5 @@ if (false) {
 // q: how do I set the timing?
 // it's kind of like, dependent on the refresh.
 // maybe how many seconds should it take to complete the animation?
+
+

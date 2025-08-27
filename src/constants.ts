@@ -15,12 +15,16 @@ let BALL_ANIM = [...Array(9)].map((_,i) => `/ball${i + 1}.png`)
 let GOLFHEIGHT = 50;
 let GOLFWIDTH = 100;
 
-let GOLF_ANIM = [...Array(9)].map((_,i) => `/animations/golf${i + 1}.png`)
+export let GOLF_ANIM = [...Array(9)].map((_,i) => `/animations/golf${i + 1}.png`)
 let TEXT_WAVE = [...Array(5)].map((_,i) => `/animations/text${i + 1}.png`)
 let TEXT_FALL_WAVE = [...Array(15)].map((_,i) => `/animations/textfall${i + 1}.png`)
 let TEXT_SWIPE = [...Array(7)].map((_,i) => `/animations/textswipe${i + 1}.png`)
 let TEXT_LINE = [...Array(6)].map((_,i) => `/animations/textline${i + 1}.png`)
 
+export let GOLF_STRETCH = [...Array(9)].map((_,i) => `/animations/golf-stretch${i + 1}.png`);
+export let GOLF_CAMERA = [...Array(9)].map((_,i) => `/animations/golf-camrea${i + 1}.png`);
+export let GOLF_IMPACT = [...Array(9)].map((_,i) => `/animations/golf-impact${i + 1}.png`);
+export let GOLF_PATH = [...Array(9)].map((_,i) => `/animations/golf-path${i + 1}.png`);
 
 // export let WIDTH = 64;
 // export let HEIGHT = 48;

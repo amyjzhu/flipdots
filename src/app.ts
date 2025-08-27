@@ -1,10 +1,10 @@
 import { ImageBitmapLoader } from "three";
-import { AnimationStrategy, AreaEffect, Background, Colour, Effect, FlipDotState, MovingNoise, Noise, PixelArtTarget, SimulationHardware, Static, Target, UniformInterpolateStrategy } from "./language";
+import { AnimationStrategy, AreaEffect, Background, Colour, DerivedTarget, Effect, FlipDotState, MovingNoise, Noise, PixelArtTarget, SimulationHardware, Static, Target, UniformInterpolateStrategy } from "./language";
 
 let latestIndices: [number, number][][] = [];
 let frameIndices: [number, number][][][] = [];
-let frameShapes: Target[][] = [];
-let frameEffects: [Target, number][][] = []; // this should include the ordering that this effect is applied over
+let frameEffects: [DerivedTarget | Background | Effect, number][][] = []; // this should include the ordering that this effect is applied over
+// but this doesn't work on shapes... and the shapes don't exist until we try to animate! 
 
 // let endFrameIndices: [number, number][][] = [];
 let activeFrameIdx = 0;
@@ -54,6 +54,18 @@ function hex2Rgb(hex: string): [number, number, number] | undefined {
         parseInt(result[3], 16)
     ] : undefined;
 }
+
+
+
+function componentToHex(c: number) {
+    var hex = c.toString(16);
+    return hex.length == 1 ? "0" + hex : hex;
+}
+
+function rgb2Hex(r: number, g: number, b: number) {
+    return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+}
+
 
 let module = new SimulationHardware(width, height);
 
@@ -265,7 +277,7 @@ addEventListener("load", () => {
         // let bg = new Background([width, height], framesColour);
 
         let area = new AreaEffect([2, 2], [width, height]);
-        let areaFrame = framesColour.map(f => { area.setDrawableTarget(f); return area.draw() });
+        let areaFrame = framesColour.map(f => { area.setDrawableTargetSingle(f); return area.draw() });
         console.log(areaFrame)
         let composed = flutter.apply(areaFrame);
 
@@ -324,6 +336,9 @@ addEventListener("load", () => {
                 // here I need to just
                 // I should re-architect all this... 
                 // frameIndices[activeFrameIdx][selectedShapeIdx].push([new Shape]);
+                if (effect) {
+                    frameEffects[activeFrameIdx].push([effect, selectedShapeIdx]);
+                }
             } else if (selectedArea == "background") {
                 // ahah
                 // 
@@ -416,6 +431,9 @@ addEventListener("load", () => {
 
                     console.log(xSize, ySize)
                     let target = new PixelArtTarget(inputShape, [xSize, ySize], [width, height]);
+                
+
+
                     let framesColour = interp.generateFrames(target, start, end);
 
                     // here, object style and schedule style might collide...
@@ -442,12 +460,38 @@ addEventListener("load", () => {
                         console.log("hei")
                     }
 
+                    function isEffect(tgt: Target | Effect): tgt is Effect {
+                       return (<Effect>tgt).apply !== undefined;
+                    }
+
+                    function isDerviedTarget(tgt: DerivedTarget | Background | Effect): tgt is DerivedTarget {
+                       return (<DerivedTarget>tgt).setTargetFrames !== undefined;
+                    }
+
+                    let effect = frameEffects[f].find(([e,z]) => i == z);
+                    if (effect && isEffect(effect[0])) {
+                        framesColour = effect[0].apply(framesColour) as boolean[][][];
+                    } else if (effect && isDerviedTarget(effect[0])) {
+                        // maybe this is a select, in which case... 
+                        let area = effect[0] as DerivedTarget; // background must have index -1 anyway
+                        let areaFrame = framesColour.map(f => { area.setTargetFrames([f]); return area.draw() });
+                        if (area.style) {
+                            areaFrame = area.style.apply(areaFrame) as boolean[][][];
+                        }
+
+                        objs.push(areaFrame);
+                    }
+
                     console.log(framesColour);
                     objs.push(framesColour);
+                    
                 }
                 // let interp = new AccelerateInterpolationStrategy(numFrames, hardware);
 
                 let bg = new Background(module.dimensions, objs[0]);
+
+                // also, background
+
                 // but it's not organized by frame...
                 console.log(objs)
                 let objsByFrame = [...Array(numFrames).keys()].map(i => objs.map(o => o[i]));
@@ -893,16 +937,6 @@ function line(x0: number, y0: number, x1: number, y1: number): [number, number][
     }
     return coords;
 }
-
-function componentToHex(c: number) {
-    var hex = c.toString(16);
-    return hex.length == 1 ? "0" + hex : hex;
-}
-
-function rgb2Hex(r: number, g: number, b: number) {
-    return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
-}
-
 // I should write a target parser...
 // take in different colours and make different objects with them (that deform over time)
 // also, add multiple frames to the existing...

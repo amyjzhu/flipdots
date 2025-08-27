@@ -54,7 +54,7 @@ export class RowOfDiscs {
         // not really sure how to automatically calculate z...
         this.camera.position.z = CAMERA_DISTANCE;
         this.renderer = new THREE.WebGLRenderer();
-        this.renderer.setSize(window.innerWidth / RENDERER_SIZE_SCALEDOWN, window.innerHeight /RENDERER_SIZE_SCALEDOWN);
+        this.renderer.setSize(window.innerWidth / RENDERER_SIZE_SCALEDOWN, window.innerHeight / RENDERER_SIZE_SCALEDOWN);
         this.renderer.setAnimationLoop(this.animate);
         document.getElementById("render")!.appendChild(this.renderer.domElement);
         const controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -404,6 +404,38 @@ varying vec3 vColor;
     }
 
 
+    clear = () => {
+        for (let row = 0; row < this.height; row++) {
+            for (let idx = 0; idx < this.width; idx++) {
+
+                this.instanced!.getMatrixAt(row * this.width + idx, this.dummy.matrix);
+                // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
+
+                // let rot = (!this.discStates[row][idx] ? -1 : 1) * ratio
+                let rot = 0;
+                this.discStates[row][idx] = false;
+
+                let pos = new THREE.Vector3();
+                let quat = new THREE.Quaternion();
+                let scale = new THREE.Vector3();
+                this.dummy.matrix.decompose(pos, quat, scale);
+
+                let newQuat = new THREE.Quaternion(0,0,0,0);
+                this.dummy.matrix.compose(pos, newQuat, scale);
+                // let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2) / 2, Math.sqrt(2) / 2, 0), rot)
+                // console.log(t)
+                // this.dummy.rotation.y += this.rotationRate;
+                // this.dummy.matrix.multiply(rotation)
+                // this.dummy.updateMatrix();
+
+                this.instanced!.setMatrixAt(row * this.width + idx, this.dummy.matrix);
+                this.instanced!.instanceMatrix.needsUpdate = true;
+            }
+        }
+        this.renderer.render(this.scene, this.camera);
+
+    }
+
     getNextFlip = (i: number): (f: number) => number[][] => {
         let setNextToUpdate = (i: number): number[][] => {
             if (i % 4 == 0) {
@@ -456,7 +488,7 @@ varying vec3 vColor;
     }
 
     setFlipSequenceWithoutResetting = (newFlip: (i: number) => number[][]) => {
-        
+
 
         this.flipCycles = 0;
         // console.log(this.flipCycles)
@@ -499,7 +531,7 @@ varying vec3 vColor;
         //     }
         // }
 
-        
+
 
 
         for (let row = 0; row < this.height; row++) {
@@ -512,9 +544,9 @@ varying vec3 vColor;
                     // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
                     // let rot = (!this.discStates[row][idx] ? -1 : 1) * ratio
-                    let rot = (!this.discStates[row][idx] ? -1 : 1) * this.rotationRate 
-                    
-                    let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2)/2, Math.sqrt(2)/2, 0), rot)
+                    let rot = (!this.discStates[row][idx] ? -1 : 1) * this.rotationRate
+
+                    let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2) / 2, Math.sqrt(2) / 2, 0), rot)
                     // console.log(t)
                     // this.dummy.rotation.y += this.rotationRate;
                     this.dummy.matrix.multiply(rotation)
@@ -537,11 +569,11 @@ varying vec3 vColor;
                     } else if (PERFORMANT_SOUND_ENABLED) {
                         // have two sets to give them time to play out.
                         let cutoff = Math.floor(this.audios.length / 2);
-                        for (let i = 0; i < cutoff && i < this.idxToUpdate.reduce((a,b) => a + b.length, 0); i++) {
+                        for (let i = 0; i < cutoff && i < this.idxToUpdate.reduce((a, b) => a + b.length, 0); i++) {
                             let audio = this.audios[i + cutoff]
                             if (this.animationFrameCounter % 2 == 0) {
                                 audio = this.audios[i];
-                            } 
+                            }
                             (audio.children[0] as THREE.PositionalAudio).stop();
                             let randDelay = (Math.random() / 100);
                             (audio.children[0] as THREE.PositionalAudio).play(randDelay);
@@ -559,7 +591,7 @@ varying vec3 vColor;
             this.clock.stop()
             this.animationFrameCounter = 0;
             // setNextToUpdate(flipCycles);
-            
+
             this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
             // for each...
             this.idxToUpdate.forEach((row, idx) => row.forEach(i => this.discStates[idx][i] = !this.discStates[idx][i]))

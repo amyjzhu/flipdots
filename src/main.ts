@@ -1,5 +1,5 @@
 import { RowOfDiscs } from "./flipdisc";
-import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM } from "./constants";
+import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT, GOLF_ANIM } from "./constants";
 
 import * as THREE from 'three';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
@@ -232,6 +232,7 @@ class VideoIndexGenerator {
             nextFlips.push(this.generateFlipBitmap(resultingImg, [255, 255, 255]));
         }
 
+        nextFlips.push([...Array(nextFlips[0].length)].map(_ => [...Array(nextFlips[0][0].length)].map(_ => false)));
         console.log(nextFlips)
 
         let sequence = this.takeFlipSequenceDifference(nextFlips).map(frame => this.generateFlipsFromBitmap(frame));
@@ -252,7 +253,9 @@ class VideoIndexGenerator {
 
 // should be [[],[],[1],[],[3],[],[]]
 console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
-new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
+
+// new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
+
 // new VideoIndexGenerator().loadImages(["./public/smiley0.png", "./public/smiley.png", "./public/smiley2.png"]);
 
 // new VideoIndexGenerator().loadVideoFromStr(BAD_APPLE_STRING_10FPS_32x24.replace(/\'/g,''));
@@ -260,4 +263,22 @@ new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 
 // new VideoIndexGenerator().loadImages(ALL_ANIMATIONS);
 
-new SplitFlapDisplay(10,20);
+// new SplitFlapDisplay(10,20);
+
+let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
+let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
+let buttons = document.createElement("div");
+for (let i = 0; i < golf_opts.length; i++) {
+    let btn = document.createElement("button");
+    btn.textContent = golf_captions[i];
+    btn.addEventListener('click', () => {
+        rowOfDiscs.clear();
+        new VideoIndexGenerator().loadImages(golf_opts[i])
+    })
+    buttons.appendChild(btn);
+}
+document.body.append(buttons)
+// new VideoIndexGenerator().loadImages(GOLF_STRETCH);
+// new VideoIndexGenerator().loadImages(GOLF_CAMERA);
+// new VideoIndexGenerator().loadImages(GOLF_PATH);
+// new VideoIndexGenerator().loadImages(GOLF_IMPACT);
