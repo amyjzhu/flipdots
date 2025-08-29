@@ -74,10 +74,10 @@ class PixelArtTarget implements DrawableTarget {
     transition: Transition | undefined;
 
 
-    constructor(position: [number, number], shape: Colour[][], defaultColour: Colour) {
+    constructor(shape: Colour[][], defaultColour: Colour) {
 
 
-        this.position = position;
+        // this.position = position;
         this.shape = shape;
         this.defaultColour = defaultColour;
 
@@ -88,49 +88,63 @@ class PixelArtTarget implements DrawableTarget {
         let yMin = allMins.findIndex(e => e != -1);
 
         console.log(shape)
-        let allMax = shape.map(x => Math.max(...x.map((c, i) => c != defaultColour ? i : -1)));
-        let xMax = Math.max(...allMax.filter(x => x != -1));
-        let yMax = allMax.sort()[allMax.length - 1]; // this should be right> 
+        let colMax = shape.map(x => Math.max(...x.map((c, i) => c != defaultColour ? i : -1)));
+        let xMax = Math.max(...colMax.filter(x => x != -1));
+        // let yMax = allMax.sort()[allMax.length - 1]; // it should be the index of the highest, and if there are multiple highest, start from the back.
+        // so maybe... reverse the list, find index of max value. then subtract it 
+        // let yMax = (allMax.length - allMax.sort((a, b) => b - a).findIndex(x => x == xMax)) - 1;
+        let rowMax: number[] = shape.map((c, i) => !c.every(x => x == defaultColour) ? i : -1);
+        let yMax = Math.max(...rowMax.filter(x => x != -1));
+        // let yMax = allMax.length - revShape.findIndex(c => !c.every(f => f != defaultColour)) - 1;
 
-        console.log(allMax)
+        this.position = [xMin, yMin];
+
         console.log(xMin, yMin, xMax, yMax);
         let extracted = [];
         // now, I need to move everything backwards... 
         for (let i = yMin; i < yMax + 1; i++) {
             let row = [];
             for (let j = xMin; j < xMax + 1; j++) {
-                console.log(i, j)
+                // console.log(i, j)
                 row.push(shape[i][j]);
             }
             extracted.push(row);
         }
         this.extractedShape = extracted;
+
+        console.log(frameDisplay(this.extractedShape))
+        console.log(frameDisplay(shape))
+        // console.log(frameDisplay(this.draw()))
+        // hmmm... there's basically no way to have an "uncoloured" element override a previously-coloured element.
+        // maybe I should revert to the original... because at least that scenario would be covered
     }
 
     draw(): Colour[][] {
         let dimensions: [number, number] = [this.shape[0].length, this.shape.length];
         let blank = [...Array(dimensions[1])].map(_ => [...Array(dimensions[0])].map(_ => this.defaultColour));
+        console.log(frameDisplay(this.extractedShape))
 
         for (let i = 0; i < this.extractedShape.length; i++) {
             let row = this.extractedShape[i];
             for (let j = 0; j < row.length; j++) {
                 let c = row[j];
 
-                if (c != this.defaultColour && inBounds([i, j], dimensions)) {
+                if (c != this.defaultColour && inBounds([j,i], dimensions)) {
                     blank[i + this.position[1]][j + this.position[0]] = c;
                 }
+            
             }
 
         }
 
-        console.log(frameDisplay(blank));
-        console.log(this.shape)
-        console.log(this.extractedShape)
+        // console.log(frameDisplay(blank));
+        // console.log(this.shape)
+        // console.log(this.extractedShape)
         return blank;
     }
 
     clone(): Target {
-        return new PixelArtTarget(this.position, this.shape, this.defaultColour);
+        return new PixelArtTarget(this.shape, this.defaultColour);
     }
 }
 
@@ -240,53 +254,13 @@ class Instantaneous implements Transition {
         if (transitionPoint == 0) {
             return [this.to];
         } else {
-            console.log(numFrames - transitionPoint)
-            console.log(this.to!)
+            // console.log(numFrames - transitionPoint)
+            // console.log(this.to!)
             return [...Array(transitionPoint)].map(_ => this.from!).concat([...Array(numFrames - transitionPoint)].map(_ => this.to!));
         }
     }
 
 }
-
-
-// okay. so now, I basically get a bunch of objects that reflect the status at each synced keyframe
-// when I compile, I'm creating syncedframes for every frame.
-
-
-// we can traverse the keyframes to get syncedkeyframe
-//
-
-// class SyncedFrame {
-//     objects: Target[]
-//     globalTime: number 
-//     nextKeyframe: SyncedFrame
-// }
-
-
-let generate = (objects: Target[], frameTimings: number[]) => {
-    // basically
-    // traverse a graph to find all the keyframes... 
-    // maybe the keyframes are actually tags on the graph?
-    // the thing is, objects aren't actually connected to each other. so maybe we do need...
-
-    let startingObjects = objects.filter(o => o.frameId == 0);
-    // something like, what is the timing between frames?
-    for (let i = 0; i < frameTimings.length; i++) {
-        // we start with objects
-        // but where are the transitions? hmmmm
-        let resultingObjects = startingObjects.map(s => (s, s.transition?.to));
-        // we need to find the next one 
-        // honestly would be easier to just scape them all off the bat anyway
-        // also there's no "collection" of objects
-        // anyway the goal is to create a bunch of sub-frames where each of the objects have positions 
-        // 
-    }
-}
-
-// actually, it's really tricky to figure out what the inputs and outputs should be
-// instead, why don't we actually generate a golf graph first in the system
-
-// first, I'm going to parse the input into different objects.
 
 
 function hex2Rgb(hex: string): [number, number, number] | undefined {
@@ -313,9 +287,9 @@ import * as THREE from 'three';
 
 
 let parseImagesIntoFrames = async (urls: string[]): Promise<[Target[][], number, number]> => {
-
+    console.log(urls)
     let loader = new THREE.ImageBitmapLoader();
-    // loader.setOptions({ imageOrientation: 'flipY' })
+    loader.setOptions({ imageOrientation: 'flipY' })
 
     var canvas = document.createElement('canvas');
     let context2d = canvas.getContext('2d', { willReadFrequently: true })!;
@@ -380,28 +354,32 @@ let parseImagesIntoFrames = async (urls: string[]): Promise<[Target[][], number,
             // go through and find it...
             // I can use getShapeFrames 
             let booleanFrame = image.map(row => row.map(c => c[0] == rgbCol[0] && c[1] == rgbCol[1] && c[2] == rgbCol[2]));
-            let indices: [number, number][] = booleanFrame.map((row, i) => row.map((c, j) => c ? [j, i] as [number, number] : undefined)).flat(1).filter((i: [number, number] | undefined) => i != undefined);
-            // let shapeFrame = getShapeFrames(indices, interp);
-            // allFrameData.push(shapeFrame);
-            // okay!
+            console.log(frameDisplay(booleanFrame))
+            // let indices: [number, number][] = booleanFrame.map((row, i) => row.map((c, j) => c ? [j, i] as [number, number] : undefined)).flat(1).filter((i: [number, number] | undefined) => i != undefined);
+            // // let shapeFrame = getShapeFrames(indices, interp);
+            // // allFrameData.push(shapeFrame);
+            // // okay!
 
-            // need to figure out boundaries 
-            let xMin = Math.min(...indices.map(x => x[0]));
-            let yMin = Math.min(...indices.map(x => x[1]));
+            // // need to figure out boundaries 
+            // let xMin = Math.min(...indices.map(x => x[0]));
+            // let yMin = Math.min(...indices.map(x => x[1]));
 
-            let inputShape: [number, number][] = indices.map(x => [x[0] - xMin, x[1] - yMin]);
+            // console.log(xMin, yMin)
+            // console.log(indices)
 
-            let frame = [...Array(height)].map(_ => [...Array(width)].map(_ => false))
-            for (let obj of indices) {
-                let x = obj[0] + xMin;
-                let y = obj[1] + yMin;
-                // console.log(x, y)
-                if (inBounds([x, y], [width, height])) {
-                    frame[y][x] = true;
-                }
-            }
+            // let inputShape: [number, number][] = indices.map(x => [x[0] - xMin, x[1] - yMin]);
 
-            let target = new PixelArtTarget([xMin, yMin], frame, false);
+            // let frame = [...Array(height)].map(_ => [...Array(width)].map(_ => false))
+            // for (let obj of indices) {
+            //     let x = obj[0] + xMin;
+            //     let y = obj[1] + yMin;
+            //     // console.log(x, y)
+            //     if (inBounds([x, y], [width, height])) {
+            //         frame[y][x] = true;
+            //     }
+            // }
+
+            let target = new PixelArtTarget(booleanFrame, false);
             target.frameId = allShapesAllFrames[id].length
 
             eachFrameData.push(target);
@@ -434,27 +412,6 @@ function toWindows<T>(inputArray: T[], size: number) {
 }
 
 
-console.log("hi")
-// parseImagesIntoFrames([1,2,3,4,5,6,7,8,9].map(i => `/animations/golf-coloured${i}.png`)).then(data => {
-parseImagesIntoFrames([1, 2, 3, 4, 5].map(i => `/animations/basic${i}.png`)).then(data => {
-// parseImagesIntoFrames([1, 2, 3].map(i => `/animations/slide-normal${i + 1}.png`)).then(data => {
-    let res = data[0];
-    let width = data[1];
-    let height = data[2];
-    console.log(res.map(f => f.map(o => o.frameId)))
-    // let frames = generateAnimation(res, [...Array(3)].map(_ => 4))
-    // console.log(frames)
-    let frames: Colour[][][] = generateAnimation(res, [...Array(4)].map(_ => 3))
-    // let frames: Colour[][][] = generateAnimation(res, [...Array(9)].map(_ => 3))
-    frames.forEach(f => console.log(frameDisplay(f)));
-    let indices: [number, Colour][][] = frameToIndices(frames, width);
-    indices.forEach(i => console.log(indicesDisplay(i, width, height)))
-    let indicesWithStates: [number, FlipDotState][][] = indices.map(frame => frame.map(([i, c]: [number, Colour]) => [i, new FlipDotState(c as boolean)] as [number, FlipDotState]));
-    console.log(indicesWithStates)
-    let hardware = new SimulationHardware(width, height);
-    hardware.programSequence(indicesWithStates);
-})
-
 function frameDisplay(frame: Colour[][]): string { 
     let str = "";
     for (let row of frame) {
@@ -471,10 +428,10 @@ function frameDisplay(frame: Colour[][]): string {
 
 function indicesDisplay(indices: [number, Colour][], width: number, height: number) {
     let str = [...Array(height)].map(_ => [...Array(width)].map(_ => "X"));
-    console.log(indices)
+    // console.log(indices)
     for (let [idx, col] of indices) { 
         // str[Math.floor(idx / width)][idx % width] = `${col}`;
-        console.log(col)
+        // console.log(col)
         str[Math.floor(idx / width)][idx % width] = col == true ? "O" : "X";
     }
 
@@ -483,14 +440,14 @@ function indicesDisplay(indices: [number, Colour][], width: number, height: numb
 
 
 function frameToIndices(frames: Colour[][][], width: number) {
-    console.log(frames)
+    // console.log(frames)
     let updatedFrames = [];
     for (let frame of frames) {
-        console.log(frame)
+        // console.log(frame)
         // okay something weird is going on 
         // I need to make sure these are being added up per row.
         let newFrame: [number, Colour][] = frame.map((r, i) => r.reduce((acc: [number, Colour][], curr: Colour, idx: number) => {
-            console.log(curr)
+            // console.log(curr)
             if (curr) {
                 acc.push([i * width + idx, curr])
             }
@@ -500,7 +457,7 @@ function frameToIndices(frames: Colour[][][], width: number) {
         updatedFrames.push(newFrame);
     }
 
-    console.log(updatedFrames)
+    // console.log(updatedFrames)
     return updatedFrames;
 
 }
@@ -554,22 +511,22 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
             console.log("looping! frame ", frameNum)
             // this works when all frames are defined. if we have break in continuity, we need to multiply number of
             let fullObjects = o.transition.generateCompleteFrames(transitionTiming[frameNum])
-            console.log(fullObjects)
-            console.log(fullObjects.map(o => o.draw()))
+            // console.log(fullObjects)
+            // console.log(fullObjects.map(o => o.draw()))
             allFrameValues = allFrameValues.concat(fullObjects.map(o => o.draw()));
             // allFrameValues.push(fullObjects.map(o => o.draw()));
             o = o.transition.to;
             frameNum++;
         }
-        console.log(object)
+        // console.log(object)
         numFramesPerObject.push(allFrameValues.length);
         objectFrames.push(allFrameValues);
     }
-    console.log("?")
+    // console.log("?")
 
-    console.log(objects)
+    // console.log(objects)
     // object, allframes (row, col) -> why is it [object - 4 frames - 3 frames? ah because 3 frames per keyframe.]
-    console.log(objectFrames)
+    // console.log(objectFrames)
 
     console.log(numFramesPerObject);
     console.log(numObjects)
@@ -585,10 +542,10 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
     console.log(framesComposed)
     for (let object of objectFrames) {
         for (let i = 0; i < object.length; i++) {
-            console.log(i)
-            console.log(object)
+            // console.log(i)
+            // console.log(object)
             // object[i] should only be Colour[][] since it's per frame 
-            console.log(object[i])
+            // console.log(object[i])
             framesComposed[i].push(object[i])
         }
     }
@@ -607,15 +564,17 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
     let frames: Colour[][][] = [];
     // now take that and add everything togehter
     for (let frame of framesComposed) {
-        console.log(framesComposed)
-        let finishedFrame: Colour[][] = compose(frame, false as Colour);
-        console.log(finishedFrame)
+        // console.log(framesComposed)
+        frame.forEach(x => console.log(frameDisplay(x)));
+        let finishedFrame: Colour[][] = compose(frame);
+        console.log(frameDisplay(finishedFrame))
+        // console.log(finishedFrame)
         if (finishedFrame && finishedFrame.length != 0) {
             frames.push(finishedFrame);
         }
     }
 
-    console.log(frames)
+    // console.log(frames)
 
     // if (frames.length != transitionTiming.length) {
     //     throw new Error("frames length mismatch")
@@ -626,22 +585,24 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
 }
 
 // objects is: for a single frame, the objects in it 
-let compose = (objects: Colour[][][], defaultColour: Colour): Colour[][] => {
+let compose = (objects: Colour[][][]): Colour[][] => {
     let definitive: Colour[][] = objects[0];
     console.log(definitive)
-    console.log(objects)
+    // console.log(objects)
     for (let o = 1; o < objects.length; o++) {
         for (let row = 0; row < objects[o].length; row++) {
-            for (let col = 0; col < objects[o][row].length; col++) {
-                if (objects[o][row][col] != defaultColour) {
-                    console.log(objects[o][row][col])
-                    definitive[row][col] = objects[o][row][col];
-                }
+            for (let col = 0; col < objects[o][row].length; col++) {   
+                    // console.log('ya', col)
+                    if (objects[o][row][col]) {
+                    // console.log(objects[o][row][col])
+                        definitive[row][col] = objects[o][row][col];
+                    }
+                // }
             }
         }
     }
     // this should only be 2d!!!!
-    console.log(definitive)
+    // console.log(definitive)
     return definitive;
 }
 
@@ -651,3 +612,33 @@ let visualizeGraph = (objects: Target[][]) => {
 }
 
 
+
+console.log("hi")
+let [imagePath, numKeyframes] = [(i: number) => `/animations/golf-coloured${i+1}.png`, 9];
+// let [imagePath, numKeyframes] = [(i: number) => `/animations/basic-2c${i+1}.png`, 3];
+// let [imagePath, numKeyframes] = [(i: number) => `/animations/golf${i+1}.png`, 9];
+// let [imagePath, numKeyframes] = [(i: number) => `/animations/slide-normal${i+1}.png`, 3];
+// let [imagePath, numKeyframes] = [(i: number) => `/animations/basic${i+1}.png`, 6];
+
+// parseImagesIntoFrames([1,2,3,4,5,6,7,8,9].map(i => `/animations/golf-coloured${i}.png`)).then(data => {
+parseImagesIntoFrames([...new Array(numKeyframes)].map((_, i) => imagePath(i))).then(data => {
+// parseImagesIntoFrames([1, 2, 3].map(i => `/animations/slide-normal${i + 1}.png`)).then(data => {
+    let res = data[0];
+    let width = data[1];
+    let height = data[2];
+    console.log(res)
+    console.log(width,height);
+    // console.log(res.map(f => f.map(o => o.frameId)))
+    // let frames = generateAnimation(res, [...Array(3)].map(_ => 4))
+    // console.log(frames)
+    console.log(res.map(r => r.map(i => i.position)))
+    let frames: Colour[][][] = generateAnimation(res, [...Array(numKeyframes-1)].map(_ => 4))
+    // let frames: Colour[][][] = generateAnimation(res, [...Array(9)].map(_ => 3))
+    frames.forEach(f => console.log(frameDisplay(f)));
+    let indices: [number, Colour][][] = frameToIndices(frames, width);
+    indices.forEach(i => console.log(indicesDisplay(i, width, height)))
+    let indicesWithStates: [number, FlipDotState][][] = indices.map(frame => frame.map(([i, c]: [number, Colour]) => [i, new FlipDotState(c as boolean)] as [number, FlipDotState]));
+    // console.log(indicesWithStates)
+    let hardware = new SimulationHardware(width, height);
+    hardware.programSequence(indicesWithStates);
+})

@@ -140,15 +140,18 @@ export class SimulationHardware implements Hardware {
         let frames = [];
         let tempPixels = this.pixels.map(r => r);
         for (let frame of input) {
+            let touched: number[] = [];
             let frameSetup: number[][] = [...Array(this.dimensions[1])].map(_ => [])
             // let frameSetup = [...Array(this.dimensions[1])].map(_ => [...Array(this.dimensions[0])].map(_ => false))
             // let frameSetup = [];
             for (let inputs of frame) {
+
                 let idx: number = inputs[0];
                 let state: FlipDotState = inputs[1];
 
                 let seq = this.pixelTransitions[idx].moveTo(tempPixels[idx], state);
                 tempPixels[idx] = state;
+                touched.push(idx);
                 // console.log(seq)
                 // hm... this might not be right 
                 // right now I'm only drawing what I want to be visible. but I also need to flip BACK anything that was visible 
@@ -158,6 +161,18 @@ export class SimulationHardware implements Hardware {
                     frameSetup[y].push(x);
                 }
             }
+
+            for (let i = 0; i < tempPixels.length; i++) {
+                // console.log("tryi ng to reset")
+                    if (!touched.includes(i)) {
+                        let pixel = tempPixels[i]
+                        if (pixel.getColour()) { // assumption succeeds (because colour is boolean...)
+                            frameSetup[Math.floor(i / this.dimensions[0])].push(i % this.dimensions[0])
+                            tempPixels[i] = new FlipDotState(false);
+                        }
+                    }
+                }
+
             frames.push(frameSetup);
         }
 
