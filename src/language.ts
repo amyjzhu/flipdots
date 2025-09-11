@@ -329,6 +329,10 @@ export class FlipDotHardware implements Hardware {
         this.channelsToValues = new Map();
         this.pixels.forEach((v, i) => this.channelsToValues.set(i, 0))
     }
+    
+    programSequence(input: [number, State][][]): void {
+        throw new Error("Method not implemented.");
+    }
 
     refresh(): void {
         for (let [key, value] of this.channelsToValues) {

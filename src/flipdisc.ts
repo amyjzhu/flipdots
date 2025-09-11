@@ -21,6 +21,8 @@ export class RowOfDiscs {
     RADY = 3;
     rowsOfDiscs: THREE.Mesh[][] = []
 
+    numFramesRotating = NUM_FRAMES_ROTATING;
+
     discStates: boolean[][] = []
 
     frame1Flips: number[][];
@@ -506,9 +508,10 @@ varying vec3 vColor;
 
 
     // I need to make a half rotation in 20 frames. How much do I rotate by?
-    rotationRate = Math.PI / NUM_FRAMES_ROTATING;
     flipCycles = 0;
     animate = () => {
+        let rotationRate = Math.PI / this.numFramesRotating;
+
         // okay, so if it's like, 15 flips per second...
         let t = this.clock.getElapsedTime();
         // let fullFlip = Math.PI;
@@ -539,12 +542,12 @@ varying vec3 vColor;
             // console.log(row)
             // console.log(this.idxToUpdate[row])
             for (let idx of this.idxToUpdate[row]) {
-                if (this.animationFrameCounter < NUM_FRAMES_ROTATING) {
+                if (this.animationFrameCounter < this.numFramesRotating) {
                     this.instanced!.getMatrixAt(row * this.width + idx, this.dummy.matrix);
                     // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
                     // let rot = (!this.discStates[row][idx] ? -1 : 1) * ratio
-                    let rot = (!this.discStates[row][idx] ? -1 : 1) * this.rotationRate
+                    let rot = (!this.discStates[row][idx] ? -1 : 1) * rotationRate
 
                     let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2) / 2, Math.sqrt(2) / 2, 0), rot)
                     // console.log(t)
