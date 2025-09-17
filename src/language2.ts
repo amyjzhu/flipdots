@@ -16,7 +16,7 @@
 // or we have something called Universe which takes the whole universe...? at each time point? 
 // animation...
 
-import { Colour, DColour, FlipDotState, SimulationHardware } from "./language";
+import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 
 
 
@@ -51,6 +51,8 @@ interface Target {
 
     frameId: FrameId | undefined;
     transition: Transition | undefined;
+
+    debugTag: string | undefined;
 }
 
 interface DerivedTarget extends Target {
@@ -78,6 +80,8 @@ class PixelArtTarget implements DrawableTarget {
     frameId: number | undefined;
     transition: Transition | undefined;
 
+    debugTag: string | undefined;
+
 
     constructor(shape: Colour[][], defaultColour: Colour) {
 
@@ -98,6 +102,7 @@ class PixelArtTarget implements DrawableTarget {
 
     draw(): Colour[][] {
         let dimensions: [number, number] = [this.shape[0].length, this.shape.length];
+        console.log(dimensions);
         let blank = [...Array(dimensions[1])].map(_ => [...Array(dimensions[0])].map(_ => this.defaultColour));
         console.log(frameDisplay(this.extractedShape))
 
@@ -106,7 +111,7 @@ class PixelArtTarget implements DrawableTarget {
             for (let j = 0; j < row.length; j++) {
                 let c = row[j];
 
-                if (c != this.defaultColour && inBounds([j, i], dimensions)) {
+                if (c != this.defaultColour && inBounds([j  + this.position[0], i + this.position[1]], dimensions)) {
                     blank[i + this.position[1]][j + this.position[0]] = c;
                 }
 
@@ -121,7 +126,10 @@ class PixelArtTarget implements DrawableTarget {
     }
 
     clone(): Target {
-        return new PixelArtTarget(this.shape, this.defaultColour);
+        let newPixelArtTarget = new PixelArtTarget(this.shape, this.defaultColour);
+        newPixelArtTarget.frameId = this.frameId;
+        newPixelArtTarget.transition = this.transition; // shallow copy
+        return newPixelArtTarget;
     }
 }
 
@@ -189,6 +197,7 @@ class UniformMove implements Transition {
 
             // drawFrame(rectSize, [, ], hardware);
 
+            
             let x = Math.round(startAt[0] + xInc * i);
             let y = Math.round(startAt[1] + yInc * i);
 
@@ -196,7 +205,9 @@ class UniformMove implements Transition {
             console.log([x, y])
 
             obj.position = [x, y];
+            
             newObjects.push(obj);
+            
         }
 
         return newObjects;
@@ -239,9 +250,68 @@ let extractShapeAndPositionFromFrame = (shape: Colour[][], defaultColour: Colour
 }
 // I need more transitions and more styles!
 
+interface DerivedTransition extends Transition {
+
+}
+
+class TracePath implements DerivedTransition {
+    from: Target | undefined;
+    to: Target | undefined;
+    type: TransitionType;
+    transition: Transition;
+
+    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, otherTransition: Transition) {
+        this.from = from;
+        this.to = to;
+        this.type = type;
+        // is it possible to get other transitions when making this?
+        this.transition = otherTransition;
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        // how do I use the other transition? well, I just generate the frames first
+        let referenceFrames = this.transition.generateCompleteFrames(numFrames);
+
+        // for path, I actually just need to build up all the frames I've seen so far...
+        // but at some point we should also interpolate 
+        // also right now I don't think transitions are named
+        
+        let latestFrame = referenceFrames[0].draw();
+        let allFrames: Target[] = [];
+        
+        for (let i = 0; i < numFrames; i++) {
+            let currentFrame = referenceFrames[i].draw();
+            let frame = latestFrame.map(r => r.map(c => c));
+            for (let r = 0; r < frame.length; r++) {
+                for (let c = 0; c < frame[r].length; c++) {
+                    if (currentFrame[r][c]) {
+                        frame[r][c] = true;
+                    }
+                }
+            }
+            // 
+            // might need to change this behaviour
+            let newTarget = new PixelArtTarget(frame, false);
+            latestFrame = frame;
+            allFrames.push(newTarget);
+        }
+        
+        return allFrames;
+    }
+
+}
+
+
 // ugh, linear path is weird because it 
 // temporal targets should have access to _dots I have already flipped_
-// also, think about a lower-level language to control dots 
+// also, think about a lower-level language to control dots and how to specify transitions in terms of that
+// hmmm... well, just having it be like set and flush does the job, but I moved away from that 
 class LinearPath implements TemporalTarget {
     parentTargets: Target[];
     position: [number, number];
@@ -366,6 +436,8 @@ class Collision implements DerivedTarget {
     genEffect: (selected: ([number, number][])) => Colour[][];
     defaultColour: Colour;
 
+    debugTag: string | undefined;
+
     constructor(parentTargets: Target[], impactAffected: (selected: ([number, number][])) => Colour[][], defaultColour: Colour) {
         this.parentTargets = parentTargets; // how many things can be involved in a collision?
         let pos: [number, number] = [0, 0]; //this.findPosition(parentTargets);
@@ -384,7 +456,7 @@ class Collision implements DerivedTarget {
         return this.shape
         // throw new Error("Method not implemented.");
     }
-    
+
     clone(): Target {
         return new Collision(this.parentTargets, this.genEffect, this.defaultColour)
         throw new Error("Method not implemented.");
@@ -598,7 +670,7 @@ class Wipe implements Transition {
     type: TransitionType;
     direction: WipeDirection;
 
-    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, direction: WipeDirection) { 
+    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, direction: WipeDirection) {
         this.to = to;
         this.from = from;
         this.type = type;
@@ -617,7 +689,7 @@ class Wipe implements Transition {
         if (!this.to || !this.from) {
             throw new Error("Cannot generate complete animation because one of to or from is missing");
         }
-        
+
         let interpPositions = 1 / numFrames;
         console.log(numFrames)
         let newObjects = [];
@@ -639,9 +711,9 @@ class Wipe implements Transition {
                 shape[j] = oldShape[j];
             }
             console.log(shape)
-            
+
             let obj = new PixelArtTarget(shape, false); // lol.......
-            
+
             newObjects.push(obj);
         }
 
@@ -650,6 +722,272 @@ class Wipe implements Transition {
     }
 
 }
+
+class DrawingHeadWipe implements Transition {
+    // this should be a bit different! I need to set a frontier that I grow from rather than growing unilaterally. TODO 
+    from: Target | undefined;
+    to: Target | undefined;
+    type: TransitionType;
+    startingPoint: [number, number] | undefined
+    timeVectorField: number[][] | undefined;
+
+    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, startingPoint: [number, number]) {
+        this.to = to;
+        this.from = from;
+        this.type = type;
+        this.startingPoint = startingPoint;
+
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        // start with the top and go to the bottom.
+
+        if (!this.to || !this.from || !this.startingPoint) {
+            throw new Error("Cannot generate complete animation because one of to or from is missing");
+        }
+
+        let shape = this.to.draw();
+
+
+        this.timeVectorField = [];
+        let x = this.startingPoint[0];
+        let y = this.startingPoint[1];
+        console.log(x,y, "AH")
+
+
+        for (let i = 0; i < shape.length; i++) {
+            let row = [];
+            for (let j = 0; j < shape[i].length; j++) {
+                row.push(Math.max(Math.abs(i - y), Math.abs(j - x)));
+            }
+            this.timeVectorField.push(row);
+        }
+
+        console.log(this.timeVectorField)
+        let maxDistance = Math.max(...this.timeVectorField.flat().flat());
+
+        let interpInterval = 1 / numFrames;
+        console.log(numFrames)
+        let newObjects = [];
+        let newShape = this.from.draw();
+
+
+        for (let i = 0; i < numFrames; i++) {
+
+            // drawFrame(rectSize, [, ], hardware);
+
+            // let shape = this.to.draw();
+            let increaseBy = Math.round(interpInterval * maxDistance);
+
+            // how do I know how much to grow by??? 
+            console.log(increaseBy)
+
+
+            // go through the time vector field. if the current time is lower, take new.
+            for (let a = 0; a < shape.length; a++) {
+                for (let b = 0; b < shape[a].length; b++) {
+                    let timeValue = this.timeVectorField[a][b];
+                    // console.log(timeValue, currentTime)
+                    if (timeValue <= increaseBy) {
+                        newShape[a][b] = shape[a][b]
+                    }
+                }
+            }
+
+            console.log(newShape)
+
+            let obj = new PixelArtTarget(newShape, false); // lol.......
+
+            newObjects.push(obj);
+
+
+
+            /// reset the situation
+            // I want to make a new starting point each time.
+            // also, I don't want to override the progress I previously made.
+
+            // let's start by finding the next frontier point. 
+            // I'll take a 2x2 survey and find the average direction.
+            // maybe this is better expressed as a derivative 
+
+            let sumX = 0, sumY = 0;
+            let moveRadius = 2;
+            let modesX: Map<number, number> = new Map();
+            let modesY: Map<number, number> = new Map();
+            let getOrZero = (i: number | undefined) => i != undefined? i : 0;
+            // the number of POTENTIAL squares is the floor(perimeter/2) -- 
+            let potentialSquares = Math.floor(Math.pow(2, moveRadius+1)/2);
+            // what if it's completely centered? hmmmm....
+            for (let i = -moveRadius; i < moveRadius; i++) {
+                for (let j = -moveRadius; j < moveRadius; j++) {
+                    let testCoordX = x + i;
+                    let testCoordY = y + j;
+                    if (inBounds([testCoordX, testCoordY], [shape.length, shape[0].length]) && shape[testCoordY][testCoordX]) {
+                        // I also need to make sure this isn't already covered.
+                        sumX += i;
+                        sumY += j;
+                        modesX.set(i, getOrZero(modesX.get(i))+1);
+                        modesY.set(i, getOrZero(modesY.get(i))+1);
+                    }
+                }
+            }
+            // if it's a circle around, that's 3. but another is 4. so 7 total
+        
+            // wait, I don't think this is right. If I move -2, -2, -2 three times I only want -2 in total.
+            // maybe I just want the mode? 
+            sumX = Math.round(sumX / potentialSquares);
+            sumY = Math.round(sumY / potentialSquares);
+
+
+            // try using modes?
+            sumX = [...modesX.entries()].reduce((a, e) => e[1] > a[1] ? e : a, [-Infinity, -Infinity])[0];
+            sumY = [...modesY.entries()].reduce((a, e) => e[1] > a[1] ? e : a, [-Infinity, -Infinity])[0];
+
+            console.log(modesX);
+            console.log(modesY)
+            // x = x + sumX / 7;
+            // y = y + sumY / 7;
+            // the problem is, that amount of steps works if we have enough to move like 1 step at a time.
+            // how do I actually figure out how many steps I am allowed...?
+            // do I need to do it once first? 
+            // also on average we might not make that much progress/
+            // what about like a winding number approach? 
+            // ahh, well this is just the direction right?
+
+
+            // hmmm... this strategy doesn't work if I get trapped in a well basically 
+            // I need to go back into the shape
+            // I should ask Adriana for help with this one 
+            if (sumX == 0 && sumY == 0 ||(sumX == -Infinity && sumY == -Infinity)) {
+                // I guess pick a random point?
+                sumX = Math.round(Math.random() + 1);
+                sumY = Math.round(Math.random() + 1);
+            }
+            console.log(x,y, sumX, sumY, potentialSquares)
+
+            x = x + sumX;
+            y = y = sumY;
+            console.log(x,y)
+
+            this.timeVectorField = [];
+            for (let i = 0; i < shape.length; i++) {
+                let row = [];
+                for (let j = 0; j < shape[i].length; j++) {
+                    row.push(Math.max(Math.abs(i - y), Math.abs(j - x)));
+                }
+                this.timeVectorField.push(row);
+            }
+
+        }
+
+        return newObjects;
+
+    }
+}
+
+
+class GrowWipe implements Transition {
+    // basically, find the next n parts of the image.
+    // let's take the image and a starting point 
+
+    from: Target | undefined;
+    to: Target | undefined;
+    type: TransitionType;
+    startingPoint: [number, number] | undefined
+    timeVectorField: number[][] | undefined;
+
+    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, startingPoint: [number, number]) {
+        this.to = to;
+        this.from = from;
+        this.type = type;
+        this.startingPoint = startingPoint;
+
+        // here's what I want to do
+        // I need to make a time field.
+        // the time field could be derived from one of two things
+        // 1) the design of the to frame 
+        // 2) the difference between the to and from frame
+        // is there a difference...?
+        // let's just go with 1) for now.        
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        // start with the top and go to the bottom.
+
+        if (!this.to || !this.from || !this.startingPoint) {
+            throw new Error("Cannot generate complete animation because one of to or from is missing");
+        }
+
+
+        this.timeVectorField = [];
+        let x = this.startingPoint[0];
+        let y = this.startingPoint[1];
+        // I should be able to compute this in a straight pass right? just by calculating the distance max(vdist, hdist) from the starting point 
+        // ah, I could also solve a heat equation...
+        let shape = this.to.draw();
+        for (let i = 0; i < shape.length; i++) {
+            let row = [];
+            for (let j = 0; j < shape[i].length; j++) {
+                row.push(Math.max(Math.abs(i - y), Math.abs(j - x)));
+            }
+            this.timeVectorField.push(row);
+        }
+
+        console.log(this.timeVectorField)
+        let maxDistance = Math.max(...this.timeVectorField.flat().flat());
+
+        let interpInterval = 1 / numFrames;
+        console.log(numFrames)
+        let newObjects = [];
+
+        for (let i = 0; i < numFrames; i++) {
+
+            // drawFrame(rectSize, [, ], hardware);
+
+            // let shape = this.to.draw();
+            let currentTime = Math.round(interpInterval * i * maxDistance);
+            let newShape = this.to.draw();
+            let oldShape = this.from.draw();
+            console.log(currentTime)
+
+
+            // go through the time vector field. if the current time is lower, take new.
+            for (let a = 0; a < shape.length; a++) {
+                for (let b = 0; b < shape[a].length; b++) {
+                    let timeValue = this.timeVectorField[a][b];
+                    // console.log(timeValue, currentTime)
+                    if (timeValue > currentTime) {
+                        newShape[a][b] = oldShape[a][b]
+                    }
+                }
+            }
+
+            console.log(newShape)
+
+            let obj = new PixelArtTarget(newShape, false); // lol.......
+
+            newObjects.push(obj);
+        }
+
+        return newObjects;
+
+    }
+
+
+}
+
 
 
 function hex2Rgb(hex: string): [number, number, number] | undefined {
@@ -828,6 +1166,9 @@ function indicesDisplay(indices: [number, Colour][], width: number, height: numb
     for (let [idx, col] of indices) {
         // str[Math.floor(idx / width)][idx % width] = `${col}`;
         // console.log(col)
+        // console.log(str)
+        // console.log(str[Math.floor(idx / width)])
+        // console.log(idx)
         str[Math.floor(idx / width)][idx % width] = col == true ? "O" : "X";
     }
 
@@ -842,6 +1183,8 @@ function frameToIndices(frames: Colour[][][], width: number) {
         // console.log(frame)
         // okay something weird is going on 
         // I need to make sure these are being added up per row.
+        
+        // yikes...? this is really stopgap for uniform move
         let newFrame: [number, Colour][] = frame.map((r, i) => r.reduce((acc: [number, Colour][], curr: Colour, idx: number) => {
             // console.log(curr)
             if (curr) {
@@ -904,11 +1247,11 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
         let frameNum = 0;
 
         let o: Target | undefined = object[0];
-        console.log(o)
+        console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
         while (o && o.transition != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
             if (o.frameId != frameNum) {
-                console.log("pushing an empty for target ", o, frameNum)
+                console.log("pushing an empty for target ", o.debugTag, frameNum)
                 // TODO: I think this is delaying things one frame... because there should be one less set of frames than keyframes
                 allFrameValues.push([...Array(transitionTiming[frameNum])].map(_ => []));
                 frameNum += 1;
@@ -918,7 +1261,7 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
             // this works when all frames are defined. if we have break in continuity, we need to multiply number of
             let fullObjects = o.transition.generateCompleteFrames(transitionTiming[frameNum])
             // console.log(fullObjects)
-            // console.log(fullObjects.map(o => o.draw()))
+            console.log(fullObjects.map(o => o.draw()))
             allFrameValues = allFrameValues.concat(fullObjects.map(o => o.draw()));
             // allFrameValues.push(fullObjects.map(o => o.draw()));
             o = o.transition.to;
@@ -1040,6 +1383,35 @@ let graphModifyToAddCollision = (input: Target[][]): Target[][] => {
 }
 
 
+let graphModifyToAddPathTrace = (input: Target[][]): Target[][] => {
+    let output = input.map(i => i.map(j => j));
+    // I'll just add a new node that has the frame tag I want.
+    console.log("Ya!")
+    console.log(input);
+    
+    let objIndex = 1;
+    let startFrame = 0;
+    let endFrame = 2;
+    let pathStartTarget = input[objIndex][startFrame].clone();
+    let pathEndTarget = input[objIndex][endFrame].clone();
+    let transition = new UniformMove(pathStartTarget, pathEndTarget, TransitionType.Complete);
+    console.log(pathStartTarget)
+    let path = new TracePath(pathStartTarget, pathEndTarget, TransitionType.Complete, transition);
+    pathStartTarget.transition = path;
+    // let strVis = frameDisplay(collision.draw()); 
+    // console.log(strVis);
+    // console.log(draw2(collision.draw()))
+    pathStartTarget.frameId = 1;
+    pathEndTarget.frameId = 2;
+    // new object... how many frames? 
+    output.push([pathStartTarget]);
+    console.log(pathStartTarget);
+
+
+    return output;
+}
+
+
 // example file
 // timing: [1,1,1,1,1,1,1,1,1,1,1,1,1]
 // filepath: /animations/etc${i}.png 
@@ -1083,14 +1455,26 @@ let parser = async (input: string, flipless: boolean = false) => {
     // let frames: Colour[][][] = generateAnimation(res, [...Array(9)].map(_ => 3))
     frames.forEach(f => console.log(frameDisplay(f)));
     let indices: [number, Colour][][] = frameToIndices(frames, width);
-    indices.forEach(i => console.log(indicesDisplay(i, width, height)))
+    // console.log(width)
+    // console.log(indices)    
+    // indices.forEach(i => console.log(indicesDisplay(i, width, height)))
+
+    let colourToDotFlipOption = (colour: Colour) => colour ? DotFlipOptions.Front : DotFlipOptions.Back;
+    // how about generating the language? 
+    let hardwareProg = indices.map(frame => new DotFlipFrame(frame.map(dot => new DotFlipInstruction(dot[0], colourToDotFlipOption(dot[1]))), 500));
+
+
     let indicesWithStates: [number, FlipDotState][][] = indices.map(frame => frame.map(([i, c]: [number, Colour]) => [i, new FlipDotState(c as boolean)] as [number, FlipDotState]));
     // console.log(indicesWithStates)
     let hardware = new SimulationHardware(width, height);
     if (flipless) {
         hardware.sim.numFramesRotating = 1;
     }
+    if (false) {
     hardware.programSequence(indicesWithStates);
+    } else {
+        hardware.programSequenceFromLanguage(hardwareProg);
+    }
 }
 
 let parseObjDecls = (input: string): Map<string, string> => {
@@ -1175,6 +1559,8 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
 
         console.log(steps)
         for (let step of steps) {
+            console.log("see n2o", namesToObjects)
+            // wait, do I need to use namesToObjects here...?
             let [start, transition, end] = step;
             let [startObj, startFrame] = start;
             let [endObj, endFrame] = end;
@@ -1186,20 +1572,49 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
 
                 // console.log(frameDisplay(obj.draw()))
 
-
-                let t = transition == "instantaneous" ? new Instantaneous(obj, eo, TransitionType.Complete) : new Wipe(obj, eo, TransitionType.Complete, WipeDirection.TTB);
+                 if (transition == "path") {
+                // don't modify the start and end stuff
+                console.log("n2o 3", namesToObjects)
+                let newTarget = namesToObjects.get(startObj)!.find(o => o.frameId == startFrame)!.clone();
+                // thi smight not be true... 
+                let newEndTarget = namesToObjects.get(endObj as string)!.find(o => o.frameId == endFrame)!.clone();
                 
+                if (!newTarget || newTarget.transition == undefined) {
+                    console.log(newTarget);
+                    console.log(namesToObjects)
+                    throw new Error("Cannot use derivative transition before original transition is defined")
+                }
+
+                let t = new TracePath(newTarget, newEndTarget, TransitionType.Complete, newTarget.transition);
+                newTarget.transition = t;
+                newTarget.debugTag = startObj + ":" + transition
+                console.log("tgts", targets);
+                targets.push([newTarget]);
+                
+            } else {
+
+                let t = transition == "instantaneous" ? new Instantaneous(obj, eo, TransitionType.Complete) :
+                    transition == "wipe" ? new Wipe(obj, eo, TransitionType.Complete, WipeDirection.TTB) :
+                        transition == "grow" ? new GrowWipe(obj, eo, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
+                        transition == "move" ? new UniformMove(obj, eo, TransitionType.Complete) : 
+                            new DrawingHeadWipe(obj, eo, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
+
+
                 obj.transition = t;
 
                 if (!perFrameObjs.has(startFrame)) {
                     obj.frameId = startFrame;
+                    obj.debugTag = startObj + ":" + transition
                     perFrameObjs.set(startFrame, obj);
+                    console.log("setting shape!!!!", obj);
                 }
 
                 if (!perFrameObjs.has(endFrame)) {
                     eo.frameId = endFrame;
+                    eo.debugTag = endObj + ":" + transition
                     perFrameObjs.set(endFrame, eo);
                 }
+            }
 
             } else {
                 // it's more complicated... we will deal with it after!
@@ -1207,9 +1622,13 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             }
 
         }
+                console.log("tgts", targets);
 
         namesToObjects.set(obj, [...perFrameObjs.values()]);
-        targets.push([...perFrameObjs.values()]);
+        console.log("n2o, 2, ", namesToObjects)
+        if ([...perFrameObjs].length != 0) {
+            targets.push([...perFrameObjs.values()]);
+        }
 
     }
 
@@ -1246,20 +1665,54 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             }
 
 
-            let t = transition == "instantaneous" ? new Instantaneous(startTarget, endTarget, TransitionType.Complete) : new Wipe(startTarget, endTarget, TransitionType.Complete, WipeDirection.TTB);
+            // what to do if this is a temporal transition?
+            if (transition == "path") {
+                // don't modify the start and end stuff
+                if (!startTarget || startTarget.transition == undefined) {
+                    throw new Error("Cannot use derivative transition before original transition is defined")
+                }
+                let newTarget = startTarget.clone();
+                let newEndTarget = endTarget!.clone();
+
+                let t = new TracePath(newTarget, newEndTarget, TransitionType.Complete, startTarget.transition);
+                newTarget.transition = t;
+                newTarget.debugTag = startObj + ":" + transition
+                perFrameObjs.set(endFrame, newEndTarget!);
+                perFrameObjs.set(startFrame, newTarget!);
+                
+            } else {
+
+            let t = transition == "instantaneous" ? new Instantaneous(startTarget, endTarget, TransitionType.Complete) :
+                transition == "wipe" ? new Wipe(startTarget, endTarget, TransitionType.Complete, WipeDirection.TTB) :
+                    transition == "grow" ? new GrowWipe(startTarget, endTarget, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
+                    transition == "move" ? new UniformMove(startTarget, endTarget, TransitionType.Complete) : 
+                        new DrawingHeadWipe(startTarget, endTarget, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)])
+
+
+            // the transition might have arguments.
+            // but don't we actually use the input to find that? 
+            // like, maybe the input is like: golfballpath: golfball 1 -> path -> golfball 10
+            // do I need to clone the start and end targets?
+            
+            
+
             startTarget!.transition = t;
 
             if (!perFrameObjs.has(startFrame)) {
                 startTarget!.frameId = startFrame;
+                startTarget!.debugTag = startObj + ":" + transition;
                 console.log("I CHOOSE ", startFrame)
                 perFrameObjs.set(startFrame, startTarget!);
             }
 
             if (!perFrameObjs.has(endFrame)) {
                 endTarget!.frameId = endFrame;
+                endTarget!.debugTag = endObj + ":" + transition;
                 perFrameObjs.set(endFrame, endTarget!);
             }
         }
+        }
+
         targets.push([...perFrameObjs.values()]);
 
     }
@@ -1484,15 +1937,6 @@ golfer 0 -> instantaneous -> golfer 1 -> instantaneous -> golfer 2 -> instantane
 
 
 
-let testStr3 = "timing: [1,1,1,1,1,1,1,1,1]\n\
-filepath: /animations/golf-collide${i}.png \n\
-objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
-golfstick 0 ->* instantaneous ->* golfstick 8\n\
-golfer 0 ->* instantaneous ->* golfer 8\n\
-ball 0 ->* instantaneous ->* ball 8\n\
-collision: collision(ball 4, golfstick 4) 3 -> instantaneous -> collision(ball 4, golfstick 4) 4" // should be 4 and 5 rather than 3 and 4
-
-parser(testStr3);
 
 
 
@@ -1503,9 +1947,9 @@ console.log("hi")
 // let [imagePath, numKeyframes] = [(i: number) => `/animations/slide-normal${i+1}.png`, 3];
 let [imagePath, numKeyframes] = [(i: number) => `/animations/slide-2obj${i + 1}.png`, 3];
 // let [imagePath, numKeyframes] = [(i: number) => `/animations/basic${i+1}.png`, 6];
-let tweenFrameNumber = 1;
+let tweenFrameNumber = 10;
 
-// if (false)
+if (false)
 // parseImagesIntoFrames([1,2,3,4,5,6,7,8,9].map(i => `/animations/golf-coloured${i}.png`)).then(data => {
 parseImagesIntoFrames([...new Array(numKeyframes)].map((_, i) => imagePath(i))).then(data => {
     // parseImagesIntoFrames([1, 2, 3].map(i => `/animations/slide-normal${i + 1}.png`)).then(data => {
@@ -1517,7 +1961,10 @@ parseImagesIntoFrames([...new Array(numKeyframes)].map((_, i) => imagePath(i))).
     // console.log(res.map(f => f.map(o => o.frameId)))
     // let frames = generateAnimation(res, [...Array(3)].map(_ => 4))
 
-    res = graphModifyToAddCollision(res);
+    // todo: I want to add a PathTrace here 
+    // duplicate two of the objects, then plug in a transition that uses their transition 
+    res = graphModifyToAddPathTrace(res);
+    // res = graphModifyToAddCollision(res);
     console.log(res)
 
     // console.log(frames)
@@ -1546,9 +1993,72 @@ parseImagesIntoFrames([...new Array(numKeyframes)].map((_, i) => imagePath(i))).
 })
 
 
+
+
+
+
+
+
+
+// front 32
+// front 64
+// front 57
+// pause 100
+
+
+
+
+
+
+
+
+let testStr3 = "timing: [1,1,1,1,1,1,1,1,1]\n\
+filepath: /animations/golf-collide${i}.png \n\
+objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
+golfstick 0 ->* instantaneous ->* golfstick 8\n\
+golfer 0 ->* instantaneous ->* golfer 8\n\
+ball 0 ->* instantaneous ->* ball 8\n\
+collision: collision(ball 4, golfstick 4) 3 -> instantaneous -> collision(ball 4, golfstick 4) 4" // should be 4 and 5 rather than 3 and 4
+// parser(testStr3);
+
 let wipeExample = "timing: [15,2]\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 rectangle 0 -> wipe -> rectangle 1";
-parser(wipeExample);
-parser(wipeExample, true);
+// parser(wipeExample);
+// parser(wipeExample, true);
+
+let growExample = "timing: [15,2]\n\
+filepath: /animations/e${i}.png \n\
+objects: [#000000 rectangle] \n\
+rectangle 0 -> grow -> rectangle 1";
+// parser(growExample);
+// parser(growExample, true);
+
+
+
+let headExample = "timing: [30,2]\n\
+filepath: /animations/e${i}.png \n\
+objects: [#000000 rectangle] \n\
+rectangle 0 -> drawingHead -> rectangle 1";
+// parser(headExample);
+
+let pathExample =  "timing: [10,10,10,10]\n\
+filepath: /animations/slide-2obj${i}.png \n\
+objects: [#000000 wall] [#d77bba rectangle] \n\
+wall 0 ->* instantaneous ->* wall 3\n\
+rectangle 0 -> move -> rectangle 3\n\
+rectangle 0 -> path -> rectangle 3"
+parser(pathExample);
+
+let golfPathExample = "timing: [4,4,4,4,4,4,4,4,4]\n\
+filepath: /animations/golf-collide${i}.png \n\
+objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
+golfstick 0 ->* instantaneous ->* golfstick 8\n\
+golfer 0 ->* instantaneous ->* golfer 8\n\
+ball 4 ->* move ->* ball 8\n\
+ball 4 -> path -> ball 5 -> path -> ball 6 -> path -> ball 7 -> path -> ball 8" // should be 4 and 5 rather than 3 and 4
+parser(golfPathExample);
+
+// what about temporal derivative objects? 
+// tracepath(name f1, name2 f2) and that should come later... or at least let's assume it's declared later

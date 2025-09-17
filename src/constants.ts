@@ -68,10 +68,12 @@ export let REVERSE_ANIM = false;
 export let CONTROL_ANIM = false;
 
 let slowishFrames = [12, 24];
+let midFrames = [6, 12];
 let fastFrames = [4,12]; // fast frames is the best default for now imo
 let fastestFrames = [2, 12];
-export let NUM_FRAMES_ROTATING = fastFrames[0];
-export let FULL_CYCLE_LENGTH = fastFrames[1];
+// default is fastFrames
+export let NUM_FRAMES_ROTATING = midFrames[0];
+export let FULL_CYCLE_LENGTH = midFrames[1];
 
 export let SPLIT_FLAP_CYCLE_LENGTH = 60;
 

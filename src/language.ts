@@ -101,6 +101,59 @@ export class FlipDotTransition implements TransitionSystem {
 
 }
 
+export enum DotFlipOptions {
+    Front,
+    Back,
+}
+
+export class DotFlipInstruction {
+    index: number;
+    state: DotFlipOptions;
+
+    constructor(index: number, state: DotFlipOptions) {
+        this.index = index;
+        this.state = state;
+    }
+}
+
+export class DotFlipFrame {
+    dots: DotFlipInstruction[];
+    pauseAfter: number; // miliseconds
+
+    constructor(dots: DotFlipInstruction[], pauseAfter: number) {
+        this.dots = dots;
+        this.pauseAfter = pauseAfter;
+    }
+}
+// how to do a flutter? 
+// the lagnuage is 
+// front 32
+// front 64
+// front 57
+// pause 100
+// pause between frames - you can't control how fast everything is flipping. 
+
+let parseFlipDotString = (str: string): DotFlipFrame[] => {
+    let lines = str.split("\n");
+    let args = lines.map(l => l.split(" ").map(s => s.trim()));
+    let dots: DotFlipInstruction[] = []
+    let frames: DotFlipFrame[] = [];
+    for (let arg of args) {
+        let type = arg[0];
+        let value = parseInt(arg[1]);
+        if (type == "front" || type == "back") {
+            dots.push(new DotFlipInstruction(type == "front" ? DotFlipOptions.Front : DotFlipOptions.Back, value));
+        } else {
+            frames.push(new DotFlipFrame(dots, value));
+            dots = [];
+        }
+    }
+    return frames;
+}
+
+
+// now for the hardware, I need to write a function that takes this low-level representation and displays it. 
+
 export class SimulationHardware implements Hardware {
     pixels: FlipDotState[];
     pixelTransitions: FlipDotTransition[];
@@ -135,6 +188,13 @@ export class SimulationHardware implements Hardware {
     }
 
     // input should be what you want to see (not the dots you want to flip)
+    programSequenceFromLanguage(input: DotFlipFrame[]): void {
+        // just set it up to programSequence
+        let sequence: [number, FlipDotState][][] = input.map(frame => frame.dots.map(inst => [inst.index, new FlipDotState(inst.state == DotFlipOptions.Front)]));
+        this.programSequence(sequence);
+        
+    }
+
     programSequence(input: [number, FlipDotState][][]): void {
         // we sh
         let frames = [];
@@ -328,6 +388,18 @@ export class FlipDotHardware implements Hardware {
         this.dimensions = [width, height];
         this.channelsToValues = new Map();
         this.pixels.forEach((v, i) => this.channelsToValues.set(i, 0))
+    }
+
+    programSequenceFromLanguage(input: DotFlipFrame[]): void {
+        // just draw and refresh.
+        input.forEach(frame => {
+            frame.dots.forEach(arg => {
+                if (arg.state == DotFlipOptions.Front) {
+                    this.setHardwarePixel(arg.index);
+                }
+            });
+            this.refresh();
+        })
     }
     
     programSequence(input: [number, State][][]): void {
