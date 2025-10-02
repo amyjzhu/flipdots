@@ -163,7 +163,7 @@ export class SimulationHardware implements Hardware {
 
     transitionIdx: number[][];
     frames: number[][][] = [];
-    flipSeq: (i: number) => number[][];
+    flipSeq: (i: number) => number[][] | undefined;
     touchedIdxs: number[] = [];
 
     flipY = true;
@@ -237,7 +237,12 @@ export class SimulationHardware implements Hardware {
         }
 
         this.flipSeq = (seqNum: number) => {
-            return frames[seqNum % frames.length];
+            if (seqNum == frames.length) {
+                return undefined;
+            } else {
+                return frames[seqNum % frames.length];    
+            }
+            
         };
         console.log(frames)
         this.sim.resetAnimation(this.flipSeq);

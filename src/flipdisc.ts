@@ -29,7 +29,7 @@ export class RowOfDiscs {
     frame2Flips: number[][];
     frame3Flips: number[][];
     frame4Flips: number[][];
-    nextFlipGenerator: (i: number) => number[][];
+    nextFlipGenerator: (i: number) => number[][] | undefined;
 
     groupSnapshot: number[] = [];
 
@@ -414,24 +414,41 @@ varying vec3 vColor;
                 // this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
                 // let rot = (!this.discStates[row][idx] ? -1 : 1) * ratio
-                let rot = 0;
+
                 this.discStates[row][idx] = false;
+                console.log("ya")
+                
+                this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
-                let pos = new THREE.Vector3();
-                let quat = new THREE.Quaternion();
-                let scale = new THREE.Vector3();
-                this.dummy.matrix.decompose(pos, quat, scale);
-
-                let newQuat = new THREE.Quaternion(0,0,0,0);
-                this.dummy.matrix.compose(pos, newQuat, scale);
-                // let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2) / 2, Math.sqrt(2) / 2, 0), rot)
-                // console.log(t)
-                // this.dummy.rotation.y += this.rotationRate;
-                // this.dummy.matrix.multiply(rotation)
-                // this.dummy.updateMatrix();
-
+                // Step 3: Reset rotation (quaternion to identity)
+                this.dummy.quaternion.identity();
+                
+                // Step 4: Recompose matrix
+                this.dummy.updateMatrix();
+                
+                // Step 5: Write it back
                 this.instanced!.setMatrixAt(row * this.width + idx, this.dummy.matrix);
+                
+                // Step 6: Mark update
                 this.instanced!.instanceMatrix.needsUpdate = true;
+
+                
+
+                // let pos = new THREE.Vector3();
+                // let quat = new THREE.Quaternion();
+                // let scale = new THREE.Vector3();
+                // this.dummy.matrix.decompose(pos, quat, scale);
+
+                // let newQuat = new THREE.Quaternion(0,0,0,0);
+                // this.dummy.matrix.compose(pos, newQuat, scale);
+                // // let rotation = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(-Math.sqrt(2) / 2, Math.sqrt(2) / 2, 0), rot)
+                // // console.log(t)
+                // // this.dummy.rotation.y += this.rotationRate;
+                // // this.dummy.matrix.multiply(rotation)
+                // // this.dummy.updateMatrix();
+
+                // this.instanced!.setMatrixAt(row * this.width + idx, this.dummy.matrix);
+                // this.instanced!.instanceMatrix.needsUpdate = true;
             }
         }
         this.renderer.render(this.scene, this.camera);
@@ -475,7 +492,7 @@ varying vec3 vColor;
         }
     }
 
-    resetAnimation = (newFlip: (i: number) => number[][]) => {
+    resetAnimation = (newFlip: (i: number) => number[][] | undefined) => {
         for (let row of this.rowsOfDiscs) {
             for (let disc of row) {
                 disc.rotation.y = 0;
@@ -595,11 +612,24 @@ varying vec3 vColor;
             this.animationFrameCounter = 0;
             // setNextToUpdate(flipCycles);
 
-            this.idxToUpdate = this.nextFlipGenerator(this.flipCycles);
+            let next = this.nextFlipGenerator(this.flipCycles);
+            // console.log(need a way to set reset in this)
             // for each...
-            this.idxToUpdate.forEach((row, idx) => row.forEach(i => this.discStates[idx][i] = !this.discStates[idx][i]))
-            this.flipCycles += 1;
-            this.clock.start()
+
+            if (next == undefined) {
+                console.log("next is undefined, whil flipcycles is ", this.flipCycles)
+                this.flipCycles = 0;
+                // should have reset it... 
+                this.idxToUpdate = [...Array(this.height)].map(_ => []);
+                this.clear();
+            } else {
+                this.idxToUpdate = next;
+
+                this.idxToUpdate.forEach((row, idx) => row.forEach(i => this.discStates[idx][i] = !this.discStates[idx][i]))
+                this.flipCycles += 1;
+                this.clock.start()
+            }
+            
         } else {
             this.animationFrameCounter += 1;
         }

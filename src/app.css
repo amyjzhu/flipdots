@@ -80,3 +80,7 @@
  button.btn-selected {
      background-color: coral;
  }
+
+ .code-snippet {
+    font-family: monospace;
+ }

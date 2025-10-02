@@ -18,7 +18,7 @@
 
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 
-
+let collisionStats = [4, 2];
 
 // Arbitrary colour
 class AColour extends DColour<false> {
@@ -318,6 +318,8 @@ class LinearPath implements TemporalTarget {
     // shape: Colour[][];
     parentTransitions: Transition[];
     interpolationPoint: number; // from 0 to 1
+    
+    debugTag: string | undefined;
 
 
     constructor(start: Target, end: Target, transition: Transition, interpolationPoint: number) {
@@ -424,7 +426,72 @@ function newArrayMatchingShapeOf<T, R>(arrayWithShape: R[][], defaultValue: T): 
     return [...Array(arrayWithShape.length)].map(_ => [...Array(arrayWithShape[0].length)].map(_ => defaultValue));
 }
 
+class Stroke implements DerivedTarget {
+    parentTargets: Target[]
+    position: [number, number];
+    frameId: number | undefined;
+    transition: Transition | undefined;
+    debugTag: string | undefined;
+    size: number;
+    shape: Colour[][];
 
+    constructor(parentTarget: Target,  size: number) {
+        this.parentTargets = [parentTarget];
+        this.size = size;
+        this.position = parentTarget.position;
+
+        this.shape = stroke(parentTarget.draw(), size);
+    }
+
+    draw(): Colour[][] {
+        return this.shape;
+    }
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    
+}
+
+class Checkerboard implements DerivedTarget {
+    parentTargets: Target[];
+    position: [number, number];
+    startZero: boolean;
+    
+
+    constructor(parentTarget: Target, startZero: boolean = false) {
+        this.parentTargets = [parentTarget];
+        this.position = parentTarget.position;
+        this.startZero = startZero;
+    }
+
+    draw(): Colour[][] {
+        // work within the shape given to make it a checkerboard
+        let shape = this.parentTargets[0].draw();
+        
+        let checkerboardShape = [];
+        for (let row = 0; row < shape.length; row++) {
+            let checkerboardRow = [];
+            for (let col = 0; col < shape[row].length; col++) {
+                checkerboardRow.push(shape[row][col] && ((row % 2 == col % 2 && this.startZero) || (row % 2 != col % 2 && !this.startZero)));
+            }
+        checkerboardShape.push(checkerboardRow);
+        }
+        
+        return checkerboardShape;
+    }
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    transition: Transition | undefined;
+    debugTag: string | undefined;
+
+
+}
+
+class Inverted implements DerivedTarget {
+
+}
 
 class Collision implements DerivedTarget {
     parentTargets: Target[];
@@ -1475,6 +1542,11 @@ let parser = async (input: string, flipless: boolean = false) => {
     } else {
         hardware.programSequenceFromLanguage(hardwareProg);
     }
+
+    let programText = document.createElement("div")
+    programText.innerHTML = input.replaceAll("\n", "<br>");
+    programText.classList.add("code-snippet");
+    document.getElementById("render")!.appendChild(programText)
 }
 
 let parseObjDecls = (input: string): Map<string, string> => {
@@ -1534,6 +1606,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
         if ([...names.keys()].includes(obj[0])) {
             baseInstructions.push(obj);
         } else {
+            console.log(obj)
             derivedInstructions.push(obj);
         }
     });
@@ -1542,6 +1615,19 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
     console.log(derivedInstructions);
 
     let namesToObjects: Map<string, Target[]> = new Map();
+
+    for (let [obj, colour] of names) {
+        let targets = [];
+        for (let frameIdx = 0; frameIdx < frames.length; frameIdx++) {
+            let frame = frames[frameIdx];
+            console.log(obj, colour)
+            targets.push(new PixelArtTarget(frame.map(r => r.map(c => c == colour)), false));
+            console.log(frameDisplay(frame.map(r => r.map(c => c == colour))))
+        }
+
+        namesToObjects.set(obj, targets);
+    }
+
     for (let [obj, steps] of baseInstructions) {
         // okay great.
         // for each object, let me get all the frames first.
@@ -1550,6 +1636,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
         // now...
         let perColourFrames = [];
         let perFrameObjs: Map<number, Target> = new Map();
+        console.log(frames)
         for (let frame of frames) {
             console.log(obj, colour)
             perColourFrames.push(frame.map(r => r.map(c => c == colour)));
@@ -1564,11 +1651,12 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             let [start, transition, end] = step;
             let [startObj, startFrame] = start;
             let [endObj, endFrame] = end;
-            if (typeof startObj === 'string') {
+            if (typeof startObj === 'string' && typeof endObj == "string") { // d\o I nd to check endObj
                 // I'll just make an object that's a frame
 
-                let obj = (perFrameObjs.has(startFrame)) ? perFrameObjs.get(startFrame)! : new PixelArtTarget(perColourFrames[startFrame], false);
-                let eo = (perFrameObjs.has(endFrame)) ? perFrameObjs.get(endFrame)! : new PixelArtTarget(perColourFrames[endFrame], false);
+                // TODO: just steal from nametoobjects 
+                let obj = (perFrameObjs.has(startFrame)) ? perFrameObjs.get(startFrame)! : namesToObjects.get(startObj)![startFrame];
+                let eo = (perFrameObjs.has(endFrame)) ? perFrameObjs.get(endFrame)! : namesToObjects.get(endObj)![endFrame];
 
                 // console.log(frameDisplay(obj.draw()))
 
@@ -1633,6 +1721,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
     }
 
     for (let [obj, steps] of derivedInstructions) {
+        console.log("derived: ", obj, steps)
         let perFrameObjs: Map<number, Target> = new Map();
 
         for (let step of steps) {
@@ -1642,6 +1731,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             // basically... 
             // I need to 
 
+            console.log(step)
             let startTarget, endTarget;
             if (typeof startObj === 'string') {
                 // this is just a normal selector.
@@ -1650,7 +1740,14 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                 // it's constructed.
                 if (startObj[0] == "collision") {
                     let args = startObj[1].map(([n, f]) => namesToObjects.get(n)![f]);
-                    startTarget = new Collision(args, generateFlutterCenteredEffect(4, 2, [width, height]), false);
+                    startTarget = new Collision(args, generateFlutterCenteredEffect(collisionStats[0], collisionStats[1], [width, height]), false);
+                } else if (startObj[0] == "checkerboard") {
+                    let arg = namesToObjects.get(startObj[1][0][0] as string)![startObj[1][0][1] as number];
+                    console.log(arg);
+
+                    startTarget = new Checkerboard(arg, startFrame % 2 == 1);
+                    startTarget.debugTag = "checkerboard-start " + startFrame
+                    console.log("checkerboard start")
                 }
             }
 
@@ -1660,7 +1757,14 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             } else {
                 if (endObj[0] == "collision") {
                     let args = endObj[1].map(([n, f]) => namesToObjects.get(n)![f]);
-                    endTarget = new Collision(args, generateFlutterCenteredEffect(4, 2, [width, height]), false);
+                    endTarget = new Collision(args, generateFlutterCenteredEffect(collisionStats[0], collisionStats[1], [width, height]), false);
+                } else if (endObj[0] == "checkerboard") {
+                    let arg = namesToObjects.get(endObj[1][0][0] as string)![endObj[1][0][1] as number];
+                    console.log(arg);
+
+                    endTarget = new Checkerboard(arg, endFrame % 2 == 1);
+                    endTarget.debugTag = "checkerboard-end " + endFrame
+                    console.log("checkerboard end")
                 }
             }
 
@@ -1697,17 +1801,24 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             
 
             startTarget!.transition = t;
+            console.log("setting ", startTarget, " transition to ", t)
 
+            // I see... why shouldn't I rewrite it though? 
+            // yeah... what actually are the semantics?
+            // basically, this needs to have the trasition updated at the very least 
             if (!perFrameObjs.has(startFrame)) {
                 startTarget!.frameId = startFrame;
                 startTarget!.debugTag = startObj + ":" + transition;
-                console.log("I CHOOSE ", startFrame)
+                console.log("setting startframe ", startFrame)
                 perFrameObjs.set(startFrame, startTarget!);
+            } else {
+                perFrameObjs.get(startFrame)!.transition = t;
             }
 
             if (!perFrameObjs.has(endFrame)) {
                 endTarget!.frameId = endFrame;
                 endTarget!.debugTag = endObj + ":" + transition;
+                console.log("setting enframe", endFrame)
                 perFrameObjs.set(endFrame, endTarget!);
             }
         }
@@ -1778,7 +1889,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
     let newObjectTagSelector = /^([\w\d-]+):/g;
 
     let count = 0;
-    while ((line.length != 0 || !line.startsWith("//")) && count <= 10) {
+    while ((line.length != 0 || !line.startsWith("//")) && count <= 50) {
         console.log(count)
         // while (count <= 10) {
         let a = simpleSelector.exec(line);
@@ -1834,7 +1945,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
             }
 
         } else if (b) {
-            console.log("match construcotr", b[0])
+            console.log("match construcotr", b[0], "- current transition ", transition)
 
             let constructorName = b[1];
             console.log(b.length);
@@ -1844,7 +1955,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
             let frameNum = parseInt(b[b.length - 1]);
             line = line.slice(b[0].length);
 
-            console.log(constructorName, argSelectors, frameNum)
+            console.log(constructorName, argSelectors, frameNum, transition)
 
             // just copied from above unfortunately....
 
@@ -2019,14 +2130,14 @@ golfstick 0 ->* instantaneous ->* golfstick 8\n\
 golfer 0 ->* instantaneous ->* golfer 8\n\
 ball 0 ->* instantaneous ->* ball 8\n\
 collision: collision(ball 4, golfstick 4) 3 -> instantaneous -> collision(ball 4, golfstick 4) 4" // should be 4 and 5 rather than 3 and 4
-// parser(testStr3);
+parser(testStr3);
 
 let wipeExample = "timing: [15,2]\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 rectangle 0 -> wipe -> rectangle 1";
-// parser(wipeExample);
-// parser(wipeExample, true);
+parser(wipeExample);
+parser(wipeExample, true);
 
 let growExample = "timing: [15,2]\n\
 filepath: /animations/e${i}.png \n\
@@ -2043,13 +2154,13 @@ objects: [#000000 rectangle] \n\
 rectangle 0 -> drawingHead -> rectangle 1";
 // parser(headExample);
 
-let pathExample =  "timing: [10,10,10,10]\n\
+let pathExample =  "timing: [4,4,4,4]\n\
 filepath: /animations/slide-2obj${i}.png \n\
 objects: [#000000 wall] [#d77bba rectangle] \n\
 wall 0 ->* instantaneous ->* wall 3\n\
-rectangle 0 -> move -> rectangle 3\n\
-rectangle 0 -> path -> rectangle 3"
-parser(pathExample);
+rectangle 0 ->* move ->* rectangle 3\n\
+rectangle 0 ->* path ->* rectangle 3"
+// parser(pathExample);
 
 let golfPathExample = "timing: [4,4,4,4,4,4,4,4,4]\n\
 filepath: /animations/golf-collide${i}.png \n\
@@ -2058,7 +2169,84 @@ golfstick 0 ->* instantaneous ->* golfstick 8\n\
 golfer 0 ->* instantaneous ->* golfer 8\n\
 ball 4 ->* move ->* ball 8\n\
 ball 4 -> path -> ball 5 -> path -> ball 6 -> path -> ball 7 -> path -> ball 8" // should be 4 and 5 rather than 3 and 4
-parser(golfPathExample);
+// parser(golfPathExample);
 
 // what about temporal derivative objects? 
 // tracepath(name f1, name2 f2) and that should come later... or at least let's assume it's declared later
+
+
+
+let checkerboardExample = "timing: [1,1]\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] \n\
+checkerboard(rectangle 1) 0 -> instantaneous -> checkerboard(rectangle 1) 1";
+// parser(checkerboardExample);
+// parser(wipeExample, true);
+
+
+collisionStats = [10,2] // I need to make this configurable to make a bigger collision
+let fishExample = "timing: [1,1,1,1,1,1,1,1,1,1]\n\
+filepath: /animations/fish${i}.png \n\
+objects: [#5b6ee1 water] [#df7126 fish] \n\
+fish 0 ->* instantaneous ->* fish 9\n\
+checkerboard(water 0) 0 -> instantaneous -> checkerboard(water 1) 1 -> instantaneous -> checkerboard(water 2) 2 -> instantaneous -> checkerboard(water 3) 3 -> instantaneous -> checkerboard(water 4) 4  -> instantaneous -> checkerboard(water 5) 5 -> instantaneous -> checkerboard(water 6) 6 -> instantaneous -> checkerboard(water 7) 7  -> instantaneous -> checkerboard(water 8) 8 -> instantaneous -> checkerboard(water 9) 9"
+// collision: collision(water 5, fish 5) 5 -> instantaneous -> collision(water 5, fish 5) 6";
+// parser(fishExample);
+
+let fishSimpleExample = "timing: [1,1,1,1,1,1,1,1,1,1]\n\
+filepath: /animations/fish${i}.png \n\
+objects: [#5b6ee1 water] [#df7126 fish] \n\
+fish 0 ->* instantaneous ->* fish 9\n\
+water 0 ->* instantaneous ->* water 9"
+// collision: collision(water 5, fish 5) 5 -> instantaneous -> collision(water 5, fish 5) 6";
+// parser(fishSimpleExample);
+
+
+let teapotExample = "timing: [1,1,1,1,1,1,1,1,1,1]\n\
+filepath: /animations/teapot${i}.png \n\
+objects: [#000000 teapot] \n\
+teapot 0 ->* instantaneous ->* teapot 9"
+// parser(teapotExample);
+
+// [2,2,2,2,2,2,2,2,2,2,2,2,2,2]
+let stelaeExample = "timing: [1,1,1,1,1,1,1,1,1,1,1,1,1,1]\n\
+filepath: /animations/stelae${i}.png \n\
+objects: [#000000 eyes] [#5b6ee1 face] [#ac3232 eyebrow]\n\
+face 0 ->* instantaneous ->* face 13\n\
+eyes 0 ->* wipe ->* eyes 13\n\
+eyebrow 0 ->* instantaneous ->* eyebrow 13"
+// parser(stelaeExample);
+
+let stelaeSkipExample = "timing: [2,2,2,2,2,2,2]\n\
+filepath: /animations/stelae${i}.png \n\
+objects: [#000000 eyes] [#5b6ee1 face] [#ac3232 eyebrow]\n\
+face 0 -> instantaneous -> face 6\n\
+eyes 0 -> wipe -> eyes 6\n\
+eyebrow 0 -> instantaneous -> eyebrow 6"
+// parser(stelaeSkipExample);
+
+
+let fireworksExample = "timing: [1,1,1,1,1,1,1,1,1,1,1,1,1]\n\
+filepath: /animations/firework${i}.png \n\
+objects: [#000000 bit]\n\
+bit 0 ->* instantaneous ->* bit 12"
+// parser(fireworksExample);
+
+
+let footballExample = "timing: [1,1,1,1,1,1,1,1,1,1]\n\
+filepath: /animations/football${i}.png \n\
+objects: [#000000 bit]\n\
+bit 0 ->* instantaneous ->* bit 9"
+// parser(footballExample);
+
+let dripWhiteExample = "timing: [2,2,2,2,2,2,2]\n\
+filepath: /animations/drip-white${i}.png \n\
+objects: [#5fcde4 drip]\n\
+drip 0 ->* instantaneous ->* drip 6"
+parser(dripWhiteExample);
+
+let dripBlackExample = "timing: [2,2,2,2,2,2,2]\n\
+filepath: /animations/drip-black${i}.png \n\
+objects: [#99e550 drip]\n\
+drip 0 ->* instantaneous ->* drip 6"
+parser(dripBlackExample);
