@@ -2152,7 +2152,7 @@ let headExample = "timing: [30,2]\n\
 filepath: /animations/e${i}.png \n\
 objects: [#000000 rectangle] \n\
 rectangle 0 -> drawingHead -> rectangle 1";
-// parser(headExample);
+parser(headExample);
 
 let pathExample =  "timing: [4,4,4,4]\n\
 filepath: /animations/slide-2obj${i}.png \n\
@@ -2160,7 +2160,7 @@ objects: [#000000 wall] [#d77bba rectangle] \n\
 wall 0 ->* instantaneous ->* wall 3\n\
 rectangle 0 ->* move ->* rectangle 3\n\
 rectangle 0 ->* path ->* rectangle 3"
-// parser(pathExample);
+parser(pathExample);
 
 let golfPathExample = "timing: [4,4,4,4,4,4,4,4,4]\n\
 filepath: /animations/golf-collide${i}.png \n\
@@ -2169,7 +2169,7 @@ golfstick 0 ->* instantaneous ->* golfstick 8\n\
 golfer 0 ->* instantaneous ->* golfer 8\n\
 ball 4 ->* move ->* ball 8\n\
 ball 4 -> path -> ball 5 -> path -> ball 6 -> path -> ball 7 -> path -> ball 8" // should be 4 and 5 rather than 3 and 4
-// parser(golfPathExample);
+parser(golfPathExample);
 
 // what about temporal derivative objects? 
 // tracepath(name f1, name2 f2) and that should come later... or at least let's assume it's declared later
@@ -2180,7 +2180,7 @@ let checkerboardExample = "timing: [1,1]\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 checkerboard(rectangle 1) 0 -> instantaneous -> checkerboard(rectangle 1) 1";
-// parser(checkerboardExample);
+parser(checkerboardExample);
 // parser(wipeExample, true);
 
 
@@ -2191,7 +2191,7 @@ objects: [#5b6ee1 water] [#df7126 fish] \n\
 fish 0 ->* instantaneous ->* fish 9\n\
 checkerboard(water 0) 0 -> instantaneous -> checkerboard(water 1) 1 -> instantaneous -> checkerboard(water 2) 2 -> instantaneous -> checkerboard(water 3) 3 -> instantaneous -> checkerboard(water 4) 4  -> instantaneous -> checkerboard(water 5) 5 -> instantaneous -> checkerboard(water 6) 6 -> instantaneous -> checkerboard(water 7) 7  -> instantaneous -> checkerboard(water 8) 8 -> instantaneous -> checkerboard(water 9) 9"
 // collision: collision(water 5, fish 5) 5 -> instantaneous -> collision(water 5, fish 5) 6";
-// parser(fishExample);
+parser(fishExample);
 
 let fishSimpleExample = "timing: [1,1,1,1,1,1,1,1,1,1]\n\
 filepath: /animations/fish${i}.png \n\
@@ -2199,7 +2199,7 @@ objects: [#5b6ee1 water] [#df7126 fish] \n\
 fish 0 ->* instantaneous ->* fish 9\n\
 water 0 ->* instantaneous ->* water 9"
 // collision: collision(water 5, fish 5) 5 -> instantaneous -> collision(water 5, fish 5) 6";
-// parser(fishSimpleExample);
+parser(fishSimpleExample);
 
 
 let teapotExample = "timing: [1,1,1,1,1,1,1,1,1,1]\n\
@@ -2215,7 +2215,7 @@ objects: [#000000 eyes] [#5b6ee1 face] [#ac3232 eyebrow]\n\
 face 0 ->* instantaneous ->* face 13\n\
 eyes 0 ->* wipe ->* eyes 13\n\
 eyebrow 0 ->* instantaneous ->* eyebrow 13"
-// parser(stelaeExample);
+parser(stelaeExample);
 
 let stelaeSkipExample = "timing: [2,2,2,2,2,2,2]\n\
 filepath: /animations/stelae${i}.png \n\
@@ -2223,21 +2223,21 @@ objects: [#000000 eyes] [#5b6ee1 face] [#ac3232 eyebrow]\n\
 face 0 -> instantaneous -> face 6\n\
 eyes 0 -> wipe -> eyes 6\n\
 eyebrow 0 -> instantaneous -> eyebrow 6"
-// parser(stelaeSkipExample);
+parser(stelaeSkipExample);
 
 
 let fireworksExample = "timing: [1,1,1,1,1,1,1,1,1,1,1,1,1]\n\
 filepath: /animations/firework${i}.png \n\
 objects: [#000000 bit]\n\
 bit 0 ->* instantaneous ->* bit 12"
-// parser(fireworksExample);
+parser(fireworksExample);
 
 
 let footballExample = "timing: [1,1,1,1,1,1,1,1,1,1]\n\
 filepath: /animations/football${i}.png \n\
 objects: [#000000 bit]\n\
 bit 0 ->* instantaneous ->* bit 9"
-// parser(footballExample);
+parser(footballExample);
 
 let dripWhiteExample = "timing: [2,2,2,2,2,2,2]\n\
 filepath: /animations/drip-white${i}.png \n\
