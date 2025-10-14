@@ -456,36 +456,47 @@ class Noise implements DerivedTarget {
     parentTargets: Target[];
     position: [number, number];
     fraction: number;
+    pattern: Colour[][];
     
     frameId: number | undefined;
     transition: Transition | undefined;
     debugTag: string | undefined;
 
-    constructor(target: Target, fraction: number) {
+    constructor(target: Target, fraction: number, baseTarget?: Target) {
         this.parentTargets = [target];
         this.position = target.position;
         this.fraction = fraction;
-    }
+        if (baseTarget) {
+            this.parentTargets.push(baseTarget);
+        }
 
-    draw(): Colour[][] {
-        let target = this.parentTargets[0];
         let shape = target.draw();
-
         let pattern = [];
+        
+        let base: Colour[][] | undefined;
+        if (this.parentTargets.length > 1) {
+            console.log("base available ", this.parentTargets[1].debugTag)
+            base = this.parentTargets[1].draw();
+        }
+
         for (let y = 0; y < shape.length; y++) {
             let row = []
             for (let x = 0; x < shape[y].length; x++) {
                 // const index = (y * row.length + x) * 4;
                 
-                const isWhite = shape[y][x] ? Math.random() > this.fraction : false;
+                const isWhite = shape[y][x] ? base && base[y][x] ? true : Math.random() > this.fraction : false;
                 // const colour = isWhite ? 255 : 0;
 
                 row.push(isWhite);
             }
             pattern.push(row);
         }
-        
-        return pattern;
+
+        this.pattern = pattern;
+    }
+
+    draw(): Colour[][] {
+        return this.pattern;
     }
 
     clone(): Target {
@@ -1545,11 +1556,19 @@ let parser = async (input: string, flipless: boolean = false) => {
 
     console.log(lines.find(l => l.startsWith("timing:"))!.slice(7).trim())
     let timing = JSON.parse(lines.find(l => l.startsWith("timing:"))!.slice(7).trim());
+
+    let filePathIndices = timing;
+    if (!Array.isArray(timing)) {
+        filePathIndices = timing["frames"];
+        timing = timing["frames"].concat(timing["additional"]);
+    } 
+
     let filePath = lines.find(l => l.startsWith("filepath:"))!.slice(9).trim();
     // to get all filepaths...
     let inject = (str: string, n: string) => str.replace(/\${(.*?)}/g, n);
-    let files = timing.map((t: number, i: number) => inject(filePath, `${i + 1}`));
+    let files = filePathIndices.map((t: number, i: number) => inject(filePath, `${i + 1}`));
 
+    console.log("timing is...", timing, "filepathindices", filePathIndices);
 
     let objDecl = lines.find(l => l.startsWith("objects:"))!.slice(8).trim();
     // the rest are objects.
@@ -1711,6 +1730,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                 // thi smight not be true... 
                 let newEndTarget = namesToObjects.get(endObj as string)!.find(o => o.frameId == endFrame)!.clone();
                 
+                
                 if (!newTarget || newTarget.transition == undefined) {
                     console.log(newTarget);
                     console.log(namesToObjects)
@@ -1795,6 +1815,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                 // this is just a normal selector.
                 startTarget = namesToObjects.get(startObj)!.find(o => o.frameId == startFrame)!;
                 console.log(namesToObjects.get(startObj)!)
+                startTarget.debugTag = startObj;
             } else {
                 // it's constructed.
                 if (startObj[0] == "collision") {
@@ -1809,18 +1830,22 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     console.log("checkerboard start")
                 } else if (startObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![startObj[1][0][1] as number];
-                    console.log("making noise!");
+                    console.log("making noise!", arg);
                     // should be customizable lol 
-                    startTarget = new Noise(arg, 1 - startFrame / transitions.length);
+                    startTarget = new Noise(arg, 1 - (startFrame /  (transitions.length + 1)));
+                    startTarget.debugTag = `noise(${arg.debugTag})`
                 
                 } else if (startObj[0] == "noop") { // TODO: just a bandaid solution here to not being able to go from derivedobject to baseobject in instr line
                     startTarget = namesToObjects.get(startObj[1][0][0])![startObj[1][0][1]];
+                    startTarget.debugTag = `noop(${startTarget.debugTag})`
+
                 }   
             }
 
             if (typeof endObj === 'string') {
                 // this is just a normal selector.
                 endTarget = namesToObjects.get(endObj)!.find(o => o.frameId == endFrame)!;
+                endTarget.debugTag = endObj;
             } else {
                 if (endObj[0] == "collision") {
                     let args = endObj[1].map(([n, f]) => namesToObjects.get(n)![f]);
@@ -1834,11 +1859,15 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     console.log("checkerboard end")
                 } else if (endObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![endObj[1][0][1] as number];
-
+                    console.log("making noise!", arg);
                     // should be customizable lol 
-                    endTarget = new Noise(arg, 1 - endFrame / transitions.length);
+                    // let's include the startarg?
+                    endTarget = new Noise(arg, 1 - (endFrame / (transitions.length + 1)), startTarget);
+                    endTarget.debugTag = `noise(${arg.debugTag})`
+
                 } else if (endObj[0] == "noop") {
                     endTarget = namesToObjects.get(startObj[1][0][0])![endObj[1][0][1]];
+                    endTarget.debugTag = `noop(${endTarget.debugTag})`
                 }
             }
 
@@ -2207,11 +2236,15 @@ parseImagesIntoFrames([...new Array(numKeyframes)].map((_, i) => imagePath(i))).
 
 
 
-let noiseEmergeExample = "timing: [1,1]\n\
+let noiseEmergeExample = "timing: {\"frames\": [1,2], \"additional\": [2]}\n\
 filepath: /animations/wipe${i}.png \n\
-objects: [#000000 rectangle] \n\
-noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1";
+objects: [#000000 rectangle] [#ffffff background]\n\
+noop(background 0) 0 -> noise(background 1) 1 -> noop(background 0) 2\n\
+noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1 -> instantaneous -> noise(rectangle 1) 2 -> instantaneous -> noop(rectangle 1) 3";
 parser(noiseEmergeExample);
+
+
+
 /*
 
 
