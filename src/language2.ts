@@ -1807,18 +1807,15 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     startTarget = new Checkerboard(arg, startFrame % 2 == 1);
                     startTarget.debugTag = "checkerboard-start " + startFrame
                     console.log("checkerboard start")
-<<<<<<< HEAD
                 } else if (startObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![startObj[1][0][1] as number];
                     console.log("making noise!");
                     // should be customizable lol 
                     startTarget = new Noise(arg, 1 - startFrame / transitions.length);
-                }
-=======
+                
                 } else if (startObj[0] == "noop") { // TODO: just a bandaid solution here to not being able to go from derivedobject to baseobject in instr line
                     startTarget = namesToObjects.get(startObj[1][0][0])![startObj[1][0][1]];
                 }   
->>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
             }
 
             if (typeof endObj === 'string') {
@@ -1835,16 +1832,13 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     endTarget = new Checkerboard(arg, endFrame % 2 == 1);
                     endTarget.debugTag = "checkerboard-end " + endFrame
                     console.log("checkerboard end")
-<<<<<<< HEAD
                 } else if (endObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![endObj[1][0][1] as number];
 
                     // should be customizable lol 
                     endTarget = new Noise(arg, 1 - endFrame / transitions.length);
-=======
                 } else if (endObj[0] == "noop") {
                     endTarget = namesToObjects.get(startObj[1][0][0])![endObj[1][0][1]];
->>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
                 }
             }
 
@@ -2328,13 +2322,11 @@ parser(checkerboardExample);
 // parser(wipeExample, true);
 
 
-<<<<<<< HEAD
 let noiseEmergeExample = "timing: [1,1]\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1";
 parser(noiseEmergeExample);
-=======
 
 let checkerboardAppearBgExample = "timing: [3,3]\n\
 filepath: /animations/wipe${i}.png \n\
@@ -2348,7 +2340,6 @@ filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 noop(rectangle 0) 0 -> instantaneous -> checkerboard(rectangle 1) 0 -> instantaneous -> noop(rectangle 1) 2";
 parser(checkerboardAppearExample);
->>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
 
 
 collisionStats = [10,2] // I need to make this configurable to make a bigger collision
