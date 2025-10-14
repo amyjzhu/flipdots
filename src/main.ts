@@ -278,6 +278,7 @@ for (let i = 0; i < golf_opts.length; i++) {
     buttons.appendChild(btn);
 }
 document.body.append(buttons)
+
 // new VideoIndexGenerator().loadImages(GOLF_STRETCH);
 // new VideoIndexGenerator().loadImages(GOLF_CAMERA);
 // new VideoIndexGenerator().loadImages(GOLF_PATH);

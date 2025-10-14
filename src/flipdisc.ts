@@ -416,7 +416,7 @@ varying vec3 vColor;
                 // let rot = (!this.discStates[row][idx] ? -1 : 1) * ratio
 
                 this.discStates[row][idx] = false;
-                console.log("ya")
+                // console.log("ya")
                 
                 this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
@@ -617,7 +617,7 @@ varying vec3 vColor;
             // for each...
 
             if (next == undefined) {
-                console.log("next is undefined, whil flipcycles is ", this.flipCycles)
+                // console.log("next is undefined, whil flipcycles is ", this.flipCycles)
                 this.flipCycles = 0;
                 // should have reset it... 
                 this.idxToUpdate = [...Array(this.height)].map(_ => []);
