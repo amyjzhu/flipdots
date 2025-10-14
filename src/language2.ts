@@ -452,6 +452,49 @@ class Stroke implements DerivedTarget {
     
 }
 
+class Noise implements DerivedTarget {
+    parentTargets: Target[];
+    position: [number, number];
+    fraction: number;
+    
+    frameId: number | undefined;
+    transition: Transition | undefined;
+    debugTag: string | undefined;
+
+    constructor(target: Target, fraction: number) {
+        this.parentTargets = [target];
+        this.position = target.position;
+        this.fraction = fraction;
+    }
+
+    draw(): Colour[][] {
+        let target = this.parentTargets[0];
+        let shape = target.draw();
+
+        let pattern = [];
+        for (let y = 0; y < shape.length; y++) {
+            let row = []
+            for (let x = 0; x < shape[y].length; x++) {
+                // const index = (y * row.length + x) * 4;
+                
+                const isWhite = shape[y][x] ? Math.random() > this.fraction : false;
+                // const colour = isWhite ? 255 : 0;
+
+                row.push(isWhite);
+            }
+            pattern.push(row);
+        }
+        
+        return pattern;
+    }
+
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    
+
+}
+
 class Checkerboard implements DerivedTarget {
     parentTargets: Target[];
     position: [number, number];
@@ -1748,6 +1791,11 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     startTarget = new Checkerboard(arg, startFrame % 2 == 1);
                     startTarget.debugTag = "checkerboard-start " + startFrame
                     console.log("checkerboard start")
+                } else if (startObj[0] == "noise") {
+                    let arg = namesToObjects.get(startObj[1][0][0] as string)![startObj[1][0][1] as number];
+                    console.log("making noise!");
+                    // should be customizable lol 
+                    startTarget = new Noise(arg, 1 - startFrame / transitions.length);
                 }
             }
 
@@ -1765,6 +1813,11 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     endTarget = new Checkerboard(arg, endFrame % 2 == 1);
                     endTarget.debugTag = "checkerboard-end " + endFrame
                     console.log("checkerboard end")
+                } else if (endObj[0] == "noise") {
+                    let arg = namesToObjects.get(startObj[1][0][0] as string)![endObj[1][0][1] as number];
+
+                    // should be customizable lol 
+                    endTarget = new Noise(arg, 1 - endFrame / transitions.length);
                 }
             }
 
@@ -2118,6 +2171,12 @@ parseImagesIntoFrames([...new Array(numKeyframes)].map((_, i) => imagePath(i))).
 
 
 
+let noiseEmergeExample = "timing: [1,1]\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] \n\
+noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1";
+parser(noiseEmergeExample);
+/*
 
 
 
@@ -2182,6 +2241,13 @@ objects: [#000000 rectangle] \n\
 checkerboard(rectangle 1) 0 -> instantaneous -> checkerboard(rectangle 1) 1";
 parser(checkerboardExample);
 // parser(wipeExample, true);
+
+
+let noiseEmergeExample = "timing: [1,1]\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] \n\
+noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1";
+parser(noiseEmergeExample);
 
 
 collisionStats = [10,2] // I need to make this configurable to make a bigger collision
@@ -2250,3 +2316,4 @@ filepath: /animations/drip-black${i}.png \n\
 objects: [#99e550 drip]\n\
 drip 0 ->* instantaneous ->* drip 6"
 parser(dripBlackExample);
+*/

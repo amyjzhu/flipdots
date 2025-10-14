@@ -2,6 +2,7 @@ import { RowOfDiscs } from "./flipdisc";
 import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT, GOLF_ANIM } from "./constants";
 
 import * as THREE from 'three';
+import { CINDERELLA_BASIC } from './cinderella';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
 import { SplitFlapDisplay } from "./splitflap";
 
@@ -265,6 +266,7 @@ console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]]))
 
 // new SplitFlapDisplay(10,20);
 
+
 let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
 let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
 let buttons = document.createElement("div");
@@ -278,7 +280,18 @@ for (let i = 0; i < golf_opts.length; i++) {
     buttons.appendChild(btn);
 }
 document.body.append(buttons)
+
+
+// new VideoIndexGenerator().loadVideoFromStr(CINDERELLA_BASIC.replace(/\'/g,''));
+
+
 // new VideoIndexGenerator().loadImages(GOLF_STRETCH);
 // new VideoIndexGenerator().loadImages(GOLF_CAMERA);
 // new VideoIndexGenerator().loadImages(GOLF_PATH);
 // new VideoIndexGenerator().loadImages(GOLF_IMPACT);
+
+
+// white red or green black. 
+
+// how to set my own example...
+// make noise patterns that overlay more and more of the object... 

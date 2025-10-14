@@ -37,8 +37,13 @@ export let GOLF_PATH = [...Array(9)].map((_,i) => `/animations/golf-path${i + 1}
 // export let WIDTH = 5;
 // export let HEIGHT = 7;
 
+let CIND_WIDTH = 270;
+let CIND_HEIGHT = 155;
+
 export let WIDTH = GOLFWIDTH;
 export let HEIGHT = GOLFHEIGHT;
+// export let WIDTH = CIND_WIDTH;
+// export let HEIGHT = CIND_HEIGHT;
 
 // these anims are 32x24
 let ALL_ANIMS = {
@@ -93,6 +98,11 @@ export let DISC_FRONT_COLOUR = (i: number) => new THREE.Color(0x0000ff).toArray(
 export let DISC_BACK_COLOUR = (i: number) => new THREE.Color(0xffff00).toArray();
 // export let DISC_BACK_COLOUR = (i: number) => i % 2 == Math.floor(i / WIDTH) % 2 ? new THREE.Color(green).toArray() : new THREE.Color("#1754fd").toArray();
 // export let DISC_BACK_COLOUR = (i: number) => i % 2 == 0 ? new THREE.Color(green).toArray() : new THREE.Color("#1754fd").toArray();
+
+// for cinderella example
+// export let DISC_FRONT_COLOUR = (i: number) => i % 2 == Math.floor(i / WIDTH) % 2 ? new THREE.Color("white").toArray() : new THREE.Color("black").toArray();
+// export let DISC_BACK_COLOUR = (i: number) => i % 2 == Math.floor(i / WIDTH) % 2 ? new THREE.Color("red").toArray() : new THREE.Color("limegreen").toArray();
+
 
 
 export let INV_Y_ON_LOAD = true;
