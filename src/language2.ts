@@ -1361,19 +1361,20 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
         while (o && o.transition != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
             if (o.frameId != frameNum) {
-                console.log("pushing an empty for target ", o.debugTag, frameNum)
+                console.log("generated an empty for target ", o.debugTag, frameNum, transitionTiming[frameNum])
                 // TODO: I think this is delaying things one frame... because there should be one less set of frames than keyframes
-                allFrameValues.push([...Array(transitionTiming[frameNum])].map(_ => []));
+                allFrameValues = allFrameValues.concat([...Array(transitionTiming[frameNum])].map(_ => []));
                 frameNum += 1;
                 continue;
             }
-            console.log("looping! frame ", frameNum)
+            console.log("looping! frame ", frameNum, o.debugTag)
             // this works when all frames are defined. if we have break in continuity, we need to multiply number of
             let fullObjects = o.transition.generateCompleteFrames(transitionTiming[frameNum])
             // console.log(fullObjects)
             console.log(fullObjects.map(o => o.draw()))
             allFrameValues = allFrameValues.concat(fullObjects.map(o => o.draw()));
             // allFrameValues.push(fullObjects.map(o => o.draw()));
+            console.log("generated", o.debugTag, o.frameId, allFrameValues)
             o = o.transition.to;
             frameNum += 1;
         }
@@ -1730,6 +1731,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                         transition == "move" ? new UniformMove(obj, eo, TransitionType.Complete) : 
                             new DrawingHeadWipe(obj, eo, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
 
+               
 
                 obj.transition = t;
 
@@ -1745,6 +1747,12 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     eo.debugTag = endObj + ":" + transition
                     perFrameObjs.set(endFrame, eo);
                 }
+
+                 if (transition == "move") {
+                    console.log("abcd", step);
+                    console.log("abcd. from:" + t.from!.frameId);
+                    console.log("abcd. to:" + t.to!.frameId);
+                }
             }
 
             } else {
@@ -1755,9 +1763,16 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
         }
                 console.log("tgts", targets);
 
-        namesToObjects.set(obj, [...perFrameObjs.values()]);
+        // namesToObjects.set(obj, [...perFrameObjs.values()]);
+        // console.log("n2o, 2, ", namesToObjects)
+        // if ([...perFrameObjs].length != 0) {
+        //     targets.push([...perFrameObjs.values()]);
+        // }
+
         console.log("n2o, 2, ", namesToObjects)
         if ([...perFrameObjs].length != 0) {
+            // swap this aroudn... 
+            namesToObjects.set(obj, [...perFrameObjs.values()]);
             targets.push([...perFrameObjs.values()]);
         }
 
@@ -1778,7 +1793,8 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             let startTarget, endTarget;
             if (typeof startObj === 'string') {
                 // this is just a normal selector.
-                startTarget = namesToObjects.get(startObj)![startFrame]
+                startTarget = namesToObjects.get(startObj)!.find(o => o.frameId == startFrame)!;
+                console.log(namesToObjects.get(startObj)!)
             } else {
                 // it's constructed.
                 if (startObj[0] == "collision") {
@@ -1791,17 +1807,23 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     startTarget = new Checkerboard(arg, startFrame % 2 == 1);
                     startTarget.debugTag = "checkerboard-start " + startFrame
                     console.log("checkerboard start")
+<<<<<<< HEAD
                 } else if (startObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![startObj[1][0][1] as number];
                     console.log("making noise!");
                     // should be customizable lol 
                     startTarget = new Noise(arg, 1 - startFrame / transitions.length);
                 }
+=======
+                } else if (startObj[0] == "noop") { // TODO: just a bandaid solution here to not being able to go from derivedobject to baseobject in instr line
+                    startTarget = namesToObjects.get(startObj[1][0][0])![startObj[1][0][1]];
+                }   
+>>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
             }
 
             if (typeof endObj === 'string') {
                 // this is just a normal selector.
-                endTarget = namesToObjects.get(endObj)![endFrame]
+                endTarget = namesToObjects.get(endObj)!.find(o => o.frameId == endFrame)!;
             } else {
                 if (endObj[0] == "collision") {
                     let args = endObj[1].map(([n, f]) => namesToObjects.get(n)![f]);
@@ -1813,11 +1835,16 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     endTarget = new Checkerboard(arg, endFrame % 2 == 1);
                     endTarget.debugTag = "checkerboard-end " + endFrame
                     console.log("checkerboard end")
+<<<<<<< HEAD
                 } else if (endObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![endObj[1][0][1] as number];
 
                     // should be customizable lol 
                     endTarget = new Noise(arg, 1 - endFrame / transitions.length);
+=======
+                } else if (endObj[0] == "noop") {
+                    endTarget = namesToObjects.get(startObj[1][0][0])![endObj[1][0][1]];
+>>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
                 }
             }
 
@@ -1826,6 +1853,8 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
             if (transition == "path") {
                 // don't modify the start and end stuff
                 if (!startTarget || startTarget.transition == undefined) {
+                    console.log(startTarget);
+                    console.log(namesToObjects)
                     throw new Error("Cannot use derivative transition before original transition is defined")
                 }
                 let newTarget = startTarget.clone();
@@ -1844,7 +1873,6 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     transition == "grow" ? new GrowWipe(startTarget, endTarget, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
                     transition == "move" ? new UniformMove(startTarget, endTarget, TransitionType.Complete) : 
                         new DrawingHeadWipe(startTarget, endTarget, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)])
-
 
             // the transition might have arguments.
             // but don't we actually use the input to find that? 
@@ -1874,10 +1902,24 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                 console.log("setting enframe", endFrame)
                 perFrameObjs.set(endFrame, endTarget!);
             }
+
+            
+            if (transition == "move") {
+                    console.log(step);
+                    console.log("abcd. from:" + t.from!.frameId);
+                    console.log("abcd. to:" + t.to!.frameId);
+            }
         }
         }
 
-        targets.push([...perFrameObjs.values()]);
+        // is it right to also save this line?
+        console.log("n2o, 2, ", namesToObjects)
+        if ([...perFrameObjs].length != 0) {
+            namesToObjects.set(obj, [...perFrameObjs.values()]);
+            targets.push([...perFrameObjs.values()]);
+        }
+
+        // targets.push([...perFrameObjs.values()]);
 
     }
 
@@ -2181,6 +2223,20 @@ parser(noiseEmergeExample);
 
 
 
+let golfPathExample = "timing: [1,1,1,1,3,4,4,4,4]\n\
+filepath: /animations/golf-collide${i}.png \n\
+objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
+golfstick 0 ->* instantaneous ->* golfstick 8\n\
+golfer 0 ->* instantaneous ->* golfer 8\n\
+ball 4 ->* move ->* ball 8\n\
+ball 4 ->* path -> ball 8"
+// path1: ball 5 -> path -> ball 6\n\
+// path2: path1 6 -> path -> ball 7\n\"
+parser(golfPathExample);
+
+
+/*
+
 
 let testStr3 = "timing: [1,1,1,1,1,1,1,1,1]\n\
 filepath: /animations/golf-collide${i}.png \n\
@@ -2191,12 +2247,27 @@ ball 0 ->* instantaneous ->* ball 8\n\
 collision: collision(ball 4, golfstick 4) 3 -> instantaneous -> collision(ball 4, golfstick 4) 4" // should be 4 and 5 rather than 3 and 4
 parser(testStr3);
 
+
+let testStr4 = "timing: [1,1,1,1,1,1,1,1]\n\
+filepath: /animations/golf-collide${i}.png \n\
+objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
+golfstick 0 ->* instantaneous ->* golfstick 7\n\
+golfer 0 ->* instantaneous ->* golfer 7\n\
+ball 0 ->* instantaneous ->* ball 7"
+parser(testStr4);
+
 let wipeExample = "timing: [15,2]\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 rectangle 0 -> wipe -> rectangle 1";
 parser(wipeExample);
-parser(wipeExample, true);
+// parser(wipeExample, true);
+
+let flipExample = "timing: [15,2]\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] \n\
+rectangle 0 -> instantaneous -> rectangle 1";
+parser(flipExample);
 
 let growExample = "timing: [15,2]\n\
 filepath: /animations/e${i}.png \n\
@@ -2211,7 +2282,7 @@ let headExample = "timing: [30,2]\n\
 filepath: /animations/e${i}.png \n\
 objects: [#000000 rectangle] \n\
 rectangle 0 -> drawingHead -> rectangle 1";
-parser(headExample);
+// parser(headExample);
 
 let pathExample =  "timing: [4,4,4,4]\n\
 filepath: /animations/slide-2obj${i}.png \n\
@@ -2219,7 +2290,7 @@ objects: [#000000 wall] [#d77bba rectangle] \n\
 wall 0 ->* instantaneous ->* wall 3\n\
 rectangle 0 ->* move ->* rectangle 3\n\
 rectangle 0 ->* path ->* rectangle 3"
-parser(pathExample);
+// parser(pathExample);
 
 let golfPathExample = "timing: [4,4,4,4,4,4,4,4,4]\n\
 filepath: /animations/golf-collide${i}.png \n\
@@ -2227,8 +2298,22 @@ objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
 golfstick 0 ->* instantaneous ->* golfstick 8\n\
 golfer 0 ->* instantaneous ->* golfer 8\n\
 ball 4 ->* move ->* ball 8\n\
-ball 4 -> path -> ball 5 -> path -> ball 6 -> path -> ball 7 -> path -> ball 8" // should be 4 and 5 rather than 3 and 4
+ball 4 -> path -> ball 5\n\
+ball 4 -> path -> ball 6\n\
+ball 4 -> path -> ball 7\n\
+ball 4 -> path -> ball 8"
+// ball 4 -> path -> ball 5 -> path -> ball 6 -> path -> ball 7 -> path -> ball 8" // should be 4 and 5 rather than 3 and 4
 parser(golfPathExample);
+
+
+
+let goflMoveExample = "timing: [4,4,4,4,4,4,4,4,4]\n\
+filepath: /animations/golf-collide${i}.png \n\
+objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
+golfstick 0 ->* instantaneous ->* golfstick 8\n\
+golfer 0 ->* instantaneous ->* golfer 8\n\
+ball 4 ->* move ->* ball 8"
+parser(goflMoveExample);
 
 // what about temporal derivative objects? 
 // tracepath(name f1, name2 f2) and that should come later... or at least let's assume it's declared later
@@ -2243,11 +2328,27 @@ parser(checkerboardExample);
 // parser(wipeExample, true);
 
 
+<<<<<<< HEAD
 let noiseEmergeExample = "timing: [1,1]\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1";
 parser(noiseEmergeExample);
+=======
+
+let checkerboardAppearBgExample = "timing: [3,3]\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] [#ffffff background]\n\
+checkerboard(background 0) 0 -> instantaneous -> checkerboard(background 1) 1 -> instantaneous -> checkerboard(background 0) 1\n\
+checkerboard(rectangle 0) 0 -> instantaneous -> checkerboard(rectangle 1) 1 -> instantaneous -> noop(rectangle 1) 1 ";
+parser(checkerboardAppearBgExample);
+
+let checkerboardAppearExample = "timing: [2,2]\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] \n\
+noop(rectangle 0) 0 -> instantaneous -> checkerboard(rectangle 1) 0 -> instantaneous -> noop(rectangle 1) 2";
+parser(checkerboardAppearExample);
+>>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
 
 
 collisionStats = [10,2] // I need to make this configurable to make a bigger collision

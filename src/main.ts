@@ -281,10 +281,13 @@ for (let i = 0; i < golf_opts.length; i++) {
 }
 document.body.append(buttons)
 
+<<<<<<< HEAD
 
 // new VideoIndexGenerator().loadVideoFromStr(CINDERELLA_BASIC.replace(/\'/g,''));
 
 
+=======
+>>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
 // new VideoIndexGenerator().loadImages(GOLF_STRETCH);
 // new VideoIndexGenerator().loadImages(GOLF_CAMERA);
 // new VideoIndexGenerator().loadImages(GOLF_PATH);
