@@ -100,8 +100,8 @@ export let DISC_BACK_COLOUR = (i: number) => new THREE.Color(0xffff00).toArray()
 // export let DISC_BACK_COLOUR = (i: number) => i % 2 == 0 ? new THREE.Color(green).toArray() : new THREE.Color("#1754fd").toArray();
 
 // for cinderella example
-// export let DISC_FRONT_COLOUR = (i: number) => i % 2 == Math.floor(i / WIDTH) % 2 ? new THREE.Color("white").toArray() : new THREE.Color("black").toArray();
-// export let DISC_BACK_COLOUR = (i: number) => i % 2 == Math.floor(i / WIDTH) % 2 ? new THREE.Color("red").toArray() : new THREE.Color("limegreen").toArray();
+// export let DISC_FRONT_COLOUR = (i: number) => i % 2 == Math.floor(i / WIDTH) % 2 ? new THREE.Color("white").toArray() : new THREE.Color("limegreen").toArray();
+// export let DISC_BACK_COLOUR = (i: number) => i % 2 == Math.floor(i / WIDTH) % 2 ? new THREE.Color("red").toArray() : new THREE.Color("black").toArray();
 
 
 

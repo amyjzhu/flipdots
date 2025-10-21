@@ -116,7 +116,7 @@ export class RowOfDiscs {
         ];
         const cube = new THREE.Mesh(geometry, materials);
 
-        this.scene.add(cube);
+        // this.scene.add(cube);
 
         const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
         this.scene.add(ambientLight);

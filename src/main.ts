@@ -1,5 +1,5 @@
 import { RowOfDiscs } from "./flipdisc";
-import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT, GOLF_ANIM } from "./constants";
+import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT, GOLF_ANIM, NUM_FRAMES_ROTATING, SPLIT_FLAP_CYCLE_LENGTH } from "./constants";
 
 import * as THREE from 'three';
 import { CINDERELLA_BASIC } from './cinderella';
@@ -253,7 +253,7 @@ class VideoIndexGenerator {
 
 
 // should be [[],[],[1],[],[3],[],[]]
-console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
+// console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
 
 // new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 
@@ -264,30 +264,27 @@ console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]]))
 
 // new VideoIndexGenerator().loadImages(ALL_ANIMATIONS);
 
-// new SplitFlapDisplay(10,20);
+new SplitFlapDisplay(10,20, NUM_FRAMES_ROTATING * 2, SPLIT_FLAP_CYCLE_LENGTH);
 
 
-let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
-let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
-let buttons = document.createElement("div");
-for (let i = 0; i < golf_opts.length; i++) {
-    let btn = document.createElement("button");
-    btn.textContent = golf_captions[i];
-    btn.addEventListener('click', () => {
-        rowOfDiscs.clear();
-        new VideoIndexGenerator().loadImages(golf_opts[i])
-    })
-    buttons.appendChild(btn);
-}
-document.body.append(buttons)
+// let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
+// let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
+// let buttons = document.createElement("div");
+// for (let i = 0; i < golf_opts.length; i++) {
+//     let btn = document.createElement("button");
+//     btn.textContent = golf_captions[i];
+//     btn.addEventListener('click', () => {
+//         rowOfDiscs.clear();
+//         new VideoIndexGenerator().loadImages(golf_opts[i])
+//     })
+//     buttons.appendChild(btn);
+// }
+// document.body.append(buttons)
 
-<<<<<<< HEAD
 
 // new VideoIndexGenerator().loadVideoFromStr(CINDERELLA_BASIC.replace(/\'/g,''));
 
 
-=======
->>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
 // new VideoIndexGenerator().loadImages(GOLF_STRETCH);
 // new VideoIndexGenerator().loadImages(GOLF_CAMERA);
 // new VideoIndexGenerator().loadImages(GOLF_PATH);
