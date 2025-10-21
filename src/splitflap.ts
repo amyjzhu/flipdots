@@ -310,7 +310,7 @@ export class SplitFlapDisplay {
         for (let i = 0; i < this.updateIdxs.length; i++) {
 
             let idx = this.updateIdxs[i];
-            let [falling, stepping, rising] = this.flaps[idx];
+            let [falling, rising, stepping] = this.flaps[idx];
 
             // during each flip, I want to do three things.
             // the step flap will move forward. (during OFFSET) - angle / num frames for offset -> bcames stepping
@@ -319,12 +319,15 @@ export class SplitFlapDisplay {
             
             if (this.animationFrameCounter < OFFSET) {
                 // todo?
-                stepping.rotation.x += rotFlapBack / OFFSET;
+                stepping.rotation.x += rotFlapBack * -1 / OFFSET;
+                // console.log(rotFlapBack, OFFSET)
                 // console.log("rot flap back", rotFlapBack / OFFSET);
-            } else if (this.animationFrameCounter > OFFSET && this.animationFrameCounter < this.numFramesRotating) {
-                falling.rotation.x += rotationRate;
+            } else if (this.animationFrameCounter >= OFFSET && this.animationFrameCounter < this.numFramesRotating) {
+                // falling.rotation.x += rotationRate;
                 // console.log("rotation rate", rotationRate)
-                rising.rotation.x += rotFlapBack / this.numFramesRotating;
+                // rising.rotation.x += rotFlapBack / this.numFramesRotating;
+                rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating - OFFSET);
+                falling.rotation.x += Math.PI / (this.numFramesRotating - OFFSET)
                 // this one is negative 
                 // console.log("rot flap back / num frames rotating", rotFlapBack / this.numFramesRotating);
             }
@@ -333,7 +336,8 @@ export class SplitFlapDisplay {
                 this.animationFrameCounter = 0;
                 this.flipCycles += 1;
                 // reset the rising falling etc 
-                this.flaps[idx] = [stepping, rising, falling];
+                console.log("resetting flapss")
+                this.flaps[idx] = [stepping, falling, rising];
             } else {
                 this.animationFrameCounter += 1;
             }
