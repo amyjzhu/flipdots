@@ -419,11 +419,44 @@ export class SplitFlapDisplay {
                 ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = this.canvasBacks[this.flipCycle[i][nextIdx]];
 
                 // this is just dumb as fuck but idc 
-                if (this.flipCycles % 3 == 1) { // 0, 2
+                if (this.flipCycles % 3 == 0) {
+                    let back = this.canvasBacks[this.flipCycle[i][nextIdx]];
+                    // front.toneMapped.flipY = false;
+
+                     let front = this.canvases[this.flipCycle[i][this.flapPos[i]]];
+                    let texture = (front as THREE.MeshBasicMaterial).map!;
+                    // texture.center.set(0.5, 0.5);  // rotate around the center
+                    // texture.rotation = -Math.PI/5;    // 180 degrees
+                    // texture.needsUpdate = true;
+
+
+                    let backTexture = (back as THREE.MeshBasicMaterial).map!;
+                    // Flip vertically
+                    // backTexture.flipY = false;
+                    backTexture.center.set(0.5, 0.5);  // rotate around the center
+                    if (this.flipCycles % 6 == 3) {
+                        backTexture.rotation = Math.PI;
+                    } else {
+                        backTexture.rotation = Math.PI;    // 180 degrees
+                    }
+                    backTexture.needsUpdate = true;
+
+                   
+
+                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
+
+                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = back;
+                } else if (this.flipCycles % 3 == 1) { // 0, 2
                     // ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = this.canvasBacks[this.flipCycle[i][nextIdx]];
 
                     // ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = this.canvases[this.flipCycle[i][this.flapPos[i]]];
 
+
+                    let front = this.canvases[this.flipCycle[i][this.flapPos[i]]];
+                    let texture = (front as THREE.MeshBasicMaterial).map!;
+                    texture.center.set(0.5, 0.5);  // rotate around the center
+                    texture.rotation = Math.PI ;    // 180 degrees
+                    texture.needsUpdate = true;
 
                     let back = this.canvasBacks[this.flipCycle[i][nextIdx]];
                     // front.toneMapped.flipY = false;
@@ -433,56 +466,34 @@ export class SplitFlapDisplay {
                     // backTexture.flipY = false;
 
                     // I wonder if the rotation is supposed to alternate...
-                    backTexture.center.set(0.5, 0.5);  // rotate around the center
-                    backTexture.rotation = 0;    // 180 degrees
-                    backTexture.needsUpdate = true;
+                    // backTexture.center.set(0.5, 0.5);  // rotate around the center
+                    // backTexture.rotation = Math.PI;    // 180 degrees
+                    // backTexture.needsUpdate = true;
 
-                    let front = this.canvases[this.flipCycle[i][this.flapPos[i]]];
-                    let texture = (front as THREE.MeshBasicMaterial).map!;
-                    texture.center.set(0.5, 0.5);  // rotate around the center
-                    texture.rotation = 0 ;    // 180 degrees
-                    texture.needsUpdate = true;
 
 
                     ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = back;
 
                     ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = front;
-                } else if (this.flipCycles % 3 == 0) {
-                    let back = this.canvasBacks[this.flipCycle[i][nextIdx]];
-                    // front.toneMapped.flipY = false;
-
-                    let backTexture = (back as THREE.MeshBasicMaterial).map!;
-                    // Flip vertically
-                    // backTexture.flipY = false;
-                    backTexture.center.set(0.5, 0.5);  // rotate around the center
-                    backTexture.rotation = Math.PI;    // 180 degrees
-                    backTexture.needsUpdate = true;
-
-                    let front = this.canvases[this.flipCycle[i][this.flapPos[i]]];
-                    let texture = (front as THREE.MeshBasicMaterial).map!;
-                    texture.center.set(0.5, 0.5);  // rotate around the center
-                    texture.rotation = 0;    // 180 degrees
-                    texture.needsUpdate = true;
-
-                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
-
-                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = back;
+                
                 }  else if (this.flipCycles % 3 == 2) {
                     let back = this.canvasBacks[this.flipCycle[i][nextIdx]];
                     // front.toneMapped.flipY = false;
 
+
+                    let front = this.canvases[this.flipCycle[i][this.flapPos[i]]];
+                    let texture = (front as THREE.MeshBasicMaterial).map!;
+                    // texture.center.set(0.5, 0.5);  // rotate around the center
+                    // texture.rotation = Math.PI/5;    // 180 degrees
+                    // texture.needsUpdate = true;
+
+                    
                     let backTexture = (back as THREE.MeshBasicMaterial).map!;
                     // Flip vertically
                     // backTexture.flipY = false;
                     backTexture.center.set(0.5, 0.5);  // rotate around the center
                     backTexture.rotation = Math.PI;    // 180 degrees
                     backTexture.needsUpdate = true;
-
-                    let front = this.canvases[this.flipCycle[i][this.flapPos[i]]];
-                    let texture = (front as THREE.MeshBasicMaterial).map!;
-                    texture.center.set(0.5, 0.5);  // rotate around the center
-                    texture.rotation = Math.PI;    // 180 degrees
-                    texture.needsUpdate = true;
 
                     ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
 
