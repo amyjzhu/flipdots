@@ -134,7 +134,8 @@ export class SplitFlapDisplay {
 
     makeAlphabetCycle() {
         // for (let letter of 'abcdefg'.split('')) {
-            for (let letter of 'abcdefghijklmnopqrstuvwxyz'.split('')) {
+        // this is so stupid... has to be multiples of three
+            for (let letter of 'abcdefghijklmnopqrstuvwxyz!'.split('')) {
             for (let top of [true, false]) {
                 const canvas = document.createElement("canvas");
                 const ctx = canvas.getContext("2d")!;
@@ -177,7 +178,7 @@ export class SplitFlapDisplay {
     setUpAlphabetRolls() {
         for (let _ of this.flaps) {
             // this.flipCycle.push([...new Array(6).keys()]);
-            this.flipCycle.push([...new Array(26).keys()]);
+            this.flipCycle.push([...new Array(27).keys()]);
             this.flapPos.push(0);
         }
     }
@@ -259,7 +260,7 @@ export class SplitFlapDisplay {
         let backing = new THREE.BoxGeometry(numWide * this.SPACING_X + backingBorder, numTall * this.SPACING_Y + backingBorder, 4);
         let backingMaterial = new THREE.MeshPhongMaterial({ color: 0x111111 })
         let backingPiece = new THREE.Mesh(backing, backingMaterial);
-        // this.scene.add(backingPiece)
+        this.scene.add(backingPiece)
         // should be behind the discs.
         backingPiece.position.set(this.WIDTH * numWide - this.WIDTH - backingBorder / 2, this.HEIGHT * numTall - this.HEIGHT - backingBorder / 2, offsetZ)
     }
