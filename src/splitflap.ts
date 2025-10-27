@@ -133,18 +133,18 @@ export class SplitFlapDisplay {
     }
 
     makeAlphabetCycle() {
-        for (let letter of 'abcdefg'.split('')) {
-            // for (let letter of 'abcdefghijklmnopqrstuvwxyz'.split('')) {
+        // for (let letter of 'abcdefg'.split('')) {
+            for (let letter of 'abcdefghijklmnopqrstuvwxyz'.split('')) {
             for (let top of [true, false]) {
                 const canvas = document.createElement("canvas");
                 const ctx = canvas.getContext("2d")!;
-                ctx.font = "100px Arial";
-                // ctx.font = "250px Arial";
+                // ctx.font = "100px Arial";
+                ctx.font = "250px Arial";
                 ctx.fillStyle = "red";
                 let texture;
                 if (top) {
-                    // ctx.fillText(letter, 70, 250);
-                    ctx.fillText("F" + letter, 70, 70);
+                    ctx.fillText(letter, 70, 250);
+                    // ctx.fillText("F" + letter, 70, 70);
                     texture = new THREE.CanvasTexture(canvas);
 
                     let material = new THREE.MeshBasicMaterial({
@@ -156,9 +156,9 @@ export class SplitFlapDisplay {
                     // ctx.translate(canvas.width, 0);
                     // ctx.translate(0, canvas.height);
                     // ctx.scale(-1, 1);
-                    ctx.fillText("B" + letter, 70, 70);
+                    // ctx.fillText("B" + letter, 70, 70);
 
-                    // ctx.fillText(letter, 70, 100);
+                    ctx.fillText(letter, 70, 100);
                     texture = new THREE.CanvasTexture(canvas);
 
                     // texture.flipY = false;
@@ -176,8 +176,8 @@ export class SplitFlapDisplay {
 
     setUpAlphabetRolls() {
         for (let _ of this.flaps) {
-            this.flipCycle.push([...new Array(6).keys()]);
-            // this.flipCycle.push([...new Array(26).keys()]);
+            // this.flipCycle.push([...new Array(6).keys()]);
+            this.flipCycle.push([...new Array(26).keys()]);
             this.flapPos.push(0);
         }
     }
