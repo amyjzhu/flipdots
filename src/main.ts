@@ -264,7 +264,8 @@ class VideoIndexGenerator {
 
 // new VideoIndexGenerator().loadImages(ALL_ANIMATIONS);
 
-new SplitFlapDisplay(10,20, 30, 60);
+new SplitFlapDisplay(10,20, 60, 120);
+// new SplitFlapDisplay(10,20, 30, 60);
 
 
 // let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
