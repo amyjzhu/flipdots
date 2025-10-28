@@ -34,6 +34,9 @@ export class SplitFlapDisplay {
     flipCycle: number[][] = [];
     flapPos: number[] = [];
 
+    animationFrameCounter = 0;
+    flipCycles: number[] = [];
+
     updateIdxs: number[] = [];
 
     basicMaterial = new THREE.MeshBasicMaterial({ color: "black" });
@@ -255,6 +258,8 @@ export class SplitFlapDisplay {
                 // // instanced.setColorAt()
 
             }
+
+            this.flipCycles = this.flaps.map(_ => 0);
         }
 
         let backing = new THREE.BoxGeometry(numWide * this.SPACING_X + backingBorder, numTall * this.SPACING_Y + backingBorder, 4);
@@ -373,14 +378,13 @@ export class SplitFlapDisplay {
     // }
 
 
-    animationFrameCounter = 0;
-    flipCycles = 0;
 
     animate = () => {
         let OFFSET = this.numFramesRotating / 3;
         let rotationRate = Math.PI / this.numFramesRotating;
 
-        this.renderer.render(this.scene, this.camera);
+        // this.renderer.render(this.scene, this.camera);
+        let done = false;
 
         for (let i = 0; i < this.updateIdxs.length; i++) {
 
@@ -409,7 +413,7 @@ export class SplitFlapDisplay {
 
             if (this.animationFrameCounter >= this.splitFlapCycleLength) {
                 this.animationFrameCounter = 0;
-                this.flipCycles += 1;
+                this.flipCycles[idx] += 1;
                 // reset the rising falling etc 
 
                 // something with a cycle of 3?
@@ -419,8 +423,9 @@ export class SplitFlapDisplay {
                 let nextIdx = this.flapPos[i] + 1 >= this.flipCycle[i].length ? 0 : this.flapPos[i] + 1;
                 ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = this.canvasBacks[this.flipCycle[i][nextIdx]];
 
+                console.log(this.flipCycles[idx])
                 // this is just dumb as fuck but idc 
-                if (this.flipCycles % 3 == 0) {
+                if (this.flipCycles[idx] % 3 == 0) {
                     let back = this.canvasBacks[this.flipCycle[i][nextIdx]];
                     // front.toneMapped.flipY = false;
 
@@ -435,7 +440,7 @@ export class SplitFlapDisplay {
                     // Flip vertically
                     // backTexture.flipY = false;
                     backTexture.center.set(0.5, 0.5);  // rotate around the center
-                    if (this.flipCycles % 6 == 3) {
+                    if (this.flipCycles[idx] % 6 == 3) {
                         backTexture.rotation = Math.PI;
                     } else {
                         backTexture.rotation = Math.PI;    // 180 degrees
@@ -447,7 +452,7 @@ export class SplitFlapDisplay {
                     ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
 
                     ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = back;
-                } else if (this.flipCycles % 3 == 1) { // 0, 2
+                } else if (this.flipCycles[idx] % 3 == 1) { // 0, 2
                     // ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = this.canvasBacks[this.flipCycle[i][nextIdx]];
 
                     // ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = this.canvases[this.flipCycle[i][this.flapPos[i]]];
@@ -477,7 +482,7 @@ export class SplitFlapDisplay {
 
                     ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = front;
                 
-                }  else if (this.flipCycles % 3 == 2) {
+                }  else if (this.flipCycles[idx] % 3 == 2) {
                     let back = this.canvasBacks[this.flipCycle[i][nextIdx]];
                     // front.toneMapped.flipY = false;
 
@@ -506,47 +511,31 @@ export class SplitFlapDisplay {
 
                 this.flaps[idx] = [stepping, falling, rising];
 
-            } else {
-                this.animationFrameCounter += 1;
-            }
-
-
-
-
-            /*
-            if (this.animationFrameCounter < this.numFramesRotating) {
-                falling.rotation.x += rotationRate;
-                rising.rotation.x += rotFlapBack / this.numFramesRotating;
-            }
-
-            // on a reset? 
-            // what the heck is offset?
-            if (this.animationFrameCounter > (this.numFramesRotating - OFFSET) && this.animationFrameCounter <= (this.numFramesRotating * 2 - OFFSET)) {
-
-                stepping.rotation.x += rotationRate;
-                // is this transformation correct...? because... hmm
-                rising.rotation.x = rotFlapBack;
-            }
-
-            // how many frames for a full cycle?
-            if (this.animationFrameCounter >= this.splitFlapCycleLength) {
+                console.log("flip complete");
                 this.animationFrameCounter = 0;
-                this.flipCycles += 1;
-
-                let [tfront, tback, bfront, bback] = this.canvases[idx];
-                tfront.fillText("B", 70, 250);
-                tback.fillText("C", 70, 250);
-                bfront.fillText("D", 70, 100);
-                bback.fillText("E", 70, 100);
+                done = true;
+                break;
 
             } else {
                 this.animationFrameCounter += 1;
             }
-    */
-
-            this.renderer.render(this.scene, this.camera);
 
         }
+
+        if (done) {
+            console.log("all done")
+        
+            if (this.updateIdxs.length < this.flaps.length) {
+                this.updateIdxs.push(this.updateIdxs[this.updateIdxs.length-1] + 1);
+            }
+            // if (this.animationFrameCounter >= this.splitFlapCycleLength) {
+            //     console.log('flip complete');
+            //     this.flipCycles = 0;
+            //     this.animationFrameCounter = 0;
+            // }
+
+        }
+            this.renderer.render(this.scene, this.camera);
 
     }
 }
