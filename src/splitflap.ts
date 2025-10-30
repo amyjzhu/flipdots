@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
 import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, SPLIT_FLAP_CYCLE_LENGTH } from './constants';
+import { ALPHABET_WITH_EXCLAMATION, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, SPLIT_FLAP_CYCLE_LENGTH } from './constants';
 
 let rotFlapBack = -0.5;
 
@@ -29,6 +29,7 @@ export class SplitFlapDisplay {
     // canvases: [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D][] = [];
 
     nextLetter = "A";
+    nextFlipGenerator: (i: number) => number[] = i => [];
     canvases: THREE.Material[] = [];
     canvasBacks: THREE.Material[] = [];
     flipCycle: number[][] = [];
@@ -43,6 +44,9 @@ export class SplitFlapDisplay {
 
     numFramesRotating = NUM_FRAMES_ROTATING;
     splitFlapCycleLength = SPLIT_FLAP_CYCLE_LENGTH;
+
+    // this should be just the offsets 
+    perPixelPauses: number[] = [];
 
     constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number) {
         if (numFramesRotating) {
@@ -75,7 +79,7 @@ export class SplitFlapDisplay {
 
         this.initScene();
 
-        this.makeRowsOfSplitFlaps(5, 7);
+        this.makeRowsOfSplitFlaps(width, height);
 
         this.makeAlphabetCycle();
         this.setUpAlphabetRolls();
@@ -136,19 +140,19 @@ export class SplitFlapDisplay {
     }
 
     makeAlphabetCycle() {
-        for (let letter of 'abcdefg'.split('')) {
+        // for (let letter of 'abcdefg'.split('')) {
             // this is so stupid... has to be multiples of three
-            // for (let letter of 'abcdefghijklmnopqrstuvwxyz!'.split('')) {
+            for (let letter of ALPHABET_WITH_EXCLAMATION.split('')) {
             for (let top of [true, false]) {
                 const canvas = document.createElement("canvas");
                 const ctx = canvas.getContext("2d")!;
-                ctx.font = "100px Arial";
-                // ctx.font = "250px Arial";
+                // ctx.font = "100px Arial";
+                ctx.font = "250px Arial";
                 ctx.fillStyle = "red";
                 let texture;
                 if (top) {
-                    // ctx.fillText(letter, 70, 250);
-                    ctx.fillText("F" + letter, 70, 70);
+                    ctx.fillText(letter, 70, 250);
+                    // ctx.fillText("F" + letter, 70, 70);
                     texture = new THREE.CanvasTexture(canvas);
 
                     let material = new THREE.MeshBasicMaterial({
@@ -160,9 +164,9 @@ export class SplitFlapDisplay {
                     // ctx.translate(canvas.width, 0);
                     // ctx.translate(0, canvas.height);
                     // ctx.scale(-1, 1);
-                    ctx.fillText("B" + letter, 70, 70);
+                    // ctx.fillText("B" + letter, 70, 70);
 
-                    // ctx.fillText(letter, 70, 100);
+                    ctx.fillText(letter, 70, 100);
                     texture = new THREE.CanvasTexture(canvas);
 
                     // texture.flipY = false;
@@ -180,10 +184,18 @@ export class SplitFlapDisplay {
 
     setUpAlphabetRolls() {
         for (let _ of this.flaps) {
-            this.flipCycle.push([...new Array(6).keys()]);
-            // this.flipCycle.push([...new Array(27).keys()]);
+            // this.flipCycle.push([...new Array(6).keys()]);
+            this.flipCycle.push([...new Array(27).keys()]);
             this.flapPos.push(0);
         }
+    }
+
+    resetAnimation = (newFlip: (i: number) => number[]) => {
+        this.runningCount = 0;
+        // console.log(this.flipCycles)
+        // console.log(this.idxToUpdate)
+        this.animationFrameCounter = 0;
+        this.nextFlipGenerator = newFlip;
     }
 
     generateCanvasTexture(colour: string, top: boolean): [THREE.Texture, HTMLCanvasElement] {
@@ -247,7 +259,7 @@ export class SplitFlapDisplay {
 
                 this.flaps.push([pivot, pivot2, pivot3]);
                 // this.canvases.push([c1, c2, c3, c4, c5, c6]);
-                this.updateIdxs = [0];
+                
 
 
                 // this.dummy.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
@@ -378,35 +390,48 @@ export class SplitFlapDisplay {
     // }
 
 
-
+    runningCount = 0;
     animate = () => {
-        let OFFSET = this.numFramesRotating / 3;
+        // let OFFSET = this.numFramesRotating / 3;
+        
+        let PAUSE_DEFAULT = Math.floor(this.numFramesRotating / 3);
         let rotationRate = Math.PI / this.numFramesRotating;
 
         // this.renderer.render(this.scene, this.camera);
         let done = false;
 
         for (let i = 0; i < this.updateIdxs.length; i++) {
+            
             console.log()
             let idx = this.updateIdxs[i];
             let [falling, rising, stepping] = this.flaps[idx];
+            // basically, the wait and the splitflapcyclelength need to balance out. 
+            // wait n, then wait until splitflapcycle - n (since everything must be synced)
+            let perPixelPause = Math.floor(this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT);
+            
+            console.log(perPixelPause)
+            if (perPixelPause + this.numFramesRotating > this.splitFlapCycleLength) {
+                throw new Error("pause is too long")
+            }
 
             // during each flip, I want to do three things.
             // the step flap will move forward. (during OFFSET) - angle / num frames for offset -> bcames stepping
             // the flap that is falling will fall to the bottom (after OFFSET) - angle change / num frames minus offset -> becomes falling
             // the flap that is at the bottom will move to step position (after OFFSET) -> becomes rising 
 
-            if (this.animationFrameCounter < OFFSET) {
+            if (this.animationFrameCounter < perPixelPause) {
                 // todo?
-                stepping.rotation.x += rotFlapBack * -1 / OFFSET;
+                stepping.rotation.x += rotFlapBack * -1 / perPixelPause;
                 // console.log(rotFlapBack, OFFSET)
                 // console.log("rot flap back", rotFlapBack / OFFSET);
-            } else if (this.animationFrameCounter >= OFFSET && this.animationFrameCounter < this.numFramesRotating) {
+            } else if (this.animationFrameCounter >= perPixelPause && this.animationFrameCounter < this.numFramesRotating + perPixelPause) {
                 // falling.rotation.x += rotationRate;
                 // console.log("rotation rate", rotationRate)
                 // rising.rotation.x += rotFlapBack / this.numFramesRotating;
-                rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating - OFFSET);
-                falling.rotation.x += Math.PI / (this.numFramesRotating - OFFSET)
+                rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating);
+                // rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating - perPixelPause);
+                falling.rotation.x += Math.PI / (this.numFramesRotating)
+                // falling.rotation.x += Math.PI / (this.numFramesRotating - perPixelPause)
                 // this one is negative 
                 // console.log("rot flap back / num frames rotating", rotFlapBack / this.numFramesRotating);
             }
@@ -514,12 +539,9 @@ export class SplitFlapDisplay {
         if ( this.animationFrameCounter >= this.splitFlapCycleLength) {
             console.log("all done")
             this.animationFrameCounter = 0;
+            this.runningCount += 1;
 
-
-            if (this.updateIdxs.length < this.flaps.length) {
-                this.updateIdxs.push(this.updateIdxs[this.updateIdxs.length-1] + 1);
-                console.log(this.updateIdxs)
-            }
+            this.updateIdxs = this.nextFlipGenerator(this.runningCount);
             // if (this.animationFrameCounter >= this.splitFlapCycleLength) {
             //     console.log('flip complete');
             //     this.flipCycles = 0;
