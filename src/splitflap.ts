@@ -47,6 +47,7 @@ export class SplitFlapDisplay {
 
     // this should be just the offsets 
     perPixelPauses: number[] = [];
+    perPixelCycleLength: number[] = [];
 
     constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number) {
         if (numFramesRotating) {
@@ -408,6 +409,7 @@ export class SplitFlapDisplay {
             // basically, the wait and the splitflapcyclelength need to balance out. 
             // wait n, then wait until splitflapcycle - n (since everything must be synced)
             let perPixelPause = Math.floor(this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT);
+            let perPixelCycleLength = this.perPixelCycleLength.length > idx ? this.perPixelCycleLength[idx] : this.splitFlapCycleLength;
             
             console.log(perPixelPause)
             if (perPixelPause + this.numFramesRotating > this.splitFlapCycleLength) {

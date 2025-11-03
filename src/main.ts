@@ -113,6 +113,11 @@ let unveilText = (textPerLine: string[], height: number, width: number) => {
     }
 
     console.log(maxFlipsPerOrdinal);
+
+
+    generateSynced(flipsTo, maxFlipsPerOrdinal, flipOrdering);
+
+
     let finalFlipsTo = [];
     // now I go back: if I have less than numFlips, I need to add 27 to it 
     for (let i = 0; i < finalFrame.length; i++) {
@@ -146,7 +151,7 @@ let unveilText = (textPerLine: string[], height: number, width: number) => {
 
     console.log(finalFlipsTo);
     // okay, now I'll use this to make a sequence.
-    finalFlipsTo = finalFlipsTo.map(l => l.map(x => x != undefined ? x+3 : undefined)) // dumb
+    finalFlipsTo = finalFlipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)) // dumb
 
     // let biggestNum = Math.max(...finalFlipsTo.map(line => Math.max(...line.filter(x => x != undefined))));
     // let finalSequence: number[][] = [...new Array(biggestNum + 2)].map(_ => []); // arbitrary 
@@ -168,7 +173,7 @@ let unveilText = (textPerLine: string[], height: number, width: number) => {
     // }
 
     console.log(flipOrdering)
-    return [convertNumFlipsToSequence(finalFlipsTo, width), convertNumFlipsToSequence(flipsTo.map(l => l.map(x => x != undefined ? x+3 : undefined)), width)]
+    return [convertNumFlipsToSequence(finalFlipsTo, width), convertNumFlipsToSequence(flipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)), width)]
 
     // console.log(finalSequence)
 
@@ -177,7 +182,7 @@ let unveilText = (textPerLine: string[], height: number, width: number) => {
 
 let convertNumFlipsToSequence = (flipsTo: (number | undefined)[][], width: number): number[][] => {
     console.log(flipsTo)
-let biggestNum = Math.max(...flipsTo.map(line => Math.max(...line.filter(x => x != undefined))));
+    let biggestNum = Math.max(...flipsTo.map(line => Math.max(...line.filter(x => x != undefined))));
     let finalSequence: number[][] = [...new Array(biggestNum + 2)].map(_ => []); // arbitrary 
     for (let i = 0; i < flipsTo.length; i++) {
         for (let j = 0; j < flipsTo[i].length; j++) {
@@ -200,12 +205,46 @@ let biggestNum = Math.max(...flipsTo.map(line => Math.max(...line.filter(x => x 
     return finalSequence;
 }
 
-let [sequence, sequence2] = unveilText(["",  "world", "hello", ""], 4, 7);
+
+let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Map<number, number>, ordering: number[][]) => {
+    // first of all -- are any more than double?
+    // but if I do adjust for that.... then I might have to adjust all of them...
+    let newFlips = numFlips.map(l => l.map(i => i));
+    let done = false;
+    while (!done) {
+        done = true
+        for (let i = 0; i < numFlips.length; i++) {
+            for (let j = 0; j < numFlips[i].length; j++) {
+                let order = ordering[i][j]
+                let flips = newFlips[i][j]
+                if (flips && (maxFlipsPerOrdinal.get(order)! / flips) > 2) {
+                    newFlips[i][j] = flips + 27;
+                    done = false;
+                }
+            }
+        }
+    }
+
+    console.log(newFlips);
+
+    let numRotationFrames = 30;
+    let smallestPause = numRotationFrames / 3;
+    // cool, now we can set the spacing
+    // if same, we choose the same value 
+    // if A has fewer rotations than B, then make it so that A's pause is longer
+    // in general, I want to rotate 4 times when 
+}
+
+let [sequence, sequence2] = unveilText(["", "world", "hello", ""], 4, 7);
 let display = new SplitFlapDisplay(4, 7, 30, 60);
 // let display = new SplitFlapDisplay(4, 7, 8, 16);
 // let me se the timing a bit differently
-let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 / 2 : 30 / 4);
-display.perPixelPauses = newTimingFunc;
+let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30 / 4);
+let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 40);
+// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 / 2 : 30 / 4);
+// display.perPixelPauses = newTimingFunc;
+// wait... if I can change cycle ending time then when do I pull updates????
+display.perPixelCycleLength = newCycleFunc;
 display.resetAnimation(i => i >= sequence2.length ? [] : sequence2[i])
 // display.resetAnimation(i => i >= sequence.length ? [] : sequence[i])
 
@@ -460,7 +499,7 @@ class VideoIndexGenerator {
 
 
 // should be [[],[],[1],[],[3],[],[]]
-// console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
+// console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]]))
 
 // new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 
@@ -497,7 +536,7 @@ class VideoIndexGenerator {
 // new VideoIndexGenerator().loadImages(GOLF_IMPACT);
 
 
-// white red or green black. 
+// white red or green black.
 
 // how to set my own example...
 // make noise patterns that overlay more and more of the object... 
