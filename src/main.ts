@@ -206,6 +206,46 @@ let convertNumFlipsToSequence = (flipsTo: (number | undefined)[][], width: numbe
 }
 
 
+// pause and cycle might be specific to the frame
+// frames, then indices
+let convertSyncedSequence = (frames: number[][], pauses: number[][], cycles: number[][]): (f: number) => (i: number) => [number | undefined, number | undefined] => {
+
+    let countSinceLastFrame: number[] = pauses[0].map(_ => 0);
+
+    // maybe I don't need undefined, it's just the end of the list?
+    // this one is arranged OBJECT then FRAME
+    let perPixelReturn: number[][] = pauses[0].map(_ => []);
+    let cyclesReturn: number[][] = pauses[0].map(_ => []);
+
+    for (let frameIdx = 0; frameIdx < frames.length; frameIdx++) {
+        for (let i = 0; i < pauses[frameIdx].length; i++) {
+            // console.log(frameIdx)
+            // console.log(i)
+            if (frames[frameIdx].includes(i)) {
+                // each thing that appears should reset the count...
+                let count = countSinceLastFrame[i];
+                // or should this be according to the previous one?
+                
+                perPixelReturn[i].push((count+1) * pauses[frameIdx - count][i]);
+                cyclesReturn[i].push((count+1) * cycles[frameIdx - count][i]);
+                countSinceLastFrame[i] = 0;
+            } else {
+                // console.log("no included in: ", i, frames[frameIdx]);
+                countSinceLastFrame[i] += 1;
+            }
+        }
+    }
+
+    console.log(perPixelReturn);
+    console.log(cyclesReturn)
+
+    // this only lets things loop once!
+    let fn = (f: number) => (i: number) => [f < perPixelReturn[i].length ? perPixelReturn[i][f] : undefined, f < cyclesReturn[i].length ? cyclesReturn[i][f] : undefined] as [number | undefined, number | undefined];
+
+    return fn;
+}
+
+
 let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Map<number, number>, ordering: number[][]) => {
     // first of all -- are any more than double?
     // but if I do adjust for that.... then I might have to adjust all of them...
@@ -240,12 +280,28 @@ let display = new SplitFlapDisplay(4, 7, 30, 60);
 // let display = new SplitFlapDisplay(4, 7, 8, 16);
 // let me se the timing a bit differently
 let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30 / 4);
+// let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 60);
 let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 40);
-// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 / 2 : 30 / 4);
+// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30);
 // display.perPixelPauses = newTimingFunc;
 // wait... if I can change cycle ending time then when do I pull updates????
-display.perPixelCycleLength = newCycleFunc;
-display.resetAnimation(i => i >= sequence2.length ? [] : sequence2[i])
+// display.perPixelCycleLength = newCycleFunc;
+// display.resetAnimation(i => i >= sequence2.length ? [] : sequence2[i])
+
+
+
+// let newFunction = convertSyncedSequence(sequence, sequence.map(_ => newTimingFunc), sequence.map(_ => newCycleFunc))
+
+// hmm, as soon as I let things go longer, the spinning gets all messed up...
+// probably related to implicit assumptions about offset and splitflapcyclelength.
+// like, offset is duplicated. 
+// let basicSequence = [...new Array(5)].map(_ => [...new Array(2).keys()]).concat([...new Array(5)].map(_ => [])).concat([...new Array(5)].map(_ => [...new Array(2).keys()]));
+let basicSequence = [...new Array(5)].map(_ => [...new Array(28).keys()]).concat([...new Array(5)].map(_ => [...new Array(15).keys()])).concat([...new Array(5)].map(_ => [...new Array(27).keys()]));
+console.log(basicSequence)
+let basicFunction = convertSyncedSequence(basicSequence, basicSequence.map(_ => newTimingFunc), basicSequence.map(_ => newCycleFunc));
+
+display.resetAnimation(basicFunction)
+// display.resetAnimation(newFunction)
 // display.resetAnimation(i => i >= sequence.length ? [] : sequence[i])
 
 
