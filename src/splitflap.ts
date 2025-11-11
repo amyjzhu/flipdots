@@ -418,6 +418,8 @@ export class SplitFlapDisplay {
             }
 
             // perPixelPause = perPixelCycleLength - this.numFramesRotating;
+            perPixelCycleLength = perPixelPause + this.numFramesRotating;
+            perPixelPause = Math.floor(perPixelPause / 2);
 
             // perPixelPause = Math.floor(perPixelPause);
 
@@ -436,7 +438,7 @@ export class SplitFlapDisplay {
             // the flap that is falling will fall to the bottom (after OFFSET) - angle change / num frames minus offset -> becomes falling
             // the flap that is at the bottom will move to step position (after OFFSET) -> becomes rising 
 
-            console.log(`cycle length is ${perPixelCycleLength} and pause is ${perPixelPause} for idx ${idx}, framesrot is  ${this.numFramesRotating}`);
+            // console.log(`cycle length is ${perPixelCycleLength} and pause is ${perPixelPause} for idx ${idx}, framesrot is  ${this.numFramesRotating}`);
             
             if (this.animationFrameCounters[idx] < perPixelPause) {
                 // todo?

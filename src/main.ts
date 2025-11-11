@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { CINDERELLA_BASIC } from './cinderella';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
 import { SplitFlapDisplay } from "./splitflap";
+import { STLLoader } from "three/addons/loaders/STLLoader";
 
 
 
@@ -39,7 +40,7 @@ let newGenerator = (i: number) => [frames1to10, frames1to10, frames1to10, frames
 // display.resetAnimation(i => [...new Array(i % 50).keys()]);
 
 
-let unveilText = (textPerLine: string[], height: number, width: number) => {
+let unveilText = (textPerLine: string[], height: number, width: number): [number[][], number[][], (f: number) => (i: number) => [number | undefined, number | undefined]] => {
     // what is the way to specify the input?
     if (textPerLine.length != height) {
         throw new Error("not one text per line");
@@ -115,7 +116,7 @@ let unveilText = (textPerLine: string[], height: number, width: number) => {
     console.log(maxFlipsPerOrdinal);
 
 
-    generateSynced(flipsTo, maxFlipsPerOrdinal, flipOrdering);
+    let syncedVersion = generateSynced(flipsTo, maxFlipsPerOrdinal, flipOrdering);
 
 
     let finalFlipsTo = [];
@@ -173,7 +174,7 @@ let unveilText = (textPerLine: string[], height: number, width: number) => {
     // }
 
     console.log(flipOrdering)
-    return [convertNumFlipsToSequence(finalFlipsTo, width), convertNumFlipsToSequence(flipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)), width)]
+    return [convertNumFlipsToSequence(finalFlipsTo, width), convertNumFlipsToSequence(flipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)), width), syncedVersion]
 
     // console.log(finalSequence)
 
@@ -223,11 +224,11 @@ let convertSyncedSequence = (frames: number[][], pauses: number[][], cycles: num
             // console.log(i)
             if (frames[frameIdx].includes(i)) {
                 // each thing that appears should reset the count...
-                let count = countSinceLastFrame[i];
+                let count = i > 0 ? countSinceLastFrame[i - 1] : countSinceLastFrame[i];
                 // or should this be according to the previous one?
-                
-                perPixelReturn[i].push((count+1) * pauses[frameIdx - count][i]);
-                cyclesReturn[i].push((count+1) * cycles[frameIdx - count][i]);
+
+                perPixelReturn[i].push((count + 1) * pauses[frameIdx - count][i]);
+                cyclesReturn[i].push((count + 1) * cycles[frameIdx - count][i]);
                 countSinceLastFrame[i] = 0;
             } else {
                 // console.log("no included in: ", i, frames[frameIdx]);
@@ -251,37 +252,70 @@ let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Ma
     // but if I do adjust for that.... then I might have to adjust all of them...
     let newFlips = numFlips.map(l => l.map(i => i));
     let done = false;
-    while (!done) {
-        done = true
-        for (let i = 0; i < numFlips.length; i++) {
-            for (let j = 0; j < numFlips[i].length; j++) {
-                let order = ordering[i][j]
-                let flips = newFlips[i][j]
-                if (flips && (maxFlipsPerOrdinal.get(order)! / flips) > 2) {
-                    newFlips[i][j] = flips + 27;
-                    done = false;
-                }
-            }
-        }
-    }
+    // while (!done) {
+    //     done = true
+    //     for (let i = 0; i < numFlips.length; i++) {
+    //         for (let j = 0; j < numFlips[i].length; j++) {
+    //             let order = ordering[i][j]
+    //             let flips = newFlips[i][j]
+    //             if (flips && (maxFlipsPerOrdinal.get(order)! / flips) > 2) {
+    //                 newFlips[i][j] = flips + 27;
+    //                 done = false;
+    //             }
+    //         }
+    //     }
+    // }
 
     console.log(newFlips);
 
+
+    // I need to convert numFlips to frames ... 
+
     let numRotationFrames = 30;
-    let smallestPause = numRotationFrames / 3;
+    let minimumPause = 5;
+    // the max we can do is speed it up by half.
+
     // cool, now we can set the spacing
     // if same, we choose the same value 
     // if A has fewer rotations than B, then make it so that A's pause is longer
     // in general, I want to rotate 4 times when 
+    let pauses = numFlips.map(l => l.map(i => i));
+    for (let i = 0; i < newFlips.length; i++) {
+        for (let j = 0; j < newFlips[i].length; j++) {
+            let order = ordering[i][j]
+            let flips = newFlips[i][j]
+            let max = maxFlipsPerOrdinal.get(order)!
+            if (flips && (max == flips)) {
+                pauses[i][j] = minimumPause;
+            } else if (flips) {
+                // let's say this is 7 and max is 23
+                let totalMin = numRotationFrames + minimumPause;
+                let ratio = max / flips;
+                // oh no, might not be a whole number
+                let totalPauseFrames = (ratio * totalMin) - numRotationFrames;
+                pauses[i][j] = totalPauseFrames;
+            }
+        }
+    }
+
+    let fn = (f: number) => (i: number) => [f < pauses[i].length ? pauses[i][f] : undefined, 0] as [number | undefined, number | undefined];
+    return fn;
+
 }
 
-let [sequence, sequence2] = unveilText(["", "world", "hello", ""], 4, 7);
+let [sequence, sequence2, sequence3] = unveilText(["", "world", "hello", ""], 4, 7);
 let display = new SplitFlapDisplay(4, 7, 30, 60);
 // let display = new SplitFlapDisplay(4, 7, 8, 16);
 // let me se the timing a bit differently
-let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30 / 4);
+
+let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 0);
+// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 10);
+
+// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30 / 4);
 // let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 60);
+
 let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 40);
+
 // let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30);
 // display.perPixelPauses = newTimingFunc;
 // wait... if I can change cycle ending time then when do I pull updates????
@@ -290,7 +324,7 @@ let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 40);
 
 
 
-// let newFunction = convertSyncedSequence(sequence, sequence.map(_ => newTimingFunc), sequence.map(_ => newCycleFunc))
+let newFunction = convertSyncedSequence(sequence, sequence.map(_ => newTimingFunc), sequence.map(_ => newCycleFunc))
 
 // hmm, as soon as I let things go longer, the spinning gets all messed up...
 // probably related to implicit assumptions about offset and splitflapcyclelength.
@@ -300,15 +334,22 @@ let basicSequence = [...new Array(5)].map(_ => [...new Array(28).keys()]).concat
 console.log(basicSequence)
 let basicFunction = convertSyncedSequence(basicSequence, basicSequence.map(_ => newTimingFunc), basicSequence.map(_ => newCycleFunc));
 
-display.resetAnimation(basicFunction)
+// display.resetAnimation(basicFunction)
+display.resetAnimation(sequence3 as (f: number) => (i: number) => [number | undefined, number | undefined])
 // display.resetAnimation(newFunction)
 // display.resetAnimation(i => i >= sequence.length ? [] : sequence[i])
 
 
+// OFFSET - the amount of time to pause before the next one begins
+// CYCLE LENGTH - how 
+/// hmm... annoying that there are two
+// how do I choose one variable to control both?
+// if I have the pause... why is there even two offsets 
+
 //==========================================================
 
 
-let rowOfDiscs = new RowOfDiscs(WIDTH, HEIGHT);
+let rowOfDiscs = new RowOfDiscs(WIDTH, HEIGHT, false);
 
 type RGB = [number, number, number];
 
@@ -552,6 +593,25 @@ class VideoIndexGenerator {
     }
 
 }
+
+
+let numfaces = 290;
+let sequentialOnOneRow = [...new Array(numfaces).keys()]
+console.log(rowOfDiscs.adjacentOrder);
+
+const loader = new STLLoader();
+// const object = await loader.loadAsync('public/lowpolysphere.stl');
+
+// console.log(object.attributes)
+
+loader.load("public/lowpolybunny.stl", (geometry) => {
+    let geometryStripes = rowOfDiscs.computeGeomStripes(geometry);
+    rowOfDiscs.resetAnimation(i => [[geometryStripes[numfaces - (i % numfaces)]]])
+
+});
+
+// rowOfDiscs.resetAnimation(i => [[sequentialOnOneRow[numfaces - (i % numfaces)]]])
+// rowOfDiscs.resetAnimation(i => [[sequentialOnOneRow[numfaces - (i % numfaces)]]])
 
 
 // should be [[],[],[1],[],[3],[],[]]
