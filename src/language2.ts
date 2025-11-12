@@ -1561,6 +1561,7 @@ let parser = async (input: string, flipless: boolean = false) => {
     if (!Array.isArray(timing)) {
         filePathIndices = timing["frames"];
         timing = timing["frames"].concat(timing["additional"]);
+        console.log("adding extra timing", timing)
     } 
 
     let filePath = lines.find(l => l.startsWith("filepath:"))!.slice(9).trim();
@@ -1575,13 +1576,26 @@ let parser = async (input: string, flipless: boolean = false) => {
     let decls = parseObjDecls(objDecl);
 
     let remaining = lines.slice(3);
-    let [width, height, graph] = await parseGraph(files, remaining, decls);
+    let [width, height, graph] = await parseGraph(files, remaining, decls, timing);
     console.log(graph);
     console.log("hejsdh")
 
     /// 
 
     let frames: Colour[][][] = generateAnimation(graph, timing)
+    
+    // randomly add new timings...
+    if (false) {
+        frames = frames.reduce((acc: Colour[][][], f: Colour[][], i: number) => {
+            acc.push(f);
+            if (i % 2 == 0) {
+                acc.push(f);
+            }
+            return acc;
+        }, [])
+    }
+
+
     // let frames: Colour[][][] = generateAnimation(res, [...Array(9)].map(_ => 3))
     frames.forEach(f => console.log(frameDisplay(f)));
     let indices: [number, Colour][][] = frameToIndices(frames, width);
@@ -1627,7 +1641,7 @@ let parseObjDecls = (input: string): Map<string, string> => {
     return colourToObjName
 }
 
-let parseGraph = async (files: string[], transitions: string[], names: Map<string, string>): Promise<[number, number, Target[][]]> => {
+let parseGraph = async (files: string[], transitions: string[], names: Map<string, string>, timings: number[]): Promise<[number, number, Target[][]]> => {
     // start by creating every declared objet.
 
     let parsedInstructions: [string, [[TargetString, number], string, [TargetString, number]][]][] = transitions.map(line => parseInsts(line))
@@ -1830,9 +1844,9 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     console.log("checkerboard start")
                 } else if (startObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![startObj[1][0][1] as number];
-                    console.log("making noise!", arg);
+                    console.log("making noise!", arg, timings.length);
                     // should be customizable lol 
-                    startTarget = new Noise(arg, 1 - (startFrame /  (transitions.length + 1)));
+                    startTarget = new Noise(arg, 1 - (startFrame /  (timings.length)));
                     startTarget.debugTag = `noise(${arg.debugTag})`
                 
                 } else if (startObj[0] == "noop") { // TODO: just a bandaid solution here to not being able to go from derivedobject to baseobject in instr line
@@ -1859,10 +1873,10 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     console.log("checkerboard end")
                 } else if (endObj[0] == "noise") {
                     let arg = namesToObjects.get(startObj[1][0][0] as string)![endObj[1][0][1] as number];
-                    console.log("making noise!", arg);
+                    console.log("making noise!", arg, timings.length);
                     // should be customizable lol 
                     // let's include the startarg?
-                    endTarget = new Noise(arg, 1 - (endFrame / (transitions.length + 1)), startTarget);
+                    endTarget = new Noise(arg, 1 - (endFrame / timings.length), startTarget);
                     endTarget.debugTag = `noise(${arg.debugTag})`
 
                 } else if (endObj[0] == "noop") {
@@ -2244,11 +2258,16 @@ noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1 -> instantaneous ->
 parser(noiseEmergeExample);
 
 
+// randomly agitate 
+let noiseStepsExample = "timing: {\"frames\": [1,1], \"additional\":[1,1,1]}\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] [#ffffff background]\n\
+noise(rectangle 1) 0 -> instantaneous -> noise(rectangle 1) 1 -> instantaneous -> noise(rectangle 1) 2 -> instantaneous -> noise(rectangle 1) 3 -> instantaneous -> noop(rectangle 1) 4";
+parser(noiseStepsExample);
+
+
 
 /*
-
-
-
 
 let golfPathExample = "timing: [1,1,1,1,3,4,4,4,4]\n\
 filepath: /animations/golf-collide${i}.png \n\
@@ -2261,9 +2280,9 @@ ball 4 ->* path -> ball 8"
 // path2: path1 6 -> path -> ball 7\n\"
 parser(golfPathExample);
 
+*/
 
 /*
-
 
 let testStr3 = "timing: [1,1,1,1,1,1,1,1,1]\n\
 filepath: /animations/golf-collide${i}.png \n\
@@ -2359,7 +2378,14 @@ let noiseEmergeExample = "timing: [1,1]\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] \n\
 noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1";
-parser(noiseEmergeExample);
+// parser(noiseEmergeExample);
+
+
+let noiseStepsExample = "timing: {\"frames\": [1,1], \"additional\":[1,1,1]}\n\
+filepath: /animations/wipe${i}.png \n\
+objects: [#000000 rectangle] \n\
+noop(rectangle 0) 0 -> instantaneous -> noise(rectangle 1) 1 -> instantaneous -> noise(rectangle 1) 2 -> instantaneous -> noise(rectangle 1) 3 -> instantaneous -> noise(rectangle 1) 4";
+parser(noiseStepsExample);
 
 let checkerboardAppearBgExample = "timing: [3,3]\n\
 filepath: /animations/wipe${i}.png \n\
@@ -2441,4 +2467,6 @@ filepath: /animations/drip-black${i}.png \n\
 objects: [#99e550 drip]\n\
 drip 0 ->* instantaneous ->* drip 6"
 parser(dripBlackExample);
+
+
 */
