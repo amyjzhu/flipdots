@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
 import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, SPLIT_FLAP_CYCLE_LENGTH } from './constants';
+import { ALPHABET_WITH_EXCLAMATION, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, SPLIT_FLAP_CYCLE_LENGTH } from './constants';
 
 let rotFlapBack = -0.5;
 
@@ -25,13 +25,39 @@ export class SplitFlapDisplay {
     audios: THREE.Object3D[] = [];
 
     flaps: [THREE.Object3D, THREE.Object3D, THREE.Object3D][] = [];
-    canvases: [CanvasRenderingContext2D,CanvasRenderingContext2D,CanvasRenderingContext2D,CanvasRenderingContext2D, CanvasRenderingContext2D,CanvasRenderingContext2D][] = [];
+    // canvases: [HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement][] = [];
+    // canvases: [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D][] = [];
 
     nextLetter = "A";
+    setNextFlips: (f: number) => (i: number) => [number | undefined, number | undefined] = f => i => [undefined, undefined];
+    canvases: THREE.Material[] = [];
+    canvasBacks: THREE.Material[] = [];
+    flipCycle: number[][] = [];
+    flapPos: number[] = [];
 
-    updateIdxs: number[] = [];
+    animationFrameCounters: number[] = [];
+    flipCycles: number[] = [];
 
-    constructor(width: number, height: number) {
+    // updateIdxs: (number[] = [];
+
+    basicMaterial = new THREE.MeshBasicMaterial({ color: "black" });
+
+    numFramesRotating = NUM_FRAMES_ROTATING;
+    splitFlapCycleLength = SPLIT_FLAP_CYCLE_LENGTH;
+
+    // this should be just the offsets 
+    perPixelPauses: (number | undefined)[] = [];
+    perPixelCycleLength: (number | undefined)[] = [];
+
+    constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number) {
+        if (numFramesRotating) {
+            this.numFramesRotating = numFramesRotating;
+        }
+
+        if (splitFlapCycleLength) {
+            this.splitFlapCycleLength = splitFlapCycleLength;
+        }
+
 
         this.width = width;
         this.height = height;
@@ -54,7 +80,10 @@ export class SplitFlapDisplay {
 
         this.initScene();
 
-        this.makeRowsOfSplitFlaps(5,7);
+        this.makeRowsOfSplitFlaps(width, height);
+
+        this.makeAlphabetCycle();
+        this.setUpAlphabetRolls();
 
         this.animate();
 
@@ -111,7 +140,66 @@ export class SplitFlapDisplay {
         // this.scene.add( vnh );
     }
 
-    generateCanvasTexture(colour: string, top: boolean): [THREE.Texture, CanvasRenderingContext2D] {
+    makeAlphabetCycle() {
+        // for (let letter of 'abcdefg'.split('')) {
+        // this is so stupid... has to be multiples of three
+        for (let letter of ALPHABET_WITH_EXCLAMATION.split('')) {
+            for (let top of [true, false]) {
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d")!;
+                // ctx.font = "100px Arial";
+                ctx.font = "250px Arial";
+                ctx.fillStyle = "red";
+                let texture;
+                if (top) {
+                    ctx.fillText(letter, 70, 250);
+                    // ctx.fillText("F" + letter, 70, 70);
+                    texture = new THREE.CanvasTexture(canvas);
+
+                    let material = new THREE.MeshBasicMaterial({
+                        map: texture
+                    });
+                    this.canvases.push(material);
+                } else {
+                    // ctx.scale(-1,1);
+                    // ctx.translate(canvas.width, 0);
+                    // ctx.translate(0, canvas.height);
+                    // ctx.scale(-1, 1);
+                    // ctx.fillText("B" + letter, 70, 70);
+
+                    ctx.fillText(letter, 70, 100);
+                    texture = new THREE.CanvasTexture(canvas);
+
+                    // texture.flipY = false;
+
+                    let material = new THREE.MeshBasicMaterial({
+                        map: texture
+                    });
+                    this.canvasBacks.push(material);
+                }
+                document.body.appendChild(canvas);
+
+            }
+        }
+    }
+
+    setUpAlphabetRolls() {
+        for (let _ of this.flaps) {
+            // this.flipCycle.push([...new Array(6).keys()]);
+            this.flipCycle.push([...new Array(27).keys()]);
+            this.flapPos.push(0);
+        }
+    }
+
+    resetAnimation = (newFlip: (f: number) => (i: number) => [number | undefined, number | undefined]) => {
+        this.runningCount = 0;
+        // console.log(this.flipCycles)
+        // console.log(this.idxToUpdate)
+        this.animationFrameCounters = this.flaps.map(_ => 0);
+        this.setNextFlips = newFlip;
+    }
+
+    generateCanvasTexture(colour: string, top: boolean): [THREE.Texture, HTMLCanvasElement] {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d")!;
         ctx.font = "250px Arial";
@@ -121,11 +209,11 @@ export class SplitFlapDisplay {
         } else {
             ctx.fillText(this.nextLetter, 70, 100);
         }
-        document.body.appendChild(canvas);
-        
+        // document.body.appendChild(canvas);
+
         let texture = new THREE.CanvasTexture(canvas);
 
-        return [texture, ctx];
+        return [texture, canvas];
     }
 
     SPACING_X = 7;
@@ -136,43 +224,43 @@ export class SplitFlapDisplay {
     makeRowsOfSplitFlaps(numTall: number, numWide: number) {
         let backingBorder = 10;
         let offsetZ = -5;
-        
+
         for (let j = 0; j < numTall; j++) {
             // let row = [];
             for (let i = 0; i < numWide; i++) {
 
-                
 
-        let [obj1, c1, c2] = this.makePiece(true);
-        let pivot = new THREE.Object3D();
-        obj1.position.set(0,3.75,0)
-        pivot.add(obj1);
-        pivot.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0)
-        this.scene.add(pivot)
 
-        let [obj2, c3, c4] = this.makePiece(false);
-        let pivot2 = new THREE.Object3D();
-        obj2.position.set(0, -3.75, 0);
-        pivot2.add(obj2);
-        pivot2.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0);
-        this.scene.add(pivot2)
+                let [obj1, c1, c2] = this.makePiece(true);
+                let pivot = new THREE.Object3D();
+                obj1.position.set(0, 3.75, 0)
+                pivot.add(obj1);
+                pivot.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0)
+                this.scene.add(pivot)
 
-        // this will be the third piece that movees down/up 
-        let [obj3, c5, c6] = this.makePiece(false);
-        let pivot3 = new THREE.Object3D();
-        obj3.position.set(0, 3.75, 0); 
-        pivot3.add(obj3);
-        pivot3.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0);
-        pivot3.rotation.x = rotFlapBack;
-        this.scene.add(pivot3)
+                let [obj2, c3, c4] = this.makePiece(false);
+                let pivot2 = new THREE.Object3D();
+                obj2.position.set(0, -3.75, 0);
+                pivot2.add(obj2);
+                pivot2.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0);
+                this.scene.add(pivot2)
 
-        // let obj3 = makePiece(false)
-        // obj3.position.set(0, 0, 0)
-        // this.scene.add(obj3)
+                // this will be the third piece that movees down/up 
+                let [obj3, c5, c6] = this.makePiece(true);
+                let pivot3 = new THREE.Object3D();
+                obj3.position.set(0, 3.75, 0);
+                pivot3.add(obj3);
+                pivot3.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0);
+                pivot3.rotation.x = rotFlapBack;
+                this.scene.add(pivot3)
 
-        this.flaps.push([pivot, pivot2, pivot3]);
-        this.canvases.push([c1, c2, c3, c4, c5, c6]);
-        this.updateIdxs = [0];
+                // let obj3 = makePiece(false)
+                // obj3.position.set(0, 0, 0)
+                // this.scene.add(obj3)
+
+                this.flaps.push([pivot, pivot2, pivot3]);
+                // this.canvases.push([c1, c2, c3, c4, c5, c6]);
+
 
 
                 // this.dummy.position.set(i * this.SPACING - offsetX, j * this.SPACING - offsetY, 0);
@@ -183,8 +271,11 @@ export class SplitFlapDisplay {
                 // // instanced.setColorAt()
 
             }
+
+            this.flipCycles = this.flaps.map(_ => 0);
+            this.animationFrameCounters = this.flaps.map(_ => 0);
         }
-        
+
         let backing = new THREE.BoxGeometry(numWide * this.SPACING_X + backingBorder, numTall * this.SPACING_Y + backingBorder, 4);
         let backingMaterial = new THREE.MeshPhongMaterial({ color: 0x111111 })
         let backingPiece = new THREE.Mesh(backing, backingMaterial);
@@ -193,27 +284,63 @@ export class SplitFlapDisplay {
         backingPiece.position.set(this.WIDTH * numWide - this.WIDTH - backingBorder / 2, this.HEIGHT * numTall - this.HEIGHT - backingBorder / 2, offsetZ)
     }
 
-    makePiece = (top: boolean): [THREE.Mesh, CanvasRenderingContext2D, CanvasRenderingContext2D] => {
+    makePiece = (top: boolean): [THREE.Mesh, HTMLCanvasElement, HTMLCanvasElement] => {
         let geometry = new THREE.BoxGeometry(this.WIDTH, this.HEIGHT, 0.5);
-            
-            let [frontTexture, c] = this.generateCanvasTexture("white", top);
-            
-            let [backTexture, c2] = this.generateCanvasTexture("green", top);
 
-            let basicMaterial = new THREE.MeshBasicMaterial();
-            var material = new THREE.MeshBasicMaterial({
-                map: frontTexture
-            });
+        let [frontTexture, c] = this.generateCanvasTexture("white", top);
 
-            // the back texture should actually be flipped and reversed... 
-            let backMaterial = new THREE.MeshBasicMaterial({
-                map: backTexture
-            });
+        let [backTexture, c2] = this.generateCanvasTexture("green", top);
 
-            let obj = new THREE.Mesh(geometry, [basicMaterial, basicMaterial, basicMaterial, basicMaterial, material, backMaterial]);
-            return [obj, c, c2];
+        let basicMaterial = this.basicMaterial;
+        var material = new THREE.MeshBasicMaterial({
+            map: frontTexture
+        });
 
-        }
+        // the back texture should actually be flipped and reversed... 
+        let backMaterial = new THREE.MeshBasicMaterial({
+            map: backTexture
+        });
+
+        let obj = new THREE.Mesh(geometry, [basicMaterial, basicMaterial, basicMaterial, basicMaterial, material, backMaterial]);
+        return [obj, c, c2];
+
+    }
+
+    makeTexture = (imageFront: HTMLCanvasElement, imageBack: HTMLCanvasElement) => {
+        let basicMaterial = new THREE.MeshBasicMaterial({ color: "black" });
+        var material = new THREE.MeshBasicMaterial({
+            map: new THREE.CanvasTexture(imageFront)
+        });
+
+        // the back texture should actually be flipped and reversed... 
+        let backMaterial = new THREE.MeshBasicMaterial({
+            map: new THREE.CanvasTexture(imageBack)
+        });
+
+        return [basicMaterial, basicMaterial, basicMaterial, basicMaterial, material, backMaterial]
+    }
+
+    // makeSplitFlapPiece = (top: boolean): [THREE.Mesh, HTMLCanvasElement, HTMLCanvasElement] => {
+    //     let geometry = new THREE.BoxGeometry(this.WIDTH, this.HEIGHT, 0.5);
+
+    //     let [frontTexture, c] = this.generateCanvasTexture("white", top);
+
+    //     let [backTexture, c2] = this.generateCanvasTexture("green", top);
+
+    //     let basicMaterial = new THREE.MeshBasicMaterial({ color: "black" });
+    //     var material = new THREE.MeshBasicMaterial({
+    //         map: frontTexture
+    //     });
+
+    //     // the back texture should actually be flipped and reversed... 
+    //     let backMaterial = new THREE.MeshBasicMaterial({
+    //         map: backTexture
+    //     });
+
+    //     let obj = new THREE.Mesh(geometry, [basicMaterial, basicMaterial, basicMaterial, basicMaterial, material, backMaterial]);
+    //     return [obj, c, c2];
+
+    // }
 
     // makeSplitFlap() {
     //     let geometry = new THREE.BoxGeometry(this.WIDTH, this.HEIGHT, 1);
@@ -221,9 +348,9 @@ export class SplitFlapDisplay {
     //     // now, I need to apply the correct texture on all sides/.. 
 
     //     let makePiece = (top: boolean): [THREE.Mesh, CanvasRenderingContext2D, CanvasRenderingContext2D] => {
-            
+
     //         let [frontTexture, c] = this.generateCanvasTexture("white", top);
-            
+
     //         let [backTexture, c2] = this.generateCanvasTexture("green", top);
 
     //         let basicMaterial = new THREE.MeshBasicMaterial();
@@ -265,50 +392,192 @@ export class SplitFlapDisplay {
     // }
 
 
-    animationFrameCounter = 0;
-    flipCycles = 0;
-
+    runningCount = 0;
     animate = () => {
-        let OFFSET = NUM_FRAMES_ROTATING / 3;
-        let rotationRate = Math.PI / NUM_FRAMES_ROTATING;
+        // let OFFSET = this.numFramesRotating / 3;
 
-        this.renderer.render(this.scene, this.camera);
+        let PAUSE_DEFAULT = Math.floor(this.numFramesRotating / 3);
+        let rotationRate = Math.PI / this.numFramesRotating;
 
-        for (let i = 0; i < this.updateIdxs.length; i++) {
+        // this.renderer.render(this.scene, this.camera);
+        let done = false;
+
+        for (let idx = 0; idx < this.flaps.length; idx++) {
+            // for (let i = 0; i < this.updateIdxs.length; i++) {
+
+            // console.log(this.perPixelPauses)
+            // console.log(this.perPixelCycleLength)
+
+            let perPixelPause = this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT;
+            // let perPixelPause = this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT;
+            let perPixelCycleLength = this.perPixelCycleLength.length > idx ? this.perPixelCycleLength[idx] : this.splitFlapCycleLength;
+
+            if (perPixelPause == undefined || perPixelCycleLength == undefined) {
+                // skip this one
+                continue;
+            }
+
+            // perPixelPause = perPixelCycleLength - this.numFramesRotating;
+            perPixelCycleLength = perPixelPause + this.numFramesRotating;
+            perPixelPause = Math.floor(perPixelPause / 2);
+
+            // perPixelPause = Math.floor(perPixelPause);
+
+            // instead of having a uniform "updateidxs"... we woul need to check each one 
+            let [falling, rising, stepping] = this.flaps[idx];
+            // basically, the wait and the splitflapcyclelength need to balance out. 
+            // wait n, then wait until splitflapcycle - n (since everything must be synced)
+
+            // console.log(perPixelPause)
+            if (perPixelPause + this.numFramesRotating > perPixelCycleLength) {
+                throw new Error("pause is too long")
+            }
+
+            // during each flip, I want to do three things.
+            // the step flap will move forward. (during OFFSET) - angle / num frames for offset -> bcames stepping
+            // the flap that is falling will fall to the bottom (after OFFSET) - angle change / num frames minus offset -> becomes falling
+            // the flap that is at the bottom will move to step position (after OFFSET) -> becomes rising 
+
+            // console.log(`cycle length is ${perPixelCycleLength} and pause is ${perPixelPause} for idx ${idx}, framesrot is  ${this.numFramesRotating}`);
             
-            let idx = this.updateIdxs[i];
-            let [t, b, s] = this.flaps[idx];
+            if (this.animationFrameCounters[idx] < perPixelPause) {
+                // todo?
+                stepping.rotation.x += rotFlapBack * -1 / perPixelPause;
+                // console.log("animating step for ", idx)
+                // console.log(rotFlapBack, OFFSET)
+                // console.log("rot flap back", rotFlapBack / OFFSET);
+            } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < this.numFramesRotating + perPixelPause) {
+                // falling.rotation.x += rotationRate;
+                // console.log("rotation rate", rotationRate)
+                // rising.rotation.x += rotFlapBack / this.numFramesRotating;
+                rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating);
+                // rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating - perPixelPause);
+                falling.rotation.x += Math.PI / (this.numFramesRotating)
+                // falling.rotation.x += Math.PI / (this.numFramesRotating - perPixelPause)
+                // this one is negative 
+                // console.log("rot flap back / num frames rotating", rotFlapBack / this.numFramesRotating);
+            } else if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
 
-            if (this.animationFrameCounter < NUM_FRAMES_ROTATING) {    
-                t.rotation.x += rotationRate;
-                s.rotation.x += rotFlapBack / NUM_FRAMES_ROTATING;
+
+                // idk why but I need this?
+                this.flipCycles[idx] += 1;
+                // reset the rising falling etc 
+
+                let nextIdx = this.flapPos[idx] + 1 >= this.flipCycle[idx].length ? 0 : this.flapPos[idx] + 1;
+
+                let front = this.canvases[this.flipCycle[idx][this.flapPos[idx]]];
+                let back = this.canvasBacks[this.flipCycle[idx][nextIdx]];
+                // let front = this.canvases[this.flipCycle[i][this.flapPos[i]]];
+                // let back = this.canvasBacks[this.flipCycle[i][this.flapPos[i]]];
+
+
+                ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
+                ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = back;
+                // console.log(this.flipCycles[idx])
+                // this is just dumb as fuck but idc 
+                if (this.flipCycles[idx] % 3 == 0) {
+                    // front.toneMapped.flipY = false;
+
+                    let texture = (front as THREE.MeshBasicMaterial).map!;
+                    // texture.center.set(0.5, 0.5);  // rotate around the center
+                    // texture.rotation = -Math.PI/5;    // 180 degrees
+                    // texture.needsUpdate = true;
+
+
+                    let backTexture = (back as THREE.MeshBasicMaterial).map!;
+                    // Flip vertically
+                    // backTexture.flipY = false;
+                    backTexture.center.set(0.5, 0.5);  // rotate around the center
+                    backTexture.rotation = Math.PI;    // 180 degrees
+                    backTexture.needsUpdate = true;
+
+
+
+                } else if (this.flipCycles[idx] % 3 == 1) { // 0, 2
+                    // ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = this.canvasBacks[this.flipCycle[i][nextIdx]];
+
+                    // ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = this.canvases[this.flipCycle[i][this.flapPos[i]]];
+
+
+                    let texture = (front as THREE.MeshBasicMaterial).map!;
+                    texture.center.set(0.5, 0.5);  // rotate around the center
+                    texture.rotation = Math.PI;    // 180 degrees
+                    texture.needsUpdate = true;
+
+                    // front.toneMapped.flipY = false;
+
+                    let backTexture = (back as THREE.MeshBasicMaterial).map!;
+                    // Flip vertically
+                    // backTexture.flipY = false;
+
+                    // I wonder if the rotation is supposed to alternate...
+                    // backTexture.center.set(0.5, 0.5);  // rotate around the center
+                    // backTexture.rotation = Math.PI;    // 180 degrees
+                    // backTexture.needsUpdate = true;
+
+
+
+                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = back;
+
+                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = front;
+
+
+
+                } else if (this.flipCycles[idx] % 3 == 2) {
+
+                    // front.toneMapped.flipY = false;
+
+
+                    let texture = (front as THREE.MeshBasicMaterial).map!;
+                    // texture.center.set(0.5, 0.5);  // rotate around the center
+                    // texture.rotation = Math.PI/5;    // 180 degrees
+                    // texture.needsUpdate = true;
+
+
+                    let backTexture = (back as THREE.MeshBasicMaterial).map!;
+                    // Flip vertically
+                    // backTexture.flipY = false;
+                    backTexture.center.set(0.5, 0.5);  // rotate around the center
+                    backTexture.rotation = Math.PI;    // 180 degrees
+                    backTexture.needsUpdate = true;
+
+                }
+
+                // console.log("UPDATING RISING TO: ", this.flipCycle[i][this.flapPos[i]], this.flipCycle[i][nextIdx])
+                this.flapPos[idx] = nextIdx;
+                this.flaps[idx] = [stepping, falling, rising];
+
+
+                let [newPause, newCycle] = this.setNextFlips(this.flipCycles[idx])(idx);
+                this.perPixelPauses[idx] = newPause;
+                this.perPixelCycleLength[idx] = newCycle;
+                // console.log("flip complete")
+                // done = true;
+                // continue;
+
             }
 
-            if (this.animationFrameCounter > (NUM_FRAMES_ROTATING - OFFSET) && this.animationFrameCounter <= (NUM_FRAMES_ROTATING * 2 - OFFSET)) {    
-                
-                b.rotation.x += rotationRate;
-                s.rotation.x = rotFlapBack;
-            }
+            if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
+                console.log("all done")
+                this.animationFrameCounters[idx] = 0;
+                this.runningCount += 1;
 
-            // how many frames for a full cycle?
-            if (this.animationFrameCounter >= SPLIT_FLAP_CYCLE_LENGTH) {
-                this.animationFrameCounter = 0;
-                this.flipCycles += 1;
-                
-                let [tfront, tback, bfront, bback] = this.canvases[idx];
-                tfront.fillText("B", 70, 250);
-                tback.fillText("C", 70, 250);
-                bfront.fillText("D", 70, 100);
-                bback.fillText("E", 70, 100);
+                // let [nextPause, nextCycle] = this.setNextFlips(this.runningCount);
+                // if (this.animationFrameCounter >= this.splitFlapCycleLength) {
+                //     console.log('flip complete');
+                //     this.flipCycles = 0;
+                //     this.animationFrameCounter = 0;
+                // }
 
             } else {
-                this.animationFrameCounter += 1;
+                this.animationFrameCounters[idx] += 1;
             }
 
-
-            this.renderer.render(this.scene, this.camera);
-
         }
+
+        // if (done) {
+
+        this.renderer.render(this.scene, this.camera);
 
     }
 }

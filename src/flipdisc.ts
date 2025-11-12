@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 // need to figure out what to do for the type defns 
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
 import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -10,6 +12,7 @@ import { FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED,
 export class RowOfDiscs {
     width: number;
     height: number;
+    count: number;
     scene: THREE.Scene;
     camera: THREE.Camera;
     renderer: THREE.WebGLRenderer;
@@ -41,10 +44,12 @@ export class RowOfDiscs {
 
     audios: THREE.Object3D[] = [];
 
-    constructor(width: number, height: number) {
+
+    constructor(width: number, height: number, flat: boolean = true) {
 
         this.width = width;
         this.height = height;
+        this.count = this.width * this.height;
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -62,7 +67,12 @@ export class RowOfDiscs {
         const controls = new OrbitControls(this.camera, this.renderer.domElement);
 
         this.initScene();
-        this.makeRowOfDiscs(this.width, this.height);
+        if (flat) {
+            this.makeRowOfDiscs(this.width, this.height);
+        } else {
+            this.makeArbitraryMeshDiscSetup("public/lowpolybunny.stl");
+            this.height = 1;
+        }
 
         // performant takes precedence 
         if (PERFORMANT_SOUND_ENABLED) {
@@ -202,7 +212,7 @@ varying vec3 vColor;
         };
 
 
-        let count = this.width * this.height;
+        let count = this.count;
 
         var instanceBackColours = new Float32Array(count * 3);
         var instanceFrontColours = new Float32Array(count * 3);
@@ -218,6 +228,9 @@ varying vec3 vColor;
             instanceFrontColours[i * 3 + 1] = frontColour[1];
             instanceFrontColours[i * 3 + 2] = frontColour[2];
         }
+
+        frontMaterial.side = THREE.DoubleSide;
+        backMaterial.side = THREE.DoubleSide;
 
         geometry.setAttribute('instanceBackColour',
             new THREE.InstancedBufferAttribute(instanceBackColours, 3));
@@ -308,6 +321,168 @@ varying vec3 vColor;
 
         return newShape;
 
+    }
+
+    computeGeomStripes(geometry: THREE.BufferGeometry) {
+        const pos = geometry.attributes.position.array;
+        const faceCount: number = pos.length / 9; // 3 verts per face, 3 coords per vert
+
+        for (let f = 0; f < faceCount; f++) {
+            const a = f * 9;
+            const tri = [
+                [pos[a + 0], pos[a + 1], pos[a + 2]],
+                [pos[a + 3], pos[a + 4], pos[a + 5]],
+                [pos[a + 6], pos[a + 7], pos[a + 8]],
+            ];
+        }
+
+        const vertexMap = new Map<String, number>();
+        const canonicalIndex: number[] = [];
+        let nextId = 0;
+
+        for (let i = 0; i < pos.length; i += 3) {
+            const key = `${pos[i].toFixed(5)}_${pos[i + 1].toFixed(5)}_${pos[i + 2].toFixed(5)}`;
+            // round to tolerance to handle floating error
+            if (!vertexMap.has(key)) vertexMap.set(key, nextId++);
+            canonicalIndex.push(vertexMap.get(key)!);
+        }
+
+        const faceNeighbors = Array.from({ length: faceCount }, () => new Set<number>());
+        const edgeToFaces = new Map<String, number[]>();
+
+        for (let f = 0; f < faceCount; f++) {
+            const a = canonicalIndex[3 * f + 0];
+            const b = canonicalIndex[3 * f + 1];
+            const c = canonicalIndex[3 * f + 2];
+            const edges = [[a, b], [b, c], [c, a]];
+
+            for (const [i, j] of edges) {
+                const key = i < j ? `${i}_${j}` : `${j}_${i}`;
+                if (!edgeToFaces.has(key)) edgeToFaces.set(key, []);
+                edgeToFaces.get(key)!.push(f);
+            }
+        }
+
+        for (const faces of edgeToFaces.values()) {
+            if (faces.length === 2) {
+                const [f1, f2] = faces;
+                faceNeighbors[f1].add(f2);
+                faceNeighbors[f2].add(f1);
+            }
+        }
+
+        function dfsOrder(
+            startFace: number,
+            faceNeighbors: Set<number>[]
+        ): number[] {
+            const visited = new Set<number>();
+            const order: number[] = [];
+
+            function visit(f: number): void {
+                visited.add(f);
+                order.push(f);
+                for (const n of faceNeighbors[f]) {
+                    if (!visited.has(n)) visit(n);
+                }
+            }
+
+            visit(startFace);
+            return order;
+        }
+
+
+        const order = dfsOrder(0, faceNeighbors);
+
+        return order;
+
+    }
+
+    async makeArbitraryMeshDiscSetup(meshPath: string) {
+        const loader = new STLLoader();
+        // const object = await loader.loadAsync('public/lowpolysphere.stl');
+
+        // console.log(object.attributes)
+
+        loader.load(meshPath, (geometry) => {
+            geometry.computeVertexNormals(); // make sure normals exist
+            // geometry.scale(10, 10, 10)
+            geometry.rotateX(-Math.PI / 2)
+
+            let geometryStripes = this.computeGeomStripes(geometry);
+            console.log(geometryStripes);
+            
+
+            // 4. Create InstancedMesh
+            const faceCount = geometry.attributes.position.count / 3; // 3 verts per face
+            console.log("face count is", faceCount)
+            this.count = faceCount;
+
+            let basicGeometry = USE_X_DISC ? this.makeXDiscGeometry() : this.makeDiscGeometry();
+            // basicGeometry.material.side = THREE.DoubleSide;
+            this.instanced = new THREE.InstancedMesh(basicGeometry.geometry, basicGeometry.material, faceCount);
+            this.instanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            this.scene.add(this.instanced);
+
+
+            // 5. Temporary objects for math
+            const pos = geometry.attributes.position;
+            const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+            const faceCenter = new THREE.Vector3();
+            const faceNormal = new THREE.Vector3();
+            const up = new THREE.Vector3(0, 1, 0);
+            const matrix = new THREE.Matrix4();
+            const quaternion = new THREE.Quaternion();
+
+            // 6. Loop through faces
+            for (let i = 0; i < faceCount; i++) {
+                vA.fromBufferAttribute(pos, i * 3 + 0);
+                vB.fromBufferAttribute(pos, i * 3 + 1);
+                vC.fromBufferAttribute(pos, i * 3 + 2);
+
+                // Face center
+                faceCenter.addVectors(vA, vB).add(vC).divideScalar(3);
+
+                // Face normal
+                faceNormal.subVectors(vB, vA).cross(vC.clone().sub(vA)).normalize();
+
+                // Align instance to face normal (using Y-up as reference)
+                const tempQuat = new THREE.Quaternion();
+                const rotationFix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2); // rotate 90° around X
+                tempQuat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), faceNormal);
+                quaternion.multiplyQuaternions(tempQuat, rotationFix);
+
+                // Set instance matrix
+                matrix.compose(faceCenter, quaternion, new THREE.Vector3(1, 1, 1));
+                this.instanced.setMatrixAt(i, matrix);
+
+                // reset reusable vectors
+                faceCenter.set(0, 0, 0);
+            }
+
+            this.instanced.instanceMatrix.needsUpdate = true;
+
+
+
+            let offsetZ = -5;
+            let backingBorder = 2;
+            // also, make a black rectangle behind it
+            geometry.scale(0.99, 0.99, 0.99)
+
+            let backingMaterial = new THREE.MeshPhongMaterial({ color: 0x222222 })
+            let backingPiece = new THREE.Mesh(geometry, backingMaterial);
+            this.scene.add(backingPiece)
+
+            // I think we want an ambient light because of the shape
+            this.scene.add(new THREE.AmbientLight(0x404040))
+            // should be behind the discs.
+            // backingPiece.position.set(-this.RADX - backingBorder / 2, -this.RADY - backingBorder / 2, offsetZ)
+
+
+        });
+
+        // I think if we want this mode, we assume there's only one "row" and everything is a column
+        this.idxToUpdate = [...Array(this.height)].map(_ => []);
+        this.discStates = [...Array(this.height)].map(_ => [...Array(this.width)].map(_ => false));
     }
 
 
@@ -417,22 +592,22 @@ varying vec3 vColor;
 
                 this.discStates[row][idx] = false;
                 // console.log("ya")
-                
+
                 this.dummy.matrix.decompose(this.dummy.position, this.dummy.quaternion, this.dummy.scale);
 
                 // Step 3: Reset rotation (quaternion to identity)
                 this.dummy.quaternion.identity();
-                
+
                 // Step 4: Recompose matrix
                 this.dummy.updateMatrix();
-                
+
                 // Step 5: Write it back
                 this.instanced!.setMatrixAt(row * this.width + idx, this.dummy.matrix);
-                
+
                 // Step 6: Mark update
                 this.instanced!.instanceMatrix.needsUpdate = true;
 
-                
+
 
                 // let pos = new THREE.Vector3();
                 // let quat = new THREE.Quaternion();
@@ -629,7 +804,7 @@ varying vec3 vColor;
                 this.flipCycles += 1;
                 this.clock.start()
             }
-            
+
         } else {
             this.animationFrameCounter += 1;
         }

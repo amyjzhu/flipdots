@@ -1,12 +1,371 @@
 import { RowOfDiscs } from "./flipdisc";
-import { WIDTH, HEIGHT, ANIMATION_PATHS,  INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT, GOLF_ANIM } from "./constants";
+import { WIDTH, HEIGHT, ANIMATION_PATHS, INV_Y_ON_LOAD, BAD_APPLE, ALL_ANIMATIONS, REVERSE_ANIM, CONTROL_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT, GOLF_ANIM, NUM_FRAMES_ROTATING, SPLIT_FLAP_CYCLE_LENGTH, ALPHABET_WITH_EXCLAMATION } from "./constants";
 
 import * as THREE from 'three';
 import { CINDERELLA_BASIC } from './cinderella';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
 import { SplitFlapDisplay } from "./splitflap";
+import { STLLoader } from "three/addons/loaders/STLLoader";
 
-let rowOfDiscs = new RowOfDiscs(WIDTH, HEIGHT);
+
+
+
+
+// new SplitFlapDisplay(10,20, 60, 120);
+console.log([...new Array(5 % 50)])
+// let display = new SplitFlapDisplay(5, 10, 30, 60);
+
+
+// let's generate a function that 
+let frames1to10 = [...new Array(50).keys()];
+let frame11 = [...new Array(50).keys()];
+frame11.splice(25, 1);
+frame11.splice(24, 1);
+
+let frame12 = [...new Array(50).keys()];
+frame12.splice(26, 1);
+frame12.splice(25, 1);
+frame12.splice(24, 1);
+frame12.splice(23, 1);
+
+let frame13 = [...new Array(50).keys()];
+frame13.splice(27, 1);
+frame13.splice(26, 1);
+frame13.splice(25, 1);
+frame13.splice(24, 1);
+frame13.splice(23, 1);
+
+let newGenerator = (i: number) => [frames1to10, frames1to10, frames1to10, frames1to10, frame11, frame11, frame12, frame12, frame13, frame13][i % 10];
+// display.resetAnimation(newGenerator);
+// display.resetAnimation(i => [...new Array(i % 50).keys()]);
+
+
+let unveilText = (textPerLine: string[], height: number, width: number): [number[][], number[][], (f: number) => (i: number) => [number | undefined, number | undefined]] => {
+    // what is the way to specify the input?
+    if (textPerLine.length != height) {
+        throw new Error("not one text per line");
+    }
+
+    if (textPerLine.some(l => l.length >= width)) {
+        throw new Error("one of these lines has too many characters");
+    }
+
+    // map text pieces to indices
+
+    let finalFrame = [];
+    let flipOrdering = [];
+    for (let line of textPerLine) {
+        // depends on the scheme... but maybe I should do this:
+
+        let leftPadding = Math.floor((width - line.length) / 2);
+        let rightPadding = Math.ceil((width - line.length) / 2);
+
+        let widthHalfMax = Math.ceil(width / 2);
+        let widthHalfMin = Math.floor(width / 2)
+
+        let forward, reversed = [];
+        if (widthHalfMax == widthHalfMin) {
+            forward = [...new Array(widthHalfMin).keys()];
+            reversed = forward.map(i => i);
+        } else {
+            forward = [...new Array(widthHalfMax).keys()];
+            reversed = [...new Array(widthHalfMin).keys()];
+        }
+        reversed.reverse();
+        flipOrdering.push(forward.concat(reversed));
+
+        let finalLine: string[] = [];
+        finalLine = finalLine.concat([...new Array(leftPadding)].map(_ => ""))
+        for (let i = 0; i < line.length; i++) {
+            finalLine.push(line[i]);
+        }
+        finalLine = finalLine.concat([...new Array(rightPadding)].map(_ => ""))
+        finalFrame.push(finalLine);
+    }
+
+    console.log(finalFrame);
+
+    // now I want to compute how many flips I need
+    let flipsTo = finalFrame.map(line => line.map(char => char == "" ? undefined : ALPHABET_WITH_EXCLAMATION.split("").findIndex(c => c == char)!));
+
+    console.log(flipsTo);
+    console.log(flipOrdering);
+
+    // okay, now I need to combine these two. 
+    // let's make a list called adjustedFlips
+    // for each character inside finalFrame
+
+    let maxFlipsPerOrdinal: Map<number, number> = new Map();
+    for (let i = 0; i < finalFrame.length; i++) {
+        for (let j = 0; j < finalFrame[i].length; j++) {
+            let char = finalFrame[i][j];
+            if (char != "") {
+                let flipOrder = flipOrdering[i][j];
+                let numFlips = flipsTo[i][j];
+                if (numFlips != undefined) {
+                    if (maxFlipsPerOrdinal.has(flipOrder)) {
+                        maxFlipsPerOrdinal.set(flipOrder, Math.max(maxFlipsPerOrdinal.get(flipOrder)!, numFlips))
+                    } else {
+                        maxFlipsPerOrdinal.set(flipOrder, numFlips);
+                    }
+                }
+            }
+        }
+    }
+
+    console.log(maxFlipsPerOrdinal);
+
+
+    let syncedVersion = generateSynced(flipsTo, maxFlipsPerOrdinal, flipOrdering);
+
+
+    let finalFlipsTo = [];
+    // now I go back: if I have less than numFlips, I need to add 27 to it 
+    for (let i = 0; i < finalFrame.length; i++) {
+        let finalFlipsToLine = [];
+        for (let j = 0; j < finalFrame[i].length; j++) {
+            let flipOrder = flipOrdering[i][j]; // 0, 1, 2, 3, 4 etc
+            let numFlips = flipsTo[i][j]; // alphabet letters
+
+            console.log(numFlips)
+            if (flipOrder > 0) {
+                let max = Math.max(...[...new Array(flipOrder).keys()].map(i => maxFlipsPerOrdinal.get(i) != undefined ? maxFlipsPerOrdinal.get(i)! : 0));
+                console.log(max);
+                if (numFlips && max >= numFlips) {
+                    finalFlipsToLine.push(numFlips + 27);
+                } else if (numFlips) {
+                    finalFlipsToLine.push(numFlips);
+                } else {
+                    finalFlipsToLine.push(undefined);
+                }
+            } else {
+                if (numFlips) {
+                    finalFlipsToLine.push(numFlips);
+                } else {
+                    finalFlipsToLine.push(undefined);
+                }
+            }
+
+        }
+        finalFlipsTo.push(finalFlipsToLine);
+    }
+
+    console.log(finalFlipsTo);
+    // okay, now I'll use this to make a sequence.
+    // TODO: not sure why this needs +3 exactly or +2 or whatever
+    finalFlipsTo = finalFlipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)) // dumb
+
+    // let biggestNum = Math.max(...finalFlipsTo.map(line => Math.max(...line.filter(x => x != undefined))));
+    // let finalSequence: number[][] = [...new Array(biggestNum + 2)].map(_ => []); // arbitrary 
+    // for (let i = 0; i < finalFrame.length; i++) {
+    //     for (let j = 0; j < finalFrame[i].length; j++) {
+    //         if (finalFlipsTo[i][j] == undefined) {
+    //             for (let idx = 0; idx < finalSequence.length; idx++) {
+    //                 // flip this every time
+    //                 finalSequence[idx].push(i * width + j)
+    //             }
+    //         } else {
+    //             // otherwise, flip up to (excluding) the number of flips.
+    //             let numFlips = finalFlipsTo[i][j]!;
+    //             for (let idx = 0; idx < numFlips; idx++) {
+    //                 finalSequence[idx].push(i * width + j);
+    //             }
+    //         }
+    //     }
+    // }
+
+    console.log(flipOrdering)
+    return [convertNumFlipsToSequence(finalFlipsTo, width), convertNumFlipsToSequence(flipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)), width), syncedVersion]
+
+    // console.log(finalSequence)
+
+    // return [finalSequence, flipOrdering];
+}
+
+let convertNumFlipsToSequence = (flipsTo: (number | undefined)[][], width: number): number[][] => {
+    console.log(flipsTo)
+    let biggestNum = Math.max(...flipsTo.map(line => Math.max(...line.filter(x => x != undefined))));
+    let finalSequence: number[][] = [...new Array(biggestNum + 2)].map(_ => []); // arbitrary 
+    for (let i = 0; i < flipsTo.length; i++) {
+        for (let j = 0; j < flipsTo[i].length; j++) {
+            // console.log(flipsTo[i])
+            if (flipsTo[i][j] == undefined) {
+                for (let idx = 0; idx < finalSequence.length; idx++) {
+                    // flip this every time
+                    finalSequence[idx].push(i * width + j)
+                }
+            } else {
+                // otherwise, flip up to (excluding) the number of flips.
+                let numFlips = flipsTo[i][j]!;
+                for (let idx = 0; idx < numFlips; idx++) {
+                    finalSequence[idx].push(i * width + j);
+                }
+            }
+        }
+    }
+    console.log(finalSequence)
+    return finalSequence;
+}
+
+
+// pause and cycle might be specific to the frame
+// frames, then indices
+let convertSyncedSequence = (frames: number[][], pauses: number[][], cycles: number[][]): (f: number) => (i: number) => [number | undefined, number | undefined] => {
+
+    let countSinceLastFrame: number[] = pauses[0].map(_ => 0);
+
+    // maybe I don't need undefined, it's just the end of the list?
+    // this one is arranged OBJECT then FRAME
+    let perPixelReturn: number[][] = pauses[0].map(_ => []);
+    let cyclesReturn: number[][] = pauses[0].map(_ => []);
+
+    for (let frameIdx = 0; frameIdx < frames.length; frameIdx++) {
+        for (let i = 0; i < pauses[frameIdx].length; i++) {
+            // console.log(frameIdx)
+            // console.log(i)
+            if (frames[frameIdx].includes(i)) {
+                // each thing that appears should reset the count...
+                let count = i > 0 ? countSinceLastFrame[i - 1] : countSinceLastFrame[i];
+                // or should this be according to the previous one?
+
+                perPixelReturn[i].push((count + 1) * pauses[frameIdx - count][i]);
+                cyclesReturn[i].push((count + 1) * cycles[frameIdx - count][i]);
+                countSinceLastFrame[i] = 0;
+            } else {
+                // console.log("no included in: ", i, frames[frameIdx]);
+                countSinceLastFrame[i] += 1;
+            }
+        }
+    }
+
+    console.log(perPixelReturn);
+    console.log(cyclesReturn)
+
+    // this only lets things loop once!
+    let fn = (f: number) => (i: number) => [f < perPixelReturn[i].length ? perPixelReturn[i][f] : undefined, f < cyclesReturn[i].length ? cyclesReturn[i][f] : undefined] as [number | undefined, number | undefined];
+
+    return fn;
+}
+
+
+let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Map<number, number>, ordering: number[][]) => {
+    // first of all -- are any more than double?
+    // but if I do adjust for that.... then I might have to adjust all of them...
+    let newFlips = numFlips.map(l => l.map(i => i));
+    console.log(newFlips)
+    let done = false;
+    // while (!done) {
+    //     done = true
+    //     for (let i = 0; i < numFlips.length; i++) {
+    //         for (let j = 0; j < numFlips[i].length; j++) {
+    //             let order = ordering[i][j]
+    //             let flips = newFlips[i][j]
+    //             if (flips && (maxFlipsPerOrdinal.get(order)! / flips) > 2) {
+    //                 newFlips[i][j] = flips + 27;
+    //                 done = false;
+    //             }
+    //         }
+    //     }
+    // }
+
+    console.log(newFlips);
+
+
+    // I need to convert numFlips to frames ... 
+
+    let numRotationFrames = 30;
+    let minimumPause = 5;
+    // the max we can do is speed it up by half.
+
+    // cool, now we can set the spacing
+    // if same, we choose the same value 
+    // if A has fewer rotations than B, then make it so that A's pause is longer
+    // in general, I want to rotate 4 times when 
+    let pauses: number[][] = [...new Array(numFlips.length * numFlips[0].length)].map(_ => []);
+    for (let i = 0; i < newFlips.length; i++) {
+        for (let j = 0; j < newFlips[i].length; j++) {
+            let order = ordering[i][j]
+            let flips = newFlips[i][j]
+            let max = maxFlipsPerOrdinal.get(order)!
+            if (flips && (max == flips)) {
+                for (let f = 0; f < max; f++) {
+                    pauses[i * numFlips[0].length + j]!.push(minimumPause);
+                }
+                // pauses[i][j] = minimumPause;
+            } else if (flips) {
+                // let's say this is 7 and max is 23
+                let totalMin = numRotationFrames + minimumPause;
+                let ratio = max / flips;
+                // oh no, might not be a whole number
+                let totalPauseFrames = (ratio * totalMin) - numRotationFrames;
+                // pauses[i][j] = totalPauseFrames;
+                for (let f = 0; f < max; f++) {
+                    pauses[i * numFlips[0].length + j]!.push(totalPauseFrames);
+
+                    // pauses[f][i * numFlips[0].length + j] = totalPauseFrames;
+                }
+            } else {
+                for (let f = 0; f < Math.max(...maxFlipsPerOrdinal.values()); f++) {
+                    pauses[i * numFlips[0].length + j]!.push(minimumPause);
+                }
+            }
+        }
+    }
+
+    console.log(pauses)
+    // we basically need to set it to be the same timing until the frame it all matches i.e. maxflips.
+    let fn = (f: number) => (i: number) => [f < pauses[i].length ? pauses[i][f] : undefined, 0] as [number | undefined, number | undefined];
+    return fn;
+
+}
+
+let [sequence, sequence2, sequence3] = unveilText(["", "world", "hello", ""], 4, 7);
+let display = new SplitFlapDisplay(4, 7, 30, 60);
+// let display = new SplitFlapDisplay(4, 7, 8, 16);
+// let me se the timing a bit differently
+
+let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 0);
+// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 10);
+
+// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30 / 4);
+// let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 60);
+
+let newCycleFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 60 : 40);
+
+// let newTimingFunc = [...new Array(4 * 7).keys()].map(i => i % 2 ? 30 : 30);
+// display.perPixelPauses = newTimingFunc;
+// wait... if I can change cycle ending time then when do I pull updates????
+// display.perPixelCycleLength = newCycleFunc;
+// display.resetAnimation(i => i >= sequence2.length ? [] : sequence2[i])
+
+
+
+let newFunction = convertSyncedSequence(sequence, sequence.map(_ => newTimingFunc), sequence.map(_ => newCycleFunc))
+
+// hmm, as soon as I let things go longer, the spinning gets all messed up...
+// probably related to implicit assumptions about offset and splitflapcyclelength.
+// like, offset is duplicated. 
+// let basicSequence = [...new Array(5)].map(_ => [...new Array(2).keys()]).concat([...new Array(5)].map(_ => [])).concat([...new Array(5)].map(_ => [...new Array(2).keys()]));
+let basicSequence = [...new Array(5)].map(_ => [...new Array(28).keys()]).concat([...new Array(5)].map(_ => [...new Array(15).keys()])).concat([...new Array(5)].map(_ => [...new Array(27).keys()]));
+console.log(basicSequence)
+let basicFunction = convertSyncedSequence(basicSequence, basicSequence.map(_ => newTimingFunc), basicSequence.map(_ => newCycleFunc));
+
+// display.resetAnimation(basicFunction)
+display.resetAnimation(sequence3 as (f: number) => (i: number) => [number | undefined, number | undefined])
+// display.resetAnimation(newFunction)
+// display.resetAnimation(i => i >= sequence.length ? [] : sequence[i])
+
+
+// OFFSET - the amount of time to pause before the next one begins
+// CYCLE LENGTH - how 
+/// hmm... annoying that there are two
+// how do I choose one variable to control both?
+// if I have the pause... why is there even two offsets 
+
+//==========================================================
+
+
+let rowOfDiscs = new RowOfDiscs(WIDTH, HEIGHT, false);
 
 type RGB = [number, number, number];
 
@@ -56,7 +415,7 @@ class VideoIndexGenerator {
             }
             frames.push(ndarray);
         };
-        
+
         // frames.forEach(frame => console.log(frame.map(row => row.map(cel => cel ? "1" : "0").join("")).join("\n")))
         return frames;
     }
@@ -123,12 +482,12 @@ class VideoIndexGenerator {
 
         // always start with the first one because our starting position is all unflipped
         let newSequence: boolean[][][] = [inputFrames[start]];
-    
+
         while (end < inputFrames.length) {
             let startFrame = inputFrames[start];
             let endFrame = inputFrames[end];
             // I basically need to do a big XOR, I guess this would be easier with pytorch
-            let newFrame = endFrame.map((row,i) => row.map((cell,j) => cell != startFrame[i][j]))
+            let newFrame = endFrame.map((row, i) => row.map((cell, j) => cell != startFrame[i][j]))
             // let changes = newFrame.map(rows => rows.map(a => a ? "1" : "0").join("")).join("\n");
             // console.log(changes)
             newSequence.push(newFrame);
@@ -180,8 +539,8 @@ class VideoIndexGenerator {
             }
         })
 
-        let updated = {"k": false};
-        
+        let updated = { "k": false };
+
 
         return (seq: number) => {
             if (updated["k"]) {
@@ -246,14 +605,32 @@ class VideoIndexGenerator {
         } else {
             rowOfDiscs.resetAnimation(this.generateUniformFlipFunctionForSequence(sequence));
         }
-        
+
     }
 
 }
 
 
+let numfaces = 290;
+let sequentialOnOneRow = [...new Array(numfaces).keys()]
+
+const loader = new STLLoader();
+// const object = await loader.loadAsync('public/lowpolysphere.stl');
+
+// console.log(object.attributes)
+
+loader.load("public/lowpolybunny.stl", (geometry) => {
+    let geometryStripes = rowOfDiscs.computeGeomStripes(geometry);
+    rowOfDiscs.resetAnimation(i => [[geometryStripes[numfaces - (i % numfaces)]]])
+
+});
+
+// rowOfDiscs.resetAnimation(i => [[sequentialOnOneRow[numfaces - (i % numfaces)]]])
+// rowOfDiscs.resetAnimation(i => [[sequentialOnOneRow[numfaces - (i % numfaces)]]])
+
+
 // should be [[],[],[1],[],[3],[],[]]
-console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]])) 
+// console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]]))
 
 // new VideoIndexGenerator().loadImages(ANIMATION_PATHS);
 
@@ -264,37 +641,34 @@ console.log(new VideoIndexGenerator().convertFromIndexMode([[1, 2], [3, 4]]))
 
 // new VideoIndexGenerator().loadImages(ALL_ANIMATIONS);
 
-// new SplitFlapDisplay(10,20);
 
 
-let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
-let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
-let buttons = document.createElement("div");
-for (let i = 0; i < golf_opts.length; i++) {
-    let btn = document.createElement("button");
-    btn.textContent = golf_captions[i];
-    btn.addEventListener('click', () => {
-        rowOfDiscs.clear();
-        new VideoIndexGenerator().loadImages(golf_opts[i])
-    })
-    buttons.appendChild(btn);
-}
-document.body.append(buttons)
+// let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
+// let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
+// let buttons = document.createElement("div");
+// for (let i = 0; i < golf_opts.length; i++) {
+//     let btn = document.createElement("button");
+//     btn.textContent = golf_captions[i];
+//     btn.addEventListener('click', () => {
+//         rowOfDiscs.clear();
+//         new VideoIndexGenerator().loadImages(golf_opts[i])
+//     })
+//     buttons.appendChild(btn);
+// }
+// document.body.append(buttons)
 
-<<<<<<< HEAD
 
 // new VideoIndexGenerator().loadVideoFromStr(CINDERELLA_BASIC.replace(/\'/g,''));
 
 
-=======
->>>>>>> 2f4881b56bce67e2150f8135eb0bc48bae034ba3
 // new VideoIndexGenerator().loadImages(GOLF_STRETCH);
 // new VideoIndexGenerator().loadImages(GOLF_CAMERA);
 // new VideoIndexGenerator().loadImages(GOLF_PATH);
 // new VideoIndexGenerator().loadImages(GOLF_IMPACT);
 
 
-// white red or green black. 
+// white red or green black.
 
 // how to set my own example...
 // make noise patterns that overlay more and more of the object... 
+
