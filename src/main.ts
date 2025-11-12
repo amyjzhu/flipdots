@@ -152,6 +152,7 @@ let unveilText = (textPerLine: string[], height: number, width: number): [number
 
     console.log(finalFlipsTo);
     // okay, now I'll use this to make a sequence.
+    // TODO: not sure why this needs +3 exactly or +2 or whatever
     finalFlipsTo = finalFlipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)) // dumb
 
     // let biggestNum = Math.max(...finalFlipsTo.map(line => Math.max(...line.filter(x => x != undefined))));
@@ -251,6 +252,7 @@ let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Ma
     // first of all -- are any more than double?
     // but if I do adjust for that.... then I might have to adjust all of them...
     let newFlips = numFlips.map(l => l.map(i => i));
+    console.log(newFlips)
     let done = false;
     // while (!done) {
     //     done = true
@@ -279,25 +281,39 @@ let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Ma
     // if same, we choose the same value 
     // if A has fewer rotations than B, then make it so that A's pause is longer
     // in general, I want to rotate 4 times when 
-    let pauses = numFlips.map(l => l.map(i => i));
+    let pauses: number[][] = [...new Array(numFlips.length * numFlips[0].length)].map(_ => []);
     for (let i = 0; i < newFlips.length; i++) {
         for (let j = 0; j < newFlips[i].length; j++) {
             let order = ordering[i][j]
             let flips = newFlips[i][j]
             let max = maxFlipsPerOrdinal.get(order)!
             if (flips && (max == flips)) {
-                pauses[i][j] = minimumPause;
+                for (let f = 0; f < max; f++) {
+                    pauses[i * numFlips[0].length + j]!.push(minimumPause);
+                }
+                // pauses[i][j] = minimumPause;
             } else if (flips) {
                 // let's say this is 7 and max is 23
                 let totalMin = numRotationFrames + minimumPause;
                 let ratio = max / flips;
                 // oh no, might not be a whole number
                 let totalPauseFrames = (ratio * totalMin) - numRotationFrames;
-                pauses[i][j] = totalPauseFrames;
+                // pauses[i][j] = totalPauseFrames;
+                for (let f = 0; f < max; f++) {
+                    pauses[i * numFlips[0].length + j]!.push(totalPauseFrames);
+
+                    // pauses[f][i * numFlips[0].length + j] = totalPauseFrames;
+                }
+            } else {
+                for (let f = 0; f < Math.max(...maxFlipsPerOrdinal.values()); f++) {
+                    pauses[i * numFlips[0].length + j]!.push(minimumPause);
+                }
             }
         }
     }
 
+    console.log(pauses)
+    // we basically need to set it to be the same timing until the frame it all matches i.e. maxflips.
     let fn = (f: number) => (i: number) => [f < pauses[i].length ? pauses[i][f] : undefined, 0] as [number | undefined, number | undefined];
     return fn;
 
@@ -597,7 +613,6 @@ class VideoIndexGenerator {
 
 let numfaces = 290;
 let sequentialOnOneRow = [...new Array(numfaces).keys()]
-console.log(rowOfDiscs.adjacentOrder);
 
 const loader = new STLLoader();
 // const object = await loader.loadAsync('public/lowpolysphere.stl');
