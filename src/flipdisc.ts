@@ -8,6 +8,7 @@ import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryU
 
 
 import { FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED, USE_X_DISC, DISC_SIDE_COLOUR, DISC_FRONT_COLOUR, DISC_BACK_COLOUR, PERFORMANT_SOUND_ENABLED, PERFORMANT_NUM_X_SPEAKERS, PERFORMANT_NUM_Y_SPEAKERS, RENDERER_SIZE_SCALEDOWN } from './constants';
+import { buildFaceAdjacency, computeFaceGeodesicDistances, faceMostExtremeInDirection, faceMostExtremeInDirectionSubset, selectGeodesicDiskFaces, selectGeodesicRingFaces } from './geomutil';
 
 export class RowOfDiscs {
     width: number;
@@ -397,6 +398,40 @@ varying vec3 vColor;
 
     }
 
+    moveCircleAcrossMesh(geometry: THREE.BufferGeometry): number[][] {
+        // build neighbors
+        
+        const neighbors = buildFaceAdjacency(geometry);
+
+        console.log(neighbors)
+        // find starting face pointing most in +X
+        let startFace = faceMostExtremeInDirection(geometry, new THREE.Vector3(1, 0, 0));
+        console.log(startFace)
+        
+        // select ring at radius r
+
+        let allFaces = [];
+        for (let i = 0; i < 5; i++) {
+            
+            // compute geodesic distances
+            // this is so inefficient lol 
+            let info = computeFaceGeodesicDistances(startFace, neighbors, geometry);
+
+            let r = 50
+            let ringFaces = selectGeodesicDiskFaces(info, r);
+            allFaces.push(ringFaces);
+
+            startFace = faceMostExtremeInDirectionSubset(geometry, new THREE.Vector3(-1, 0, 1), ringFaces);
+            console.log(startFace)
+        }
+        // const ringFaces = selectGeodesicRingFaces(info, r);
+
+        // loops is Vec3[][] where each inner array is an ordered polyline (closed or open)
+        // You can visualize by creating THREE.Line objects.
+
+        return allFaces;
+    }
+
     async makeArbitraryMeshDiscSetup(meshPath: string) {
         const loader = new STLLoader();
         // const object = await loader.loadAsync('public/lowpolysphere.stl');
@@ -410,7 +445,7 @@ varying vec3 vColor;
 
             let geometryStripes = this.computeGeomStripes(geometry);
             console.log(geometryStripes);
-            
+
 
             // 4. Create InstancedMesh
             const faceCount = geometry.attributes.position.count / 3; // 3 verts per face

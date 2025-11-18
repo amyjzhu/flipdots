@@ -6,6 +6,7 @@ import { CINDERELLA_BASIC } from './cinderella';
 import { BAD_APPLE_STRING_10FPS_32x24 } from "./programs";
 import { SplitFlapDisplay } from "./splitflap";
 import { STLLoader } from "three/addons/loaders/STLLoader";
+import { toWindows } from "./language2";
 
 
 
@@ -288,7 +289,7 @@ let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Ma
             let flips = newFlips[i][j]
             let max = maxFlipsPerOrdinal.get(order)!
             if (flips && (max == flips)) {
-                for (let f = 0; f < max; f++) {
+                for (let f = 0; f < flips + 2; f++) {
                     pauses[i * numFlips[0].length + j]!.push(minimumPause);
                 }
                 // pauses[i][j] = minimumPause;
@@ -299,13 +300,13 @@ let generateSynced = (numFlips: (number | undefined)[][], maxFlipsPerOrdinal: Ma
                 // oh no, might not be a whole number
                 let totalPauseFrames = (ratio * totalMin) - numRotationFrames;
                 // pauses[i][j] = totalPauseFrames;
-                for (let f = 0; f < max; f++) {
+                for (let f = 0; f < flips + 2; f++) {
                     pauses[i * numFlips[0].length + j]!.push(totalPauseFrames);
 
                     // pauses[f][i * numFlips[0].length + j] = totalPauseFrames;
                 }
             } else {
-                for (let f = 0; f < Math.max(...maxFlipsPerOrdinal.values()); f++) {
+                for (let f = 0; f < Math.max(...maxFlipsPerOrdinal.values()) + 15; f++) {
                     pauses[i * numFlips[0].length + j]!.push(minimumPause);
                 }
             }
@@ -620,10 +621,82 @@ const loader = new STLLoader();
 // console.log(object.attributes)
 
 loader.load("public/lowpolybunny.stl", (geometry) => {
-    let geometryStripes = rowOfDiscs.computeGeomStripes(geometry);
-    rowOfDiscs.resetAnimation(i => [[geometryStripes[numfaces - (i % numfaces)]]])
-
+    // let geometryStripes = rowOfDiscs.computeGeomStripes(geometry);
+    // rowOfDiscs.resetAnimation(i => [[geometryStripes[numfaces - (i % numfaces)]]])
+    let ring = rowOfDiscs.moveCircleAcrossMesh(geometry);
+    console.log(ring)
+    // I actually need to process this and make it like... 
+    // TODO: take the difference in the sequence (should be a function for this somewhere)
+    let diffed = computeFlips(ring);
+    
+    console.log(diffed)
+    rowOfDiscs.resetAnimation(i => [diffed[i % 6]]);
 });
+
+// I need a function that basically
+// takes in list of list of numbers
+// for each pair of lists, find any that are shared and remove them from the second list
+// then for each that is in the first but not second, add to the second 
+let imageToDiff = (frames: number[][]): number[][] => {
+    let windows = toWindows(frames, 2);
+    let newList = [frames[0]]; // start with first
+    for (let w of windows) {
+        let first = new Set(w[0]);
+        let second = new Set(w[1]);
+
+        let union = first.union(second);
+        let subtract = first.difference(second);
+
+        union.forEach(i => second.delete(i));
+        let newSecond = [...second, ...subtract];
+        newList.push(newSecond);
+    }
+
+    return newList;
+} 
+
+function computeFlips(frames: number[][]): number[][] {
+    const flips: number[][] = [];
+
+    if (frames.length === 0) return flips;
+
+    // Convert frame arrays to sets for fast lookup
+    const frameSets = frames.map(f => new Set(f));
+
+    // --- Frame 1: always flip all lights that are ON ---
+    flips.push([...frameSets[0]]);
+
+    // --- Later frames: flip indices that changed state ---
+    for (let i = 1; i < frameSets.length; i++) {
+        const prev = frameSets[i - 1];
+        const curr = frameSets[i];
+
+        const changes: number[] = [];
+
+        // Get all lights seen in either frame
+        const allIndices = new Set([...prev, ...curr]);
+
+        for (const light of allIndices) {
+            const wasOn = prev.has(light);
+            const isOn = curr.has(light);
+
+            if (wasOn !== isOn) {
+                changes.push(light);
+            }
+        }
+
+        flips.push(changes);
+    }
+
+        // --- Final extra frame: flip everything OFF ---
+    const lastFrame = frameSets[frameSets.length - 1];
+    const finalFlips = [...lastFrame]; // all currently ON lights must flip OFF
+    flips.push(finalFlips);
+    
+    return flips;
+}
+
+
 
 // rowOfDiscs.resetAnimation(i => [[sequentialOnOneRow[numfaces - (i % numfaces)]]])
 // rowOfDiscs.resetAnimation(i => [[sequentialOnOneRow[numfaces - (i % numfaces)]]])
@@ -646,7 +719,7 @@ loader.load("public/lowpolybunny.stl", (geometry) => {
 // let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
 // let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
 // let buttons = document.createElement("div");
-// for (let i = 0; i < golf_opts.length; i++) {
+// for (let i = 0; i < gol/f_opts.length; i++) {
 //     let btn = document.createElement("button");
 //     btn.textContent = golf_captions[i];
 //     btn.addEventListener('click', () => {
