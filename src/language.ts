@@ -432,6 +432,13 @@ export class FlipDotHardware implements Hardware {
         this.pixels[idx] = desiredState;
     }
 
+
+    /// flip c 1 20
+    // flip c 2 20
+    // wait 2000
+    // flip c 
+
+
     setHardwarePixel(index: number) {
         // if this is just between 0-31 then we're good
         // if this is 32, 33, 34 we need to do something special 

@@ -417,7 +417,7 @@ varying vec3 vColor;
             // this is so inefficient lol 
             let info = computeFaceGeodesicDistances(startFace, neighbors, geometry);
 
-            let r = 50
+            let r = 20
             let ringFaces = selectGeodesicDiskFaces(info, r);
             allFaces.push(ringFaces);
 
