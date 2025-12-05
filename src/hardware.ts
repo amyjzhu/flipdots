@@ -1,7 +1,7 @@
 interface HardwareInterface {
     units: Unit[][] // need to map these somewhere somehow
     unitAdjacency: (toCheck: UnitId) => UnitId[];
-    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time];
+    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
 }
 
@@ -53,13 +53,23 @@ interface Transition {
 
 
 class FlipdotHardware implements HardwareInterface {
+    flipDurationMS: number;
     units: Unit[][];
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
-    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time];
+    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
 
+    getRealTiming(time: Time): number {
+        if (typeof time == "number") {
+            return time;
+        } else {
+            return time[0] * this.flipDurationMS + time[2];
+        }
+    }
+
     constructor(units: Unit[][], adjacency: (toCheck: UnitId) => UnitId[]) {
+        this.flipDurationMS = 20;
         this.units = units;
         this.unitIdToUnit = new Map();
         for (let u of this.units.flat()) {
@@ -70,7 +80,9 @@ class FlipdotHardware implements HardwareInterface {
         this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
             // is this true?
             // surely it takes some time for units to flip!
-            return [this.units.map(r => r.map(u => u.id)).flat(), incrementTime(time, 1)] as [UnitId[], Time];
+            let otherIds = [...new Set(this.units.map(r => r.map(u => u.id)).flat()).difference(new Set(ids))];
+            return [[otherIds, incrementTime(time, 1)],
+            [ids, incrementTime(time, this.flipDurationMS)]] as [UnitId[], Time][];
         }
 
 
@@ -81,6 +93,7 @@ class FlipdotHardware implements HardwareInterface {
         }
 
         let compile = (groupActions: GroupAction[]) => {
+            let unitAvailableAt: Map<UnitId, number> = new Map();
             for (let ga of groupActions) {
                 let time = ga.tPlus;
                 let possibleTime // keep track.... 
@@ -94,8 +107,13 @@ class FlipdotHardware implements HardwareInterface {
                     // first, make sure we can do everything simultaneously
 
                 
-                    let [avail, nextTime] = this.allowedNextActive(actionType, action[1], time);
-                    
+                    // should this actually be like, when are each of the next available elements available?
+                    // some thigns won't be available until another move is made.
+                    let nextAvailable = this.allowedNextActive(actionType, action[1], time);
+                    for (let [ids, interval] of nextAvailable) {
+                        
+                        ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
+                    }
                     // if nextTime is before the next set of actions, yay 
 
                     for (let unit of units) {
