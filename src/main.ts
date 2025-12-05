@@ -155,6 +155,7 @@ let unveilText = (textPerLine: string[], height: number, width: number): [number
     // okay, now I'll use this to make a sequence.
     // TODO: not sure why this needs +3 exactly or +2 or whatever
     finalFlipsTo = finalFlipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)) // dumb
+    // finalFlipsTo = finalFlipsTo.map(l => l.map(x => x != undefined ? x + 3 : undefined)) // dumb
 
     // let biggestNum = Math.max(...finalFlipsTo.map(line => Math.max(...line.filter(x => x != undefined))));
     // let finalSequence: number[][] = [...new Array(biggestNum + 2)].map(_ => []); // arbitrary 

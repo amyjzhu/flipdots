@@ -1,4 +1,4 @@
-interface HardwareInterface {
+export interface HardwareInterface {
     units: Unit[][] // need to map these somewhere somehow
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
@@ -17,32 +17,37 @@ let incrementTime = (t: Time, inc: number) => {
     }
 }
 
-interface Unit {
+export interface Unit {
     id: UnitId;
     actions: Action[];
     states: [Action, [StateId, State][]][];
 }
 
-enum Action {
+export enum Action {
     FLIP,
     SET,
     FLUTTER
 }
 
-class Colour {
+export class Colour {
     rgb: [number, number, number] = [0, 0, 0];
 }
 
-class State {
+export class State {
     image: Colour[][] = [];
 }
 
-class GroupAction {
+export class GroupAction {
     tPlus: Time = 0;
     actions: [Action, UnitId[]][] = [];
+
+    constructor(time: Time, actions: [Action, UnitId[]][]) {
+        this.tPlus = time;
+        this.actions = actions;
+    }
 }
 
-interface Transition {
+export interface Transition {
     // just curry these later 
     generateGroupAction: (o1: Object, o2: Object, h: HardwareInterface) => GroupAction;
 }
@@ -52,7 +57,7 @@ interface Transition {
 ///////////////
 
 
-class FlipdotHardware implements HardwareInterface {
+export class FlipdotHardware implements HardwareInterface {
     flipDurationMS: number;
     units: Unit[][];
     unitIdToUnit: Map<UnitId, Unit>;
@@ -92,38 +97,65 @@ class FlipdotHardware implements HardwareInterface {
             console.log(`wait ${time}`);
         }
 
-        let compile = (groupActions: GroupAction[]) => {
-            let unitAvailableAt: Map<UnitId, number> = new Map();
-            for (let ga of groupActions) {
-                let time = ga.tPlus;
-                let possibleTime // keep track.... 
-                let actionSet = ga.actions;
-                for (let action of actionSet) {
-                    let actionType: Action = action[0];
-                    let units: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
+    }
+    compile(groupActions: GroupAction[]) {
+        let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
+        let cumulativeTime = 0;
+        this.units.flat().map(u => unitAvailableAt.set(u.id, 0));
 
-                    // first, I need to check the timing by inputting the group action and seeing 
-                    // if it's possible.
-                    // first, make sure we can do everything simultaneously
+        // at the very beginning, they are all available
+        for (let ga of groupActions) {
+            let time = this.getRealTiming(ga.tPlus);
+            cumulativeTime += time;
+            console.log("updating time!", cumulativeTime)
+            let possibleTime // keep track.... 
+            let actionSet = ga.actions;
+            for (let action of actionSet) {
+                let actionType: Action = action[0];
+                let units: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
 
-                
-                    // should this actually be like, when are each of the next available elements available?
-                    // some thigns won't be available until another move is made.
-                    let nextAvailable = this.allowedNextActive(actionType, action[1], time);
-                    for (let [ids, interval] of nextAvailable) {
-                        
-                        ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
+                // first, I need to check the timing by inputting the group action and seeing 
+                // if it's possible.
+                // first, make sure we can do everything simultaneously
+
+
+                console.log(unitAvailableAt)
+                let violations = false;
+                for (let unit of units) {
+                    // do we actually know what the action is?
+                    if (!(unit.actions.includes(action[0]) &&
+                        // and is current time at least later than next available time?
+                        (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= cumulativeTime))) {
+
+                        console.log(unit.actions.includes(action[0]))
+                        console.log(unitAvailableAt.get(unit.id))
+                        console.log(unitAvailableAt.get(unit.id)! <= cumulativeTime)
+                        console.log(unit.id, time, cumulativeTime, unitAvailableAt.get(unit.id), actionType);
+                        throw new Error("could not compile");
+
                     }
-                    // if nextTime is before the next set of actions, yay 
-
-                    for (let unit of units) {
-                        if (unit.actions.includes(action[0])) {
-                            // proceed
-                        }
-                    }
-
                 }
+
+                this.actionsToHardwareAction(actionType, action[1], time);
+
+            
+                // should this actually be like, when are each of the next available elements available?
+                // some thigns won't be available until another move is made.
+                let nextAvailable = this.allowedNextActive(actionType, action[1], time);
+                // remember, if we didn't set it, it must not be possible to use!!
+                unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));
+
+                console.log(nextAvailable)
+                for (let [ids, interval] of nextAvailable) {
+                    console.log(cumulativeTime + this.getRealTiming(interval))
+                    ids.forEach(id => unitAvailableAt.set(id, cumulativeTime + this.getRealTiming(interval)));
+                }
+
             }
+
+
+
+
         }
     }
 
@@ -156,7 +188,7 @@ class FlipdotHardware implements HardwareInterface {
 
 }
 
-class FlipdotUnit implements Unit {
+export class FlipdotUnit implements Unit {
     id: UnitId;
     actions: Action[];
     states: [Action, [StateId, State][]][];
@@ -169,9 +201,12 @@ class FlipdotUnit implements Unit {
 }
 
 
-class FlipdotState implements State {
+export class FlipdotState implements State {
     image: Colour[][];
     constructor(col: Colour) {
         this.image = [[col]];
     }
 }
+
+// let's set up some test cases...
+
