@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import { RowOfDiscs } from './flipdisc';
+
 export interface HardwareInterface {
     units: Unit[][] // need to map these somewhere somehow
     unitAdjacency: (toCheck: UnitId) => UnitId[];
@@ -28,6 +31,18 @@ export enum Action {
     SET,
     FLUTTER
 }
+
+let actionToString = (action: Action) => {
+    switch (action) {
+        case Action.FLIP:
+            return "flip";
+        case Action.SET:
+            return "set";
+        case Action.FLUTTER:
+            return "flutter";
+    }
+}
+
 
 export class Colour {
     rgb: [number, number, number] = [0, 0, 0];
@@ -64,6 +79,7 @@ export class FlipdotHardware implements HardwareInterface {
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
+    filename: string = "";
 
     getRealTiming(time: Time): number {
         if (typeof time == "number") {
@@ -93,21 +109,38 @@ export class FlipdotHardware implements HardwareInterface {
 
 
         this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time) => {
-            ids.forEach(id => console.log(`${action}, ${id}`));
-            console.log(`wait ${time}`);
+            if (this.filename) {
+                let str = "";
+                if (this.getRealTiming(time) != 0) {
+                    str += `wait ${time}\n`;
+                }
+                str += (ids.map(id => `${actionToString(action)} ${id}`)).join("\n") + "\n";
+                fs.appendFileSync(this.filename, str);
+            } else {
+                ids.forEach(id => console.log(`${action}, ${id}`));
+                console.log(`wait ${time}`);
+            }
         }
 
     }
+
+    compileToFile(groupActions: GroupAction[], fileName: string) {
+        this.filename = fileName;
+        fs.writeFileSync(this.filename, "");
+        this.compile(groupActions);
+    }
+
     compile(groupActions: GroupAction[]) {
         let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
-        let cumulativeTime = 0;
+        // let cumulativeTime = 0;
+        let lastTime = 0;
         this.units.flat().map(u => unitAvailableAt.set(u.id, 0));
 
         // at the very beginning, they are all available
         for (let ga of groupActions) {
             let time = this.getRealTiming(ga.tPlus);
-            cumulativeTime += time;
-            console.log("updating time!", cumulativeTime)
+            // cumulativeTime += time;
+            // console.log("updating time!", cumulativeTime, time)
             let possibleTime // keep track.... 
             let actionSet = ga.actions;
             for (let action of actionSet) {
@@ -125,20 +158,20 @@ export class FlipdotHardware implements HardwareInterface {
                     // do we actually know what the action is?
                     if (!(unit.actions.includes(action[0]) &&
                         // and is current time at least later than next available time?
-                        (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= cumulativeTime))) {
+                        (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= time))) {
 
                         console.log(unit.actions.includes(action[0]))
                         console.log(unitAvailableAt.get(unit.id))
-                        console.log(unitAvailableAt.get(unit.id)! <= cumulativeTime)
-                        console.log(unit.id, time, cumulativeTime, unitAvailableAt.get(unit.id), actionType);
+                        console.log(unitAvailableAt.get(unit.id)! <= time)
+                        console.log(unit.id, time, time, unitAvailableAt.get(unit.id), actionType);
                         throw new Error("could not compile");
 
                     }
                 }
 
-                this.actionsToHardwareAction(actionType, action[1], time);
+                this.actionsToHardwareAction(actionType, action[1], time - lastTime);
 
-            
+
                 // should this actually be like, when are each of the next available elements available?
                 // some thigns won't be available until another move is made.
                 let nextAvailable = this.allowedNextActive(actionType, action[1], time);
@@ -147,14 +180,12 @@ export class FlipdotHardware implements HardwareInterface {
 
                 console.log(nextAvailable)
                 for (let [ids, interval] of nextAvailable) {
-                    console.log(cumulativeTime + this.getRealTiming(interval))
-                    ids.forEach(id => unitAvailableAt.set(id, cumulativeTime + this.getRealTiming(interval)));
+                    // console.log(cumulativeTime + this.getRealTiming(interval))
+                    ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
                 }
 
             }
-
-
-
+            lastTime = time;
 
         }
     }
@@ -183,6 +214,175 @@ export class FlipdotHardware implements HardwareInterface {
         }
 
         return new FlipdotHardware(unitList, adjacency);
+    }
+
+
+}
+
+
+export class FlipdotSimHardware implements HardwareInterface {
+    flipDurationMS: number;
+    units: Unit[][];
+    unitIdToUnit: Map<UnitId, Unit>;
+    unitAdjacency: (toCheck: UnitId) => UnitId[];
+    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
+    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
+    simulation: RowOfDiscs;
+
+    getRealTiming(time: Time): number {
+        if (typeof time == "number") {
+            return time;
+        } else {
+            return time[0] * this.flipDurationMS + time[2];
+        }
+    }
+
+    constructor(units: Unit[][], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string) {
+        this.flipDurationMS = 20;
+
+
+        if (dimensions) {
+            let [width, height] = dimensions;
+            let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(backCol, frontCol, i * height + j)));
+
+            let adjacency = (i: UnitId) => {
+                let neighbours: UnitId[] = [];
+                // if we're at the edge, don't include some:
+
+                let xCoord = i % width;
+                let yCoord = Math.floor(i / width);
+
+                for (let yPlus of [-1, 0, 1]) {
+                    for (let xPlus of [-1, 0, 1]) {
+                        if (!(xPlus == 0 && yPlus == 0) ||
+                            (xCoord + xPlus >= width || xCoord + xPlus < 0
+                                || yCoord + yPlus < 0 || yCoord + yPlus >= height)) {
+                            neighbours.push(i + yPlus * width + xPlus);
+                        }
+                    }
+                }
+                console.log(neighbours);
+                return neighbours;
+            }
+
+            this.units = unitList;
+            this.unitAdjacency = adjacency;
+
+
+            this.simulation = new RowOfDiscs(width, height)
+
+        } else {
+            this.units = units;
+            this.unitAdjacency = adjacency;
+            this.simulation = new RowOfDiscs(1, 1, false);
+            if (meshInput == undefined) {
+                throw new Error("No mesh input and not flat");
+            }
+            this.simulation.makeArbitraryMeshDiscSetup(meshInput);
+        }
+
+
+        this.unitIdToUnit = new Map();
+        for (let u of this.units.flat()) {
+            this.unitIdToUnit.set(u.id, u);
+        }
+
+
+        this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
+            // is this true?
+            // surely it takes some time for units to flip!
+            let otherIds = [...new Set(this.units.map(r => r.map(u => u.id)).flat()).difference(new Set(ids))];
+            return [[otherIds, incrementTime(time, 1)],
+            [ids, incrementTime(time, this.flipDurationMS)]] as [UnitId[], Time][];
+        }
+
+
+        this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time) => {
+            // do this and then wait some cycles...
+            // I think I just do this but, the simulation can't do arbitrary setups.
+            let closestInterval = Math.round(this.getRealTiming(time) / this.flipDurationMS);
+            // so I need to insert this much "dead time"
+            let idxes: number[][] = [];
+            let blankIdxes: number[][] = [];
+            if (dimensions) {
+                let [width, height] = dimensions;
+                idxes = [...new Array(height)].map(_ => []);
+                blankIdxes = idxes;
+                ids.forEach(i => idxes[Math.floor(i / width)].push(i % width))
+            } else {
+                idxes = [ids];
+                blankIdxes = [[]];
+            }
+            this.simulation.resetAnimation(i => {
+                if (i < closestInterval) {
+                    return blankIdxes
+                } else {
+                    return idxes;
+                }
+            })
+
+        }
+
+    }
+
+    compile(groupActions: GroupAction[]) {
+        let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
+        // let cumulativeTime = 0;
+        let lastTime = 0;
+        this.units.flat().map(u => unitAvailableAt.set(u.id, 0));
+
+        // at the very beginning, they are all available
+        for (let ga of groupActions) {
+            let time = this.getRealTiming(ga.tPlus);
+            // cumulativeTime += time;
+            // console.log("updating time!", cumulativeTime, time)
+            let possibleTime // keep track.... 
+            let actionSet = ga.actions;
+            for (let action of actionSet) {
+                let actionType: Action = action[0];
+                let units: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
+
+                // first, I need to check the timing by inputting the group action and seeing 
+                // if it's possible.
+                // first, make sure we can do everything simultaneously
+
+
+                console.log(unitAvailableAt)
+                let violations = false;
+                for (let unit of units) {
+                    // do we actually know what the action is?
+                    if (!(unit.actions.includes(action[0]) &&
+                        // and is current time at least later than next available time?
+                        (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= time))) {
+
+                        console.log(unit.actions.includes(action[0]))
+                        console.log(unitAvailableAt.get(unit.id))
+                        console.log(unitAvailableAt.get(unit.id)! <= time)
+                        console.log(unit.id, time, time, unitAvailableAt.get(unit.id), actionType);
+                        throw new Error("could not compile");
+
+                    }
+                }
+
+                this.actionsToHardwareAction(actionType, action[1], time - lastTime);
+
+
+                // should this actually be like, when are each of the next available elements available?
+                // some thigns won't be available until another move is made.
+                let nextAvailable = this.allowedNextActive(actionType, action[1], time);
+                // remember, if we didn't set it, it must not be possible to use!!
+                unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));
+
+                console.log(nextAvailable)
+                for (let [ids, interval] of nextAvailable) {
+                    // console.log(cumulativeTime + this.getRealTiming(interval))
+                    ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
+                }
+
+            }
+            lastTime = time;
+
+        }
     }
 
 

@@ -15,7 +15,7 @@ test('expect a failure', () => {
 });
 
 
-test('expect a failure', () => {
+test('expect working example', () => {
 
 
     let f1 = new GroupAction(0, [[Action.FLIP, [0, 1, 2, 3]]]);
@@ -23,6 +23,6 @@ test('expect a failure', () => {
     let f3 = new GroupAction(40, [[Action.FLIP, [0, 1]]]);
 
     let hw: FlipdotHardware = FlipdotHardware.Rectangular(5, 7, new Colour(), new Colour());
-    hw.compile([f1, f2, f3]) // should fail
-
+    
+    hw.compileToFile([f1, f2, f3], "test-working.txt");
 });
