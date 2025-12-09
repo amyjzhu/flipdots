@@ -219,15 +219,20 @@ export class FlipdotHardware implements HardwareInterface {
 
 }
 
+let BLACK = new Colour();
+BLACK.rgb = [0, 0, 0];
+let WHITE = new Colour();
+WHITE.rgb = [255, 255, 255];
 
 export class FlipdotSimHardware implements HardwareInterface {
-    flipDurationMS: number;
+    flipDurationMS: number = 10;
     units: Unit[][];
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
     simulation: RowOfDiscs;
+    totalNumFrames: number = 0;
 
     getRealTiming(time: Time): number {
         if (typeof time == "number") {
@@ -237,7 +242,7 @@ export class FlipdotSimHardware implements HardwareInterface {
         }
     }
 
-    constructor(units: Unit[][], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string) {
+    constructor(units: Unit[][], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string, backCol: Colour = BLACK, frontCol: Colour = WHITE) {
         this.flipDurationMS = 20;
 
 
@@ -269,7 +274,8 @@ export class FlipdotSimHardware implements HardwareInterface {
             this.unitAdjacency = adjacency;
 
 
-            this.simulation = new RowOfDiscs(width, height)
+            this.simulation = new RowOfDiscs(width, height);
+
 
         } else {
             this.units = units;
@@ -296,7 +302,8 @@ export class FlipdotSimHardware implements HardwareInterface {
             [ids, incrementTime(time, this.flipDurationMS)]] as [UnitId[], Time][];
         }
 
-
+        // this is time over which you complete the action? what is the MEANING of time 
+        // how long does it take to do this basically
         this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time) => {
             // do this and then wait some cycles...
             // I think I just do this but, the simulation can't do arbitrary setups.
@@ -307,20 +314,42 @@ export class FlipdotSimHardware implements HardwareInterface {
             if (dimensions) {
                 let [width, height] = dimensions;
                 idxes = [...new Array(height)].map(_ => []);
-                blankIdxes = idxes;
+                blankIdxes = idxes.map(i => i.map(u => u));
+                console.log(blankIdxes)
                 ids.forEach(i => idxes[Math.floor(i / width)].push(i % width))
             } else {
                 idxes = [ids];
                 blankIdxes = [[]];
             }
+            let originalAnim = this.simulation.nextFlipGenerator;
+
+            let currNumFrames = this.totalNumFrames;
+            
+            // here's what I do: if this is lower than the current number, delegate
             this.simulation.resetAnimation(i => {
-                if (i < closestInterval) {
-                    return blankIdxes
+                console.log(`i is ${i}, currentNumFrames is ${currNumFrames}, this.totalNumFrames is ${this.totalNumFrames}, closestInterval is ${closestInterval}`)
+                if (i >= currNumFrames) {
+                    if (i - currNumFrames < closestInterval) {
+                        console.log("returning wait")
+                        console.log(blankIdxes)
+
+                        return blankIdxes;
+                    } else if (i - currNumFrames == closestInterval) {
+                        console.log("returning current index")
+                        return idxes;
+                    } else {
+                        console.log("returning wait 2")
+                        console.log(blankIdxes)
+                        return blankIdxes;
+                    }
+
                 } else {
-                    return idxes;
+                    console.log("counting up:", i, currNumFrames)
+                    return originalAnim(i);
                 }
             })
 
+            this.totalNumFrames += closestInterval + 1;
         }
 
     }
@@ -410,3 +439,12 @@ export class FlipdotState implements State {
 
 // let's set up some test cases...
 
+if (typeof window != 'undefined') {
+
+
+    let hw = new FlipdotSimHardware([], i => [], [10, 20]);
+    let f1 = new GroupAction(0, [[Action.FLIP, [0, 1, 2, 3]]]);
+    let f2 = new GroupAction(20, [[Action.FLIP, [0, 3,]]]);
+    let f3 = new GroupAction(40, [[Action.FLIP, [0, 1]]]);
+    hw.compile([f1, f2, f3]);
+}
