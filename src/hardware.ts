@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import { RowOfDiscs } from './flipdisc';
+import { parseToGroupAction } from './language2';
 
 export interface HardwareInterface {
-    units: Unit[][] // need to map these somewhere somehow
+    units: Unit[] // need to map these somewhere somehow
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
@@ -74,7 +75,7 @@ export interface Transition {
 
 export class FlipdotHardware implements HardwareInterface {
     flipDurationMS: number;
-    units: Unit[][];
+    units: Unit[];
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
@@ -89,7 +90,7 @@ export class FlipdotHardware implements HardwareInterface {
         }
     }
 
-    constructor(units: Unit[][], adjacency: (toCheck: UnitId) => UnitId[]) {
+    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[]) {
         this.flipDurationMS = 20;
         this.units = units;
         this.unitIdToUnit = new Map();
@@ -101,7 +102,7 @@ export class FlipdotHardware implements HardwareInterface {
         this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
             // is this true?
             // surely it takes some time for units to flip!
-            let otherIds = [...new Set(this.units.map(r => r.map(u => u.id)).flat()).difference(new Set(ids))];
+            let otherIds = [...new Set(this.units.map(r => r.id).flat()).difference(new Set(ids))];
             return [[otherIds, incrementTime(time, 1)],
             [ids, incrementTime(time, this.flipDurationMS)]] as [UnitId[], Time][];
         }
@@ -191,7 +192,7 @@ export class FlipdotHardware implements HardwareInterface {
     }
 
     static Rectangular(width: number, height: number, backCol: Colour, frontCol: Colour) {
-        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(backCol, frontCol, i * height + j)));
+        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(backCol, frontCol, i * height + j)).flat()).flat();
 
         let adjacency = (i: UnitId) => {
             let neighbours: UnitId[] = [];
@@ -226,7 +227,7 @@ WHITE.rgb = [255, 255, 255];
 
 export class FlipdotSimHardware implements HardwareInterface {
     flipDurationMS: number = 10;
-    units: Unit[][];
+    units: Unit[];
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
@@ -242,13 +243,14 @@ export class FlipdotSimHardware implements HardwareInterface {
         }
     }
 
-    constructor(units: Unit[][], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string, backCol: Colour = BLACK, frontCol: Colour = WHITE) {
+    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string, backCol: Colour = BLACK, frontCol: Colour = WHITE) {
         this.flipDurationMS = 20;
 
-
-        if (dimensions) {
-            let [width, height] = dimensions;
-            let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(backCol, frontCol, i * height + j)));
+        console.log(dimensions)
+        if (dimensions != undefined) {
+            console.log("this half", dimensions)
+            let [height, width] = dimensions;
+            let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(backCol, frontCol, i * width + j)).flat()).flat();
 
             let adjacency = (i: UnitId) => {
                 let neighbours: UnitId[] = [];
@@ -278,6 +280,7 @@ export class FlipdotSimHardware implements HardwareInterface {
 
 
         } else {
+            console.log("in the other constructor half");
             this.units = units;
             this.unitAdjacency = adjacency;
             this.simulation = new RowOfDiscs(1, 1, false);
@@ -289,7 +292,8 @@ export class FlipdotSimHardware implements HardwareInterface {
 
 
         this.unitIdToUnit = new Map();
-        for (let u of this.units.flat()) {
+        console.log(this.units)
+        for (let u of this.units) {
             this.unitIdToUnit.set(u.id, u);
         }
 
@@ -297,7 +301,7 @@ export class FlipdotSimHardware implements HardwareInterface {
         this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
             // is this true?
             // surely it takes some time for units to flip!
-            let otherIds = [...new Set(this.units.map(r => r.map(u => u.id)).flat()).difference(new Set(ids))];
+            let otherIds = [...new Set(this.units.map(r => r.id).flat()).difference(new Set(ids))];
             return [[otherIds, incrementTime(time, 1)],
             [ids, incrementTime(time, this.flipDurationMS)]] as [UnitId[], Time][];
         }
@@ -307,12 +311,13 @@ export class FlipdotSimHardware implements HardwareInterface {
         this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time) => {
             // do this and then wait some cycles...
             // I think I just do this but, the simulation can't do arbitrary setups.
-            let closestInterval = Math.round(this.getRealTiming(time) / this.flipDurationMS);
+            let closestInterval = this.getRealTiming(time) == 0? 0 : Math.round(this.getRealTiming(time) / this.flipDurationMS);
             // so I need to insert this much "dead time"
             let idxes: number[][] = [];
             let blankIdxes: number[][] = [];
             if (dimensions) {
-                let [width, height] = dimensions;
+                console.log("dimensions are", dimensions)
+                let [height, width] = dimensions;
                 idxes = [...new Array(height)].map(_ => []);
                 blankIdxes = idxes.map(i => i.map(u => u));
                 console.log(blankIdxes)
@@ -358,27 +363,37 @@ export class FlipdotSimHardware implements HardwareInterface {
         let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
         // let cumulativeTime = 0;
         let lastTime = 0;
+        console.log("units before and after", this.units)
+        
         this.units.flat().map(u => unitAvailableAt.set(u.id, 0));
+        console.log("units before and after", this.units)
 
         // at the very beginning, they are all available
         for (let ga of groupActions) {
             let time = this.getRealTiming(ga.tPlus);
+            console.log(time)
             // cumulativeTime += time;
             // console.log("updating time!", cumulativeTime, time)
             let possibleTime // keep track.... 
             let actionSet = ga.actions;
             for (let action of actionSet) {
                 let actionType: Action = action[0];
-                let units: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
-
+                let unitsInUse: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
                 // first, I need to check the timing by inputting the group action and seeing 
                 // if it's possible.
                 // first, make sure we can do everything simultaneously
 
 
                 console.log(unitAvailableAt)
-                let violations = false;
-                for (let unit of units) {
+                console.log(this.unitIdToUnit)
+                
+                console.log(this)
+                for (let unit of unitsInUse) {
+                // console.log(action[1])
+                let all = [...this.unitIdToUnit.keys()];
+                all.sort((a, b) => b - a)
+                    // console.log(all)
+                    // console.log(unit)
                     // do we actually know what the action is?
                     if (!(unit.actions.includes(action[0]) &&
                         // and is current time at least later than next available time?
@@ -393,6 +408,7 @@ export class FlipdotSimHardware implements HardwareInterface {
                     }
                 }
 
+                console.log(action[1], time - lastTime)
                 this.actionsToHardwareAction(actionType, action[1], time - lastTime);
 
 
@@ -442,9 +458,15 @@ export class FlipdotState implements State {
 if (typeof window != 'undefined') {
 
 
-    let hw = new FlipdotSimHardware([], i => [], [10, 20]);
-    let f1 = new GroupAction(0, [[Action.FLIP, [0, 1, 2, 3]]]);
-    let f2 = new GroupAction(20, [[Action.FLIP, [0, 3,]]]);
-    let f3 = new GroupAction(40, [[Action.FLIP, [0, 1]]]);
-    hw.compile([f1, f2, f3]);
+// semantics of timing have changed 
+    let teapotExample = "timing: [1,2,3,4,5,6,7,8,9,10]\n\
+    filepath: /animations/teapot${i}.png \n\
+    objects: [#000000 teapot] \n\
+    teapot 0 ->* instantaneous ->* teapot 9"
+    // parser(teapotExample);
+
+    parseToGroupAction(teapotExample);
 }
+
+// now I need to compile an example INTO group actions. 
+// so... let me pop over to main and try to borrow one of those compilers? 
