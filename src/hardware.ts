@@ -1,30 +1,43 @@
 import * as fs from 'fs';
 import { RowOfDiscs } from './flipdisc';
 import { parseToGroupAction } from './language2';
+import { Target } from './language';
 
 export interface HardwareInterface {
     units: Unit[] // need to map these somewhere somehow
+    actionDurations: Map<Action, Duration>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
-    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
+    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
 }
 
-type Time = number | [number, Action, number];
+type Time = number;
+type Duration = number;
+// type Time = number | [number, Action, number];
 type UnitId = number;
-type StateId = number;
+type StateId = number | string;
+
+export class State {
+    id: StateId;
+
+    constructor(id: StateId) {
+        this.id = id;
+    }
+
+    getId() {
+        return this.id;
+    }
+}
 
 let incrementTime = (t: Time, inc: number) => {
-    if (typeof t == "number") {
-        return t + inc;
-    } else {
-        return [t[0], t[1], t[2] + inc]
-    }
+    return t + inc;
 }
 
 export interface Unit {
     id: UnitId;
     actions: Action[];
-    states: [Action, [StateId, State][]][];
+    actionTiming: [Action, Duration];
+    states: [Action, State[]][];
 }
 
 export enum Action {
@@ -45,13 +58,7 @@ let actionToString = (action: Action) => {
 }
 
 
-export class Colour {
-    rgb: [number, number, number] = [0, 0, 0];
-}
 
-export class State {
-    image: Colour[][] = [];
-}
 
 export class GroupAction {
     tPlus: Time = 0;
@@ -65,7 +72,7 @@ export class GroupAction {
 
 export interface Transition {
     // just curry these later 
-    generateGroupAction: (o1: Object, o2: Object, h: HardwareInterface) => GroupAction;
+    generateGroupAction: (o1: Target, o2: Target, t: Duration, h: HardwareInterface) => GroupAction;
 }
 
 
@@ -75,11 +82,12 @@ export interface Transition {
 
 export class FlipdotHardware implements HardwareInterface {
     flipDurationMS: number;
+    actionDurations: Map<Action, number> = new Map();
     units: Unit[];
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
-    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
+    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
     filename: string = "";
 
     getRealTiming(time: Time): number {
@@ -92,6 +100,7 @@ export class FlipdotHardware implements HardwareInterface {
 
     constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[]) {
         this.flipDurationMS = 20;
+        this.actionDurations.set(Action.FLIP, this.flipDurationMS);
         this.units = units;
         this.unitIdToUnit = new Map();
         for (let u of this.units.flat()) {
@@ -109,7 +118,7 @@ export class FlipdotHardware implements HardwareInterface {
 
 
 
-        this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time) => {
+        this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time): [UnitId, State][] => {
             if (this.filename) {
                 let str = "";
                 if (this.getRealTiming(time) != 0) {
@@ -121,6 +130,9 @@ export class FlipdotHardware implements HardwareInterface {
                 ids.forEach(id => console.log(`${action}, ${id}`));
                 console.log(`wait ${time}`);
             }
+
+            // unimplemented
+            return [];
         }
 
     }
@@ -191,8 +203,8 @@ export class FlipdotHardware implements HardwareInterface {
         }
     }
 
-    static Rectangular(width: number, height: number, backCol: Colour, frontCol: Colour) {
-        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(backCol, frontCol, i * height + j)).flat()).flat();
+    static Rectangular(width: number, height: number) {
+        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(i * height + j)).flat()).flat();
 
         let adjacency = (i: UnitId) => {
             let neighbours: UnitId[] = [];
@@ -220,18 +232,15 @@ export class FlipdotHardware implements HardwareInterface {
 
 }
 
-let BLACK = new Colour();
-BLACK.rgb = [0, 0, 0];
-let WHITE = new Colour();
-WHITE.rgb = [255, 255, 255];
 
 export class FlipdotSimHardware implements HardwareInterface {
     flipDurationMS: number = 10;
+    actionDurations: Map<Action, number> = new Map();
     units: Unit[];
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
-    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => void;
+    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
     simulation: RowOfDiscs;
     totalNumFrames: number = 0;
 
@@ -243,14 +252,14 @@ export class FlipdotSimHardware implements HardwareInterface {
         }
     }
 
-    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string, backCol: Colour = BLACK, frontCol: Colour = WHITE) {
+    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string) {
         this.flipDurationMS = 20;
-
+        this.actionDurations.set(Action.FLIP, this.flipDurationMS);
         console.log(dimensions)
         if (dimensions != undefined) {
             console.log("this half", dimensions)
             let [height, width] = dimensions;
-            let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(backCol, frontCol, i * width + j)).flat()).flat();
+            let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(i * width + j)).flat()).flat();
 
             let adjacency = (i: UnitId) => {
                 let neighbours: UnitId[] = [];
@@ -308,10 +317,10 @@ export class FlipdotSimHardware implements HardwareInterface {
 
         // this is time over which you complete the action? what is the MEANING of time 
         // how long does it take to do this basically
-        this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time) => {
+        this.actionsToHardwareAction = (action: Action, ids: UnitId[], time: Time): [UnitId, State][] => {
             // do this and then wait some cycles...
             // I think I just do this but, the simulation can't do arbitrary setups.
-            let closestInterval = this.getRealTiming(time) == 0? 0 : Math.round(this.getRealTiming(time) / this.flipDurationMS);
+            let closestInterval = this.getRealTiming(time) == 0 ? 0 : Math.round(this.getRealTiming(time) / this.flipDurationMS);
             // so I need to insert this much "dead time"
             let idxes: number[][] = [];
             let blankIdxes: number[][] = [];
@@ -329,7 +338,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             let originalAnim = this.simulation.nextFlipGenerator;
 
             let currNumFrames = this.totalNumFrames;
-            
+
             // here's what I do: if this is lower than the current number, delegate
             this.simulation.resetAnimation(i => {
                 console.log(`i is ${i}, currentNumFrames is ${currNumFrames}, this.totalNumFrames is ${this.totalNumFrames}, closestInterval is ${closestInterval}`)
@@ -355,6 +364,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             })
 
             this.totalNumFrames += closestInterval + 1;
+            return [];
         }
 
     }
@@ -364,7 +374,7 @@ export class FlipdotSimHardware implements HardwareInterface {
         // let cumulativeTime = 0;
         let lastTime = 0;
         console.log("units before and after", this.units)
-        
+
         this.units.flat().map(u => unitAvailableAt.set(u.id, 0));
         console.log("units before and after", this.units)
 
@@ -386,12 +396,12 @@ export class FlipdotSimHardware implements HardwareInterface {
 
                 console.log(unitAvailableAt)
                 console.log(this.unitIdToUnit)
-                
+
                 console.log(this)
                 for (let unit of unitsInUse) {
-                // console.log(action[1])
-                let all = [...this.unitIdToUnit.keys()];
-                all.sort((a, b) => b - a)
+                    // console.log(action[1])
+                    let all = [...this.unitIdToUnit.keys()];
+                    all.sort((a, b) => b - a)
                     // console.log(all)
                     // console.log(unit)
                     // do we actually know what the action is?
@@ -433,32 +443,149 @@ export class FlipdotSimHardware implements HardwareInterface {
 
 }
 
+export class FlipdotState extends State { }
+
 export class FlipdotUnit implements Unit {
     id: UnitId;
+    actionTiming: [Action, number] = [Action.FLIP, 10];
     actions: Action[];
-    states: [Action, [StateId, State][]][];
+    states: [Action, State[]][];
 
-    constructor(backCol: Colour, frontCol: Colour, id: UnitId) {
+    constructor(id: UnitId) {
         this.id = id;
         this.actions = [Action.FLIP];
-        this.states = [[Action.FLIP, [[0, new FlipdotState(backCol)], [1, new FlipdotState(frontCol)]]]];
+        this.states = [[Action.FLIP, [new FlipdotState(0), new FlipdotState(1)]]];
     }
 }
 
 
-export class FlipdotState implements State {
-    image: Colour[][];
-    constructor(col: Colour) {
-        this.image = [[col]];
+function diffIndices(a: boolean[][], b: boolean[][]): number[] {
+            const differences: number[] = [];
+
+            // Basic safety checks — dimensions should match
+            if (a.length !== b.length) {
+                throw new Error("Arrays differ in number of rows.");
+            }
+
+            let index = 0;
+
+            for (let row = 0; row < a.length; row++) {
+                if (a[row].length !== b[row].length) {
+                    throw new Error(`Row ${row} differs in length.`);
+                }
+
+                for (let col = 0; col < a[row].length; col++) {
+                    if (a[row][col] !== b[row][col]) {
+                        differences.push(index);
+                    }
+                    index++;
+                }
+            }
+
+            return differences;
+        }
+
+
+// let's implement a transition...
+
+
+export class SnapTransition implements Transition {
+    generateGroupAction = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction => {
+        
+        let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction[] => {
+            // let's just assume it's an instantaneous action... but we can create more of these later and hook it up properly 
+            let flip = diffIndices(start as boolean[][], end as boolean[][]);
+            return [new GroupAction(time, [[Action.FLIP, flip]])];
+        }
+
+        let groupAction = generateAnimationBetweenFrames(o1.draw(), o2.draw(), t)[0];
+
+
+        return groupAction;
     }
+
 }
+
+// DITHERING IN MOTION - what does it mean?
+// different effects are like... 
+// how do I squeeze MORE MOTION out ofthings
+
+export class FlipTransition implements Transition {
+    // just keep flipping
+}
+
+
+
+let distanceL1 = (firstIndices: number, lastIndices: number, h: HardwareInterface): [number, number] => {
+    let firstX = firstIndices;
+    let firstY;
+    let lastX;
+    let lastY; 
+
+    
+}
+
+
+export class WaveTransition implements Transition {
+    direction: (t: Time) => number[];
+    // I guess a time vector field?
+
+    // how do I specify this.........
+    constructor(direction: (t: Time) => number[]) {
+        this.direction = direction;
+    }
+    
+    generateGroupAction(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction {
+        // how many steps do I get though?
+        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        
+        let unitsToFlap = diffIndices(o1.draw(), o2.draw());
+        let steps = t / flipTiming;
+        // what's the "width" of the units, so to speak?
+
+
+        let newObjects = [];
+
+        for (let i = 0; i < numFrames; i++) {
+
+            // drawFrame(rectSize, [, ], hardware);
+
+            let shape = this.to.draw();
+            let point = Math.round(interpPositions * i * shape.length);
+
+            let oldShape = this.from.draw();
+            console.log(oldShape);
+            console.log(shape)
+            // now, I'll just take everything at interpPoint
+            console.log(point)
+            for (let j = point; j < shape.length; j++) {
+                console.log(j)
+                shape[j] = oldShape[j];
+            }
+            console.log(shape)
+
+            let obj = new PixelArtTarget(shape, false); // lol.......
+
+            newObjects.push(obj);
+        }
+
+        return newObjects;
+
+    }
+
+
+
+
+
+    // what's the difference between effect and transition?
+    // transiton can perform 
+}
+
 
 // let's set up some test cases...
 
 if (typeof window != 'undefined') {
-
-
-// semantics of timing have changed 
+    // semantics of timing have changed 
     let teapotExample = "timing: [1,2,3,4,5,6,7,8,9,10]\n\
     filepath: /animations/teapot${i}.png \n\
     objects: [#000000 teapot] \n\
@@ -468,5 +595,5 @@ if (typeof window != 'undefined') {
     parseToGroupAction(teapotExample);
 }
 
-// now I need to compile an example INTO group actions. 
+// now I need to compile an example INTO group actions.
 // so... let me pop over to main and try to borrow one of those compilers? 
