@@ -459,31 +459,32 @@ export class FlipdotUnit implements Unit {
 }
 
 
+
 function diffIndices(a: boolean[][], b: boolean[][]): number[] {
-            const differences: number[] = [];
+    const differences: number[] = [];
 
-            // Basic safety checks — dimensions should match
-            if (a.length !== b.length) {
-                throw new Error("Arrays differ in number of rows.");
-            }
+    // Basic safety checks — dimensions should match
+    if (a.length !== b.length) {
+        throw new Error("Arrays differ in number of rows.");
+    }
 
-            let index = 0;
+    let index = 0;
 
-            for (let row = 0; row < a.length; row++) {
-                if (a[row].length !== b[row].length) {
-                    throw new Error(`Row ${row} differs in length.`);
-                }
-
-                for (let col = 0; col < a[row].length; col++) {
-                    if (a[row][col] !== b[row][col]) {
-                        differences.push(index);
-                    }
-                    index++;
-                }
-            }
-
-            return differences;
+    for (let row = 0; row < a.length; row++) {
+        if (a[row].length !== b[row].length) {
+            throw new Error(`Row ${row} differs in length.`);
         }
+
+        for (let col = 0; col < a[row].length; col++) {
+            if (a[row][col] !== b[row][col]) {
+                differences.push(index);
+            }
+            index++;
+        }
+    }
+
+    return differences;
+}
 
 
 // let's implement a transition...
@@ -491,7 +492,7 @@ function diffIndices(a: boolean[][], b: boolean[][]): number[] {
 
 export class SnapTransition implements Transition {
     generateGroupAction = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction => {
-        
+
         let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction[] => {
             // let's just assume it's an instantaneous action... but we can create more of these later and hook it up properly 
             let flip = diffIndices(start as boolean[][], end as boolean[][]);
@@ -515,15 +516,54 @@ export class FlipTransition implements Transition {
 }
 
 
+/**
+ * Compute the maximum L1 (graph) distance between any start cell
+ * and any end cell using BFS over adjacency edges.
+ *
+ * @param startCells - indices of starting cells
+ * @param endCells   - indices of ending cells
+ * @param getAdj     - function returning adjacent cell indices
+ * @returns number   - furthest shortest-path distance
+ */
+export function maxL1Distance(startCells: number[], endCells: number[], h: HardwareInterface): number {
+    if (startCells.length === 0 || endCells.length === 0) {
+        return -1; // or throw new Error(...)
+    }
 
-let distanceL1 = (firstIndices: number, lastIndices: number, h: HardwareInterface): [number, number] => {
-    let firstX = firstIndices;
-    let firstY;
-    let lastX;
-    let lastY; 
+    const endSet = new Set(endCells);
 
-    
+    // BFS queue initialized with all start cells
+    const queue: number[] = [];
+    const dist = new Map<number, number>();
+
+    for (const s of startCells) {
+        queue.push(s);
+        dist.set(s, 0);
+    }
+
+    let maxDistance = -1;
+
+    while (queue.length > 0) {
+        const cell = queue.shift()!;
+        const d = dist.get(cell)!;
+
+        // If this cell is an end cell, update the max
+        if (endSet.has(cell)) {
+            if (d > maxDistance) maxDistance = d;
+        }
+
+        // Explore neighbors
+        for (const nxt of h.unitAdjacency(cell)) {
+            if (!dist.has(nxt)) {
+                dist.set(nxt, d + 1);
+                queue.push(nxt);
+            }
+        }
+    }
+
+    return maxDistance;
 }
+
 
 
 export class WaveTransition implements Transition {
@@ -534,23 +574,29 @@ export class WaveTransition implements Transition {
     constructor(direction: (t: Time) => number[]) {
         this.direction = direction;
     }
-    
+
     generateGroupAction(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction {
         // how many steps do I get though?
         let flipTiming = h.actionDurations.get(Action.FLIP)!;
-        
+
         let unitsToFlap = diffIndices(o1.draw(), o2.draw());
         let steps = t / flipTiming;
         // what's the "width" of the units, so to speak?
 
+        let first = this.direction(0);
+        let last = this.direction(1);
 
+        let maxDistance = maxL1Distance(first, last, h);
+
+        // in the time that I have, how much distance must I cover? 
+        
         let newObjects = [];
 
         for (let i = 0; i < numFrames; i++) {
 
             // drawFrame(rectSize, [, ], hardware);
 
-            let shape = this.to.draw();
+            let shape = 
             let point = Math.round(interpPositions * i * shape.length);
 
             let oldShape = this.from.draw();
