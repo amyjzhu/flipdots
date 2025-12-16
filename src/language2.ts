@@ -1435,6 +1435,7 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
             // console.log("generated", o.debugTag, o.frameId, allFrameValues)
             o = o.transition.to;
             frameNum += 1;
+            console.log("compiling!")
         }
     }
     // console.log("?")
@@ -2423,7 +2424,7 @@ if (false)
 // pause 100
 
 
-
+/*
 let noiseEmergeExample = "timing: {\"frames\": [1,2], \"additional\": [2]}\n\
 filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] [#ffffff background]\n\
@@ -2438,7 +2439,7 @@ filepath: /animations/wipe${i}.png \n\
 objects: [#000000 rectangle] [#ffffff background]\n\
 noise(rectangle 1) 0 -> instantaneous -> noise(rectangle 1) 1 -> instantaneous -> noise(rectangle 1) 2 -> instantaneous -> noise(rectangle 1) 3 -> instantaneous -> noop(rectangle 1) 4";
 parser(noiseStepsExample);
-
+*/
 
 
 /*
