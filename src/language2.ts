@@ -12,7 +12,7 @@
 // I guess it's needed to create the intermediate frames.
 // so it gets supplied in the compilation part...?
 // no, you can't create a frame without it? a frame must have 
-// we have something called Transition which takes two frames and a time length and the transitions for each object?
+// we have something called Effect which takes two frames and a time length and the transitions for each object?
 // or we have something called Universe which takes the whole universe...? at each time point? 
 // animation...
 
@@ -51,7 +51,7 @@ interface Target {
     clone(): Target;
 
     frameId: FrameId | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
 
     debugTag: string | undefined;
 }
@@ -66,7 +66,7 @@ interface DrawableTarget extends Target {
 
 interface TemporalTarget extends Target {
     parentTargets: Target[];
-    parentTransitions: Transition[]
+    parentEffects: Effect[]
 }
 
 class PixelArtTarget implements DrawableTarget {
@@ -79,7 +79,7 @@ class PixelArtTarget implements DrawableTarget {
     defaultColour: Colour;
 
     frameId: number | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
 
     debugTag: string | undefined;
 
@@ -129,7 +129,7 @@ class PixelArtTarget implements DrawableTarget {
     clone(): Target {
         let newPixelArtTarget = new PixelArtTarget(this.shape, this.defaultColour);
         newPixelArtTarget.frameId = this.frameId;
-        newPixelArtTarget.transition = this.transition; // shallow copy
+        newPixelArtTarget.effect = this.effect; // shallow copy
         return newPixelArtTarget;
     }
 }
@@ -140,29 +140,29 @@ let inBounds = (coord: [number, number], bounds: [number, number]): boolean => {
 }
 
 
-enum TransitionType {
+enum EffectType {
     Complete,
     Disappearing,
     Appearing,
     Unspecified
 }
 // right, it's not that transitions take time, it;s that keyframes have time between them
-interface Transition {
+interface Effect {
     from: Target | undefined;
     to: Target | undefined;
-    type: TransitionType;
+    type: EffectType;
     generateDisappearingFrames(numFrames: number): Target[];
     generateAppearingFrames(numFrames: number): Target[];
     generateCompleteFrames(numFrames: number): Target[];
     generateGroupActions(time: number): GroupAction[];
 }
 
-class UniformMove implements Transition {
+class UniformMove implements Effect {
     from: Target | undefined;
     to: Target | undefined;
-    type: TransitionType;
+    type: EffectType;
 
-    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType) {
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
         this.from = from;
         this.to = to;
         this.type = type;
@@ -255,22 +255,22 @@ let extractShapeAndPositionFromFrame = (shape: Colour[][], defaultColour: Colour
 }
 // I need more transitions and more styles!
 
-interface DerivedTransition extends Transition {
+interface DerivedEffect extends Effect {
 
 }
 
-class TracePath implements DerivedTransition {
+class TracePath implements DerivedEffect {
     from: Target | undefined;
     to: Target | undefined;
-    type: TransitionType;
-    transition: Transition;
+    type: EffectType;
+    effect: Effect;
 
-    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, otherTransition: Transition) {
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, otherEffect: Effect) {
         this.from = from;
         this.to = to;
         this.type = type;
         // is it possible to get other transitions when making this?
-        this.transition = otherTransition;
+        this.effect = otherEffect;
     }
     generateGroupActions(time: number): GroupAction[] {
         throw new Error("Method not implemented.");
@@ -284,7 +284,7 @@ class TracePath implements DerivedTransition {
     }
     generateCompleteFrames(numFrames: number): Target[] {
         // how do I use the other transition? well, I just generate the frames first
-        let referenceFrames = this.transition.generateCompleteFrames(numFrames);
+        let referenceFrames = this.effect.generateCompleteFrames(numFrames);
 
         // for path, I actually just need to build up all the frames I've seen so far...
         // but at some point we should also interpolate 
@@ -324,15 +324,15 @@ class LinearPath implements TemporalTarget {
     parentTargets: Target[];
     position: [number, number];
     // shape: Colour[][];
-    parentTransitions: Transition[];
+    parentEffects: Effect[];
     interpolationPoint: number; // from 0 to 1
 
     debugTag: string | undefined;
 
 
-    constructor(start: Target, end: Target, transition: Transition, interpolationPoint: number) {
+    constructor(start: Target, end: Target, effect: Effect, interpolationPoint: number) {
         this.parentTargets = [start, end];
-        this.parentTransitions = [transition];
+        this.parentEffects = [effect];
         this.interpolationPoint = interpolationPoint;
 
         this.position = [-1, -1]; // not super relevant... perhaps I should remove this
@@ -371,11 +371,11 @@ class LinearPath implements TemporalTarget {
 
 
     clone(): LinearPath {
-        return new LinearPath(this.parentTargets[0], this.parentTargets[1], this.parentTransitions[0], this.interpolationPoint);
+        return new LinearPath(this.parentTargets[0], this.parentTargets[1], this.parentEffects[0], this.interpolationPoint);
     }
 
     frameId: number | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
 
 }
 
@@ -438,7 +438,7 @@ class Stroke implements DerivedTarget {
     parentTargets: Target[]
     position: [number, number];
     frameId: number | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
     debugTag: string | undefined;
     size: number;
     shape: Colour[][];
@@ -467,7 +467,7 @@ class Noise implements DerivedTarget {
     pattern: Colour[][];
 
     frameId: number | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
     debugTag: string | undefined;
 
     constructor(target: Target, fraction: number, baseTarget?: Target) {
@@ -545,7 +545,7 @@ class Checkerboard implements DerivedTarget {
         throw new Error("Method not implemented.");
     }
     frameId: number | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
     debugTag: string | undefined;
 
 
@@ -561,7 +561,7 @@ class Inverted implements DerivedTarget {
         throw new Error("Method not implemented.");
     }
     frameId: number | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
     debugTag: string | undefined;
 
 }
@@ -572,7 +572,7 @@ class Collision implements DerivedTarget {
     shape: Colour[][];
 
     frameId: number | undefined;
-    transition: Transition | undefined;
+    effect: Effect | undefined;
     genEffect: (selected: ([number, number][])) => Colour[][];
     defaultColour: Colour;
 
@@ -761,11 +761,11 @@ function allCollisionPoints(targets: Colour[][][], defaultColour: Colour): [numb
 }
 
 
-class Instantaneous implements Transition {
+class Instantaneous implements Effect {
     from: Target | undefined;
     to: Target | undefined;
-    type: TransitionType;
-    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType) {
+    type: EffectType;
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
         this.from = from;
         this.to = to;
         this.type = type;
@@ -782,7 +782,7 @@ class Instantaneous implements Transition {
     }
     generateCompleteFrames(numFrames: number): Target[] {
         if (!this.from || !this.to) {
-            throw new Error("Transition isn't actually complete")
+            throw new Error("Effect isn't actually complete")
         }
 
         let transitionPoint = Math.floor(numFrames / 2);
@@ -807,13 +807,13 @@ enum WipeDirection {
 }
 
 
-class Wipe implements Transition {
+class Wipe implements Effect {
     from: Target | undefined;
     to: Target | undefined;
-    type: TransitionType;
+    type: EffectType;
     direction: WipeDirection;
 
-    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, direction: WipeDirection) {
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, direction: WipeDirection) {
         this.to = to;
         this.from = from;
         this.type = type;
@@ -869,15 +869,15 @@ class Wipe implements Transition {
 
 }
 
-class DrawingHeadWipe implements Transition {
+class DrawingHeadWipe implements Effect {
     // this should be a bit different! I need to set a frontier that I grow from rather than growing unilaterally. TODO 
     from: Target | undefined;
     to: Target | undefined;
-    type: TransitionType;
+    type: EffectType;
     startingPoint: [number, number] | undefined
     timeVectorField: number[][] | undefined;
 
-    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, startingPoint: [number, number]) {
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, startingPoint: [number, number]) {
         this.to = to;
         this.from = from;
         this.type = type;
@@ -1041,17 +1041,17 @@ class DrawingHeadWipe implements Transition {
 }
 
 
-class GrowWipe implements Transition {
+class GrowWipe implements Effect {
     // basically, find the next n parts of the image.
     // let's take the image and a starting point 
 
     from: Target | undefined;
     to: Target | undefined;
-    type: TransitionType;
+    type: EffectType;
     startingPoint: [number, number] | undefined
     timeVectorField: number[][] | undefined;
 
-    constructor(from: Target | undefined, to: Target | undefined, type: TransitionType, startingPoint: [number, number]) {
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, startingPoint: [number, number]) {
         this.to = to;
         this.from = from;
         this.type = type;
@@ -1274,12 +1274,12 @@ let parseImagesIntoFrames = async (urls: string[]): Promise<[Target[][], number,
     // now I have a bunch of objects at each frame
     // let me hook them up!
     for (let i = 0; i < allShapesAllFrames.length; i++) {
-        let makeTransitionsFor = toWindows<Target>(allShapesAllFrames[i], 2);
+        let makeEffectsFor = toWindows<Target>(allShapesAllFrames[i], 2);
         // for each id, I need to hook up stuff for each frame
-        for (let [o1, o2] of makeTransitionsFor) {
-            let newTransition = new Instantaneous(o1, o2, TransitionType.Complete);
-            // let newTransition = new UniformMove(o1, o2, TransitionType.Complete);
-            o1.transition = newTransition;
+        for (let [o1, o2] of makeEffectsFor) {
+            let newEffect = new Instantaneous(o1, o2, EffectType.Complete);
+            // let newEffect = new UniformMove(o1, o2, EffectType.Complete);
+            o1.effect = newEffect;
         }
     }
 
@@ -1425,15 +1425,15 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
 
         let o: Target | undefined = object[0];
         console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
-        while (o && o.transition != undefined && frameNum <= 50) {
+        while (o && o.effect != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
             
-            let fullObjects = o.transition.generateGroupActions(transitionTiming[frameNum])
+            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum])
             // console.log(fullObjects.map(o => o.draw()))
             actions = actions.concat(fullObjects)
             // allFrameValues.push(fullObjects.map(o => o.draw()));
             // console.log("generated", o.debugTag, o.frameId, allFrameValues)
-            o = o.transition.to;
+            o = o.effect.to;
             frameNum += 1;
             console.log("compiling!")
         }
@@ -1501,7 +1501,7 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
 
         let o: Target | undefined = object[0];
         console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
-        while (o && o.transition != undefined && frameNum <= 50) {
+        while (o && o.effect != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
             if (o.frameId != frameNum) {
                 console.log("generated an empty for target ", o.debugTag, frameNum, transitionTiming[frameNum])
@@ -1512,13 +1512,13 @@ let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colou
             }
             console.log("looping! frame ", frameNum, o.debugTag)
             // this works when all frames are defined. if we have break in continuity, we need to multiply number of
-            let fullObjects = o.transition.generateCompleteFrames(transitionTiming[frameNum])
+            let fullObjects = o.effect.generateCompleteFrames(transitionTiming[frameNum])
             // console.log(fullObjects)
             console.log(fullObjects.map(o => o.draw()))
             allFrameValues = allFrameValues.concat(fullObjects.map(o => o.draw()));
             // allFrameValues.push(fullObjects.map(o => o.draw()));
             console.log("generated", o.debugTag, o.frameId, allFrameValues)
-            o = o.transition.to;
+            o = o.effect.to;
             frameNum += 1;
         }
         // console.log(object)
@@ -1627,7 +1627,7 @@ let graphModifyToAddCollision = (input: Target[][]): Target[][] => {
     // console.log(strVis);
     // console.log(draw2(collision.draw()))
     collision.frameId = 1;
-    collision.transition = new Instantaneous(collision, collision2, TransitionType.Complete);
+    collision.effect = new Instantaneous(collision, collision2, EffectType.Complete);
     collision2.frameId = 2;
     // new object... how many frames? 
     output.push([collision, collision2]);
@@ -1648,10 +1648,10 @@ let graphModifyToAddPathTrace = (input: Target[][]): Target[][] => {
     let endFrame = 2;
     let pathStartTarget = input[objIndex][startFrame].clone();
     let pathEndTarget = input[objIndex][endFrame].clone();
-    let transition = new UniformMove(pathStartTarget, pathEndTarget, TransitionType.Complete);
+    let effect = new UniformMove(pathStartTarget, pathEndTarget, EffectType.Complete);
     console.log(pathStartTarget)
-    let path = new TracePath(pathStartTarget, pathEndTarget, TransitionType.Complete, transition);
-    pathStartTarget.transition = path;
+    let path = new TracePath(pathStartTarget, pathEndTarget, EffectType.Complete, effect);
+    pathStartTarget.effect = path;
     // let strVis = frameDisplay(collision.draw()); 
     // console.log(strVis);
     // console.log(draw2(collision.draw()))
@@ -1816,10 +1816,10 @@ let parseObjDecls = (input: string): Map<string, string> => {
     return colourToObjName
 }
 
-let parseGraph = async (files: string[], transitions: string[], names: Map<string, string>, timings: number[]): Promise<[number, number, Target[][]]> => {
+let parseGraph = async (files: string[], effects: string[], names: Map<string, string>, timings: number[]): Promise<[number, number, Target[][]]> => {
     // start by creating every declared objet.
 
-    let parsedInstructions: [string, [[TargetString, number], string, [TargetString, number]][]][] = transitions.map(line => parseInsts(line))
+    let parsedInstructions: [string, [[TargetString, number], string, [TargetString, number]][]][] = effects.map(line => parseInsts(line))
 
     let targets: Target[][] = [];
     let w, h: number;
@@ -1900,7 +1900,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
         for (let step of steps) {
             console.log("see n2o", namesToObjects)
             // wait, do I need to use namesToObjects here...?
-            let [start, transition, end] = step;
+            let [start, effect, end] = step;
             let [startObj, startFrame] = start;
             let [endObj, endFrame] = end;
             if (typeof startObj === 'string' && typeof endObj == "string") { // d\o I nd to check endObj
@@ -1912,7 +1912,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
 
                 // console.log(frameDisplay(obj.draw()))
 
-                if (transition == "path") {
+                if (effect == "path") {
                     // don't modify the start and end stuff
                     console.log("n2o 3", namesToObjects)
                     let newTarget = namesToObjects.get(startObj)!.find(o => o.frameId == startFrame)!.clone();
@@ -1920,44 +1920,44 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                     let newEndTarget = namesToObjects.get(endObj as string)!.find(o => o.frameId == endFrame)!.clone();
 
 
-                    if (!newTarget || newTarget.transition == undefined) {
+                    if (!newTarget || newTarget.effect == undefined) {
                         console.log(newTarget);
                         console.log(namesToObjects)
-                        throw new Error("Cannot use derivative transition before original transition is defined")
+                        throw new Error("Cannot use derivative effect before original effect is defined")
                     }
 
-                    let t = new TracePath(newTarget, newEndTarget, TransitionType.Complete, newTarget.transition);
-                    newTarget.transition = t;
-                    newTarget.debugTag = startObj + ":" + transition
+                    let t = new TracePath(newTarget, newEndTarget, EffectType.Complete, newTarget.effect);
+                    newTarget.effect = t;
+                    newTarget.debugTag = startObj + ":" + effect
                     console.log("tgts", targets);
                     targets.push([newTarget]);
 
                 } else {
 
-                    let t = transition == "instantaneous" ? new Instantaneous(obj, eo, TransitionType.Complete) :
-                        transition == "wipe" ? new Wipe(obj, eo, TransitionType.Complete, WipeDirection.TTB) :
-                            transition == "grow" ? new GrowWipe(obj, eo, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
-                                transition == "move" ? new UniformMove(obj, eo, TransitionType.Complete) :
-                                    new DrawingHeadWipe(obj, eo, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
+                    let t = effect == "instantaneous" ? new Instantaneous(obj, eo, EffectType.Complete) :
+                        effect == "wipe" ? new Wipe(obj, eo, EffectType.Complete, WipeDirection.TTB) :
+                            effect == "grow" ? new GrowWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
+                                effect == "move" ? new UniformMove(obj, eo, EffectType.Complete) :
+                                    new DrawingHeadWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
 
 
 
-                    obj.transition = t;
+                    obj.effect = t;
 
                     if (!perFrameObjs.has(startFrame)) {
                         obj.frameId = startFrame;
-                        obj.debugTag = startObj + ":" + transition
+                        obj.debugTag = startObj + ":" + effect
                         perFrameObjs.set(startFrame, obj);
                         console.log("setting shape!!!!", obj);
                     }
 
                     if (!perFrameObjs.has(endFrame)) {
                         eo.frameId = endFrame;
-                        eo.debugTag = endObj + ":" + transition
+                        eo.debugTag = endObj + ":" + effect
                         perFrameObjs.set(endFrame, eo);
                     }
 
-                    if (transition == "move") {
+                    if (effect == "move") {
                         console.log("abcd", step);
                         console.log("abcd. from:" + t.from!.frameId);
                         console.log("abcd. to:" + t.to!.frameId);
@@ -1992,7 +1992,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
         let perFrameObjs: Map<number, Target> = new Map();
 
         for (let step of steps) {
-            let [start, transition, end] = step;
+            let [start, effect, end] = step;
             let [startObj, startFrame] = start;
             let [endObj, endFrame] = end;
             // basically... 
@@ -2062,29 +2062,29 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
 
 
             // what to do if this is a temporal transition?
-            if (transition == "path") {
+            if (effect == "path") {
                 // don't modify the start and end stuff
-                if (!startTarget || startTarget.transition == undefined) {
+                if (!startTarget || startTarget.effect == undefined) {
                     console.log(startTarget);
                     console.log(namesToObjects)
-                    throw new Error("Cannot use derivative transition before original transition is defined")
+                    throw new Error("Cannot use derivative effect before original effect is defined")
                 }
                 let newTarget = startTarget.clone();
                 let newEndTarget = endTarget!.clone();
 
-                let t = new TracePath(newTarget, newEndTarget, TransitionType.Complete, startTarget.transition);
-                newTarget.transition = t;
-                newTarget.debugTag = startObj + ":" + transition
+                let t = new TracePath(newTarget, newEndTarget, EffectType.Complete, startTarget.effect);
+                newTarget.effect = t;
+                newTarget.debugTag = startObj + ":" + effect
                 perFrameObjs.set(endFrame, newEndTarget!);
                 perFrameObjs.set(startFrame, newTarget!);
 
             } else {
 
-                let t = transition == "instantaneous" ? new Instantaneous(startTarget, endTarget, TransitionType.Complete) :
-                    transition == "wipe" ? new Wipe(startTarget, endTarget, TransitionType.Complete, WipeDirection.TTB) :
-                        transition == "grow" ? new GrowWipe(startTarget, endTarget, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
-                            transition == "move" ? new UniformMove(startTarget, endTarget, TransitionType.Complete) :
-                                new DrawingHeadWipe(startTarget, endTarget, TransitionType.Complete, [Math.round(width / 2), Math.round(height / 2)])
+                let t = effect == "instantaneous" ? new Instantaneous(startTarget, endTarget, EffectType.Complete) :
+                    effect == "wipe" ? new Wipe(startTarget, endTarget, EffectType.Complete, WipeDirection.TTB) :
+                        effect == "grow" ? new GrowWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
+                            effect == "move" ? new UniformMove(startTarget, endTarget, EffectType.Complete) :
+                                new DrawingHeadWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)])
 
                 // the transition might have arguments.
                 // but don't we actually use the input to find that? 
@@ -2093,7 +2093,7 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
 
 
 
-                startTarget!.transition = t;
+                startTarget!.effect = t;
                 console.log("setting ", startTarget, " transition to ", t)
 
                 // I see... why shouldn't I rewrite it though? 
@@ -2101,22 +2101,22 @@ let parseGraph = async (files: string[], transitions: string[], names: Map<strin
                 // basically, this needs to have the trasition updated at the very least 
                 if (!perFrameObjs.has(startFrame)) {
                     startTarget!.frameId = startFrame;
-                    startTarget!.debugTag = startObj + ":" + transition;
+                    startTarget!.debugTag = startObj + ":" + effect;
                     console.log("setting startframe ", startFrame)
                     perFrameObjs.set(startFrame, startTarget!);
                 } else {
-                    perFrameObjs.get(startFrame)!.transition = t;
+                    perFrameObjs.get(startFrame)!.effect = t;
                 }
 
                 if (!perFrameObjs.has(endFrame)) {
                     endTarget!.frameId = endFrame;
-                    endTarget!.debugTag = endObj + ":" + transition;
+                    endTarget!.debugTag = endObj + ":" + effect;
                     console.log("setting enframe", endFrame)
                     perFrameObjs.set(endFrame, endTarget!);
                 }
 
 
-                if (transition == "move") {
+                if (effect == "move") {
                     console.log(step);
                     console.log("abcd. from:" + t.from!.frameId);
                     console.log("abcd. to:" + t.to!.frameId);
@@ -2162,12 +2162,12 @@ let parseSelector = (input: string): [string, number] => {
 // 
 // Selector ::= Target Frame
 // Target ::= object | DerivedTarget | TemporalTarget
-// TransitionType ::= instantaneous | linear | ... 
+// EffectType ::= instantaneous | linear | ... 
 // DerivedTarget ::= collision(Selector, Selector) 
 // TemporalTarget ::= path(Selector*)
 // ArrowType ::= -> | ->*
-// Transition ::= ArrowType TransitionType ArrowType 
-// Lineage ::= Selector | Selector Transition Lineage // single selector would be something that goes away
+// Effect ::= ArrowType EffectType ArrowType 
+// Lineage ::= Selector | Selector Effect Lineage // single selector would be something that goes away
 type TargetString = string | [string, [string, number][]]
 let parseInsts = (line: string): [string, [[TargetString, number], string, [TargetString, number]][]] => {
     // first thing is the selector...
@@ -2184,14 +2184,14 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
 
     let fromStep: number = 0;
     let fromTarget: TargetString = "";
-    let transition: string = "";
+    let effect: string = "";
     let transitive = false;
 
     let simpleSelector = /^([\w]+\s[\d]+)/g;
     // group 1 is name, subsequent group are targets
     let constructorSelector = /^([\w-]+)\((([\w-]+[\s]*[\d],?[\s]*)+)\)[\s]*([\d]+)/g;
     // second group is name and arguments (if any)
-    let transitionTypeSelector = /^([\s]*->\*?[\s]*)([\w\d()]+)([\s]*->\*?[\s]*)/g;
+    let effectTypeSelector = /^([\s]*->\*?[\s]*)([\w\d()]+)([\s]*->\*?[\s]*)/g;
     // just the tag 
     let newObjectTagSelector = /^([\w\d-]+):/g;
 
@@ -2201,7 +2201,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
         // while (count <= 10) {
         let a = simpleSelector.exec(line);
         let b = constructorSelector.exec(line);
-        let c = transitionTypeSelector.exec(line);
+        let c = effectTypeSelector.exec(line);
         let d = newObjectTagSelector.exec(line);
         if (a) {
             console.log("match simple", a[0])
@@ -2218,8 +2218,8 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
             } else {
                 // this was the end...
 
-                if (transition.length == 0) {
-                    console.log(transition);
+                if (effect.length == 0) {
+                    console.log(effect);
                     console.log(fromTarget);
                     console.log(fromStep)
                     throw new Error("??");
@@ -2231,7 +2231,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
                     console.log("transitive!", fromStep, frameNum)
                     // I should loop around
                     for (let i = fromStep; i < frameNum; i++) {
-                        let step: [[TargetString, number], string, [TargetString, number]] = [[fromTarget, fromStep], transition, [name, fromStep + 1]];
+                        let step: [[TargetString, number], string, [TargetString, number]] = [[fromTarget, fromStep], effect, [name, fromStep + 1]];
                         steps.push(step);
                         // objectsPerFrame.push(name);
 
@@ -2242,17 +2242,17 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
 
 
 
-                let step: [[TargetString, number], string, [TargetString, number]] = [[fromTarget, fromStep], transition, [name, frameNum]];
+                let step: [[TargetString, number], string, [TargetString, number]] = [[fromTarget, fromStep], effect, [name, frameNum]];
                 steps.push(step);
                 // objectsPerFrame.push(name);
 
                 fromStep = frameNum;
                 fromTarget = name;
-                transition = "";
+                effect = "";
             }
 
         } else if (b) {
-            console.log("match construcotr", b[0], "- current transition ", transition)
+            console.log("match construcotr", b[0], "- current transition ", effect)
 
             let constructorName = b[1];
             console.log(b.length);
@@ -2262,7 +2262,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
             let frameNum = parseInt(b[b.length - 1]);
             line = line.slice(b[0].length);
 
-            console.log(constructorName, argSelectors, frameNum, transition)
+            console.log(constructorName, argSelectors, frameNum, effect)
 
             // just copied from above unfortunately....
 
@@ -2271,7 +2271,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
                 fromStep = frameNum;
             } else {
                 // this was the end...
-                if (transition.length == 0) {
+                if (effect.length == 0) {
                     throw new Error("??");
                 }
 
@@ -2280,7 +2280,7 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
                     // I should loop around
                     // also behaviour is undefined if it's not a name-based selector here...
                     for (let i = fromStep; i < frameNum - 1; i++) {
-                        let step: [[TargetString, number], string, [TargetString, number]] = [[fromTarget, i], transition, [constructorName, i + 1]];
+                        let step: [[TargetString, number], string, [TargetString, number]] = [[fromTarget, i], effect, [constructorName, i + 1]];
                         steps.push(step);
                         // objectsPerFrame.push(name);
 
@@ -2289,13 +2289,13 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
                 }
 
                 let step: [[TargetString, number], string, [TargetString, number]] =
-                    [[fromTarget, fromStep], transition, [[constructorName, argSelectors], frameNum]];
+                    [[fromTarget, fromStep], effect, [[constructorName, argSelectors], frameNum]];
                 steps.push(step);
                 // objectsPerFrame.push([constructorName, argSelectors.map(s => parseSelector(s))]);
 
                 fromStep = frameNum;
                 fromTarget = [constructorName, argSelectors];
-                transition = "";
+                effect = "";
             }
 
         } else if (c) {
@@ -2310,10 +2310,10 @@ let parseInsts = (line: string): [string, [[TargetString, number], string, [Targ
                 transitive = false;
             }
 
-            let transitionType = c[2];
+            let effectType = c[2];
             line = line.slice(c[0].length);
 
-            transition = transitionType;
+            effect = effectType;
 
 
         } else if (d) {
