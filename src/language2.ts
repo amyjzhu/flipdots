@@ -154,6 +154,7 @@ interface Transition {
     generateDisappearingFrames(numFrames: number): Target[];
     generateAppearingFrames(numFrames: number): Target[];
     generateCompleteFrames(numFrames: number): Target[];
+    generateGroupActions(time: number): GroupAction[];
 }
 
 class UniformMove implements Transition {
@@ -165,6 +166,9 @@ class UniformMove implements Transition {
         this.from = from;
         this.to = to;
         this.type = type;
+    }
+    generateGroupActions(time: number): GroupAction[] {
+        throw new Error("Method not implemented.");
     }
 
     // but you can only generate frames when compiling a transition graph 
@@ -267,6 +271,9 @@ class TracePath implements DerivedTransition {
         this.type = type;
         // is it possible to get other transitions when making this?
         this.transition = otherTransition;
+    }
+    generateGroupActions(time: number): GroupAction[] {
+        throw new Error("Method not implemented.");
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
@@ -545,6 +552,17 @@ class Checkerboard implements DerivedTarget {
 }
 
 class Inverted implements DerivedTarget {
+    parentTargets: Target[];
+    position: [number, number];
+    draw(): Colour[][] {
+        throw new Error("Method not implemented.");
+    }
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    transition: Transition | undefined;
+    debugTag: string | undefined;
 
 }
 
@@ -752,6 +770,9 @@ class Instantaneous implements Transition {
         this.to = to;
         this.type = type;
     }
+    generateGroupActions(time: number): GroupAction[] {
+        throw new Error("Method not implemented.");
+    }
 
     generateDisappearingFrames(numFrames: number): Target[] {
         throw new Error("Method not implemented.");
@@ -797,6 +818,9 @@ class Wipe implements Transition {
         this.from = from;
         this.type = type;
         this.direction = direction;
+    }
+    generateGroupActions(time: number): GroupAction[] {
+        throw new Error("Method not implemented.");
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
@@ -859,6 +883,9 @@ class DrawingHeadWipe implements Transition {
         this.type = type;
         this.startingPoint = startingPoint;
 
+    }
+    generateGroupActions(time: number): GroupAction[] {
+        throw new Error("Method not implemented.");
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
@@ -1037,6 +1064,9 @@ class GrowWipe implements Transition {
         // 2) the difference between the to and from frame
         // is there a difference...?
         // let's just go with 1) for now.        
+    }
+    generateGroupActions(time: number): GroupAction[] {
+        throw new Error("Method not implemented.");
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
@@ -1354,44 +1384,70 @@ function diffIndices(a: boolean[][], b: boolean[][]): number[] {
 
 let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: number[]): GroupAction[] => {
     // first, write a function that handles just a set of objects to other 
-    let framesComposed: Colour[][][][] = [...Array(transitionTiming.reduce((acc, cur) => acc + cur, 0))].map(_ => []);
-    console.log(framesComposed)
-    for (let object of objects) {
-        for (let i = 0; i < object.length; i++) {
-            framesComposed[i].push(object[i].draw())
-        }
-    }
+    // let framesComposed: Colour[][][][] = [...Array(transitionTiming.reduce((acc, cur) => acc + cur, 0))].map(_ => []);
+    // console.log(framesComposed)
+    // for (let object of objects) {
+    //     for (let i = 0; i < object.length; i++) {
+    //         framesComposed[i].push(object[i].draw())
+    //     }
+    // }
 
-    let frames: Colour[][][] = [];
-    // now take that and add everything togehter
-    for (let frame of framesComposed) {
-        let finishedFrame: Colour[][] = compose(frame);
-        if (finishedFrame && finishedFrame.length != 0) {
-            frames.push(finishedFrame);
-        }
-    }
+    // let frames: Colour[][][] = [];
+    // // now take that and add everything togehter
+    // for (let frame of framesComposed) {
+    //     let finishedFrame: Colour[][] = compose(frame);
+    //     if (finishedFrame && finishedFrame.length != 0) {
+    //         frames.push(finishedFrame);
+    //     }
+    // }
 
-    console.log("width is ", frames[0][0].length, "heigth is ", frames[0].length)
+    // console.log("width is ", frames[0][0].length, "heigth is ", frames[0].length)
 
-    // first is actually empty...
-    let emptyFrame = frames[0].map(r => r.map(c => false));
-    let allFrames = [emptyFrame, ...frames];
+    // // first is actually empty...
+    // let emptyFrame = frames[0].map(r => r.map(c => false));
+    // let allFrames = [emptyFrame, ...frames];
 
-    let windowFrames = toWindows(allFrames, 2);
+    // let windowFrames = toWindows(allFrames, 2);
     
 
-    let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction[] => {
-        // let's just assume it's an instantaneous action... but we can create more of these later and hook it up properly 
-        let flip = diffIndices(start as boolean[][], end as boolean[][]);
-        return [new GroupAction(time, [[Action.FLIP, flip]])];
-    }
+    // // each effect might do something different... I should try to hook it up
+    // let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction[] => {
+    //     // let's just assume it's an instantaneous action... but we can create more of these later and hook it up properly 
+    //     let flip = diffIndices(start as boolean[][], end as boolean[][]);
+    //     return [new GroupAction(time, [[Action.FLIP, flip]])];
+    // }
 
-    let groupActions = [];
-    for (let i = 0; i < windowFrames.length; i++) {
-        let [start, end] = windowFrames[i];
-        let groupAction = generateAnimationBetweenFrames(start as boolean[][], end as boolean[][], transitionTiming[i])[0];
-        groupActions.push(groupAction);
+
+
+    let actions: GroupAction[] = [];
+    for (let object of objects) {
+        let frameNum = 0;
+
+        let o: Target | undefined = object[0];
+        console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
+        while (o && o.transition != undefined && frameNum <= 50) {
+            console.log(o.frameId, frameNum)
+            
+            let fullObjects = o.transition.generateGroupActions(transitionTiming[frameNum])
+            // console.log(fullObjects.map(o => o.draw()))
+            actions = actions.concat(fullObjects)
+            // allFrameValues.push(fullObjects.map(o => o.draw()));
+            // console.log("generated", o.debugTag, o.frameId, allFrameValues)
+            o = o.transition.to;
+            frameNum += 1;
+        }
     }
+    // console.log("?")
+
+    // let groupActions = [];
+    // for (let i = 0; i < windowFrames.length; i++) {
+    //     let [start, end] = windowFrames[i];
+    //     let groupAction = generateAnimationBetweenFrames(start as boolean[][], end as boolean[][], transitionTiming[i])[0];
+    //     groupActions.push(groupAction);
+    // }
+
+    // no need to compose because each of thse will handle a different area.
+    // jsut need to "collapse" all the group actions 
 
     return groupActions;
 }

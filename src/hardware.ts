@@ -72,7 +72,7 @@ export class GroupAction {
 
 export interface Transition {
     // just curry these later 
-    generateGroupAction: (o1: Target, o2: Target, t: Duration, h: HardwareInterface) => GroupAction;
+    generateGroupActions: (o1: Target, o2: Target, t: Duration, h: HardwareInterface) => GroupAction[];
 }
 
 
@@ -491,18 +491,18 @@ function diffIndices(a: boolean[][], b: boolean[][]): number[] {
 
 
 export class SnapTransition implements Transition {
-    generateGroupAction = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction => {
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
 
-        let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction[] => {
+        let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction => {
             // let's just assume it's an instantaneous action... but we can create more of these later and hook it up properly 
             let flip = diffIndices(start as boolean[][], end as boolean[][]);
-            return [new GroupAction(time, [[Action.FLIP, flip]])];
+            return new GroupAction(time, [[Action.FLIP, flip]]);
         }
 
-        let groupAction = generateAnimationBetweenFrames(o1.draw(), o2.draw(), t)[0];
+        let groupAction = generateAnimationBetweenFrames(o1.draw(), o2.draw(), t);
 
 
-        return groupAction;
+        return [groupAction];
     }
 
 }
@@ -512,6 +512,31 @@ export class SnapTransition implements Transition {
 // how do I squeeze MORE MOTION out ofthings
 
 export class FlipTransition implements Transition {
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        
+        // o1 and o2 - for things not 
+        // the difference is things that must get flipped.
+        // everything else must stay the same
+        let oddFlips = new Set(diffIndices(o1.draw(), o2.draw()));
+        let evenFlips = new Set(o2.draw()).difference(oddFlips);
+
+        // how many flips should I do?
+        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        let maxFlips = Math.floor(t / flipTiming);
+        let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;
+        let evenCount = maxFlips % 2 == 1 ? maxFlips : maxFlips - 1;
+
+        let groupActions: GroupAction[] = [];
+        
+        for (let i = 0; i < oddCount; i++) {
+            let time = i * flipTiming;
+            let action = new GroupAction(time, [[Action.FLIP, [...oddFlips]]])
+            groupActions.push(action);
+        }
+
+        return groupActions;
+        // one extra at the end 
+    }
     // just keep flipping
 }
 
@@ -575,12 +600,12 @@ export class WaveTransition implements Transition {
         this.direction = direction;
     }
 
-    generateGroupAction(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction {
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
         // how many steps do I get though?
-        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        // let flipTiming = h.actionDurations.get(Action.FLIP)!;
 
-        let unitsToFlap = diffIndices(o1.draw(), o2.draw());
-        let steps = t / flipTiming;
+        let unitsToFlap = new Set(diffIndices(o1.draw(), o2.draw()));
+        // let steps = t / flipTiming;
         // what's the "width" of the units, so to speak?
 
         let first = this.direction(0);
@@ -589,33 +614,24 @@ export class WaveTransition implements Transition {
         let maxDistance = maxL1Distance(first, last, h);
 
         // in the time that I have, how much distance must I cover? 
+        let timePerRow = maxDistance / t; // number of rows divided by time
         
-        let newObjects = [];
+        let actions: GroupAction[] = [];
 
-        for (let i = 0; i < numFrames; i++) {
-
+        for (let time = 0; time < t; t += timePerRow) {
+            // now we are going to make each step with time
             // drawFrame(rectSize, [, ], hardware);
 
-            let shape = 
-            let point = Math.round(interpPositions * i * shape.length);
+            // time is from 0 to 1
+            let unitsPassedOver = new Set(this.direction(time / t));
+            let draw = unitsPassedOver.intersection(unitsToFlap);
+            let action = new GroupAction(time, [[Action.FLIP, [...draw]]]);
 
-            let oldShape = this.from.draw();
-            console.log(oldShape);
-            console.log(shape)
-            // now, I'll just take everything at interpPoint
-            console.log(point)
-            for (let j = point; j < shape.length; j++) {
-                console.log(j)
-                shape[j] = oldShape[j];
-            }
-            console.log(shape)
-
-            let obj = new PixelArtTarget(shape, false); // lol.......
-
-            newObjects.push(obj);
+            actions.push(action);
         }
+        
 
-        return newObjects;
+        return actions;
 
     }
 
