@@ -16,7 +16,7 @@
 // or we have something called Universe which takes the whole universe...? at each time point? 
 // animation...
 
-import { Action, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
+import { Action, FlipdotSimHardware, GroupAction, HardwareInterface, SnapTransition } from "./hardware";
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 
 let collisionStats = [4, 2];
@@ -45,7 +45,7 @@ class AColour extends DColour<false> {
 type FrameId = number;
 
 
-interface Target {
+export interface Target {
     position: [number, number];
     draw(): Colour[][];
     clone(): Target;
@@ -102,6 +102,9 @@ class PixelArtTarget implements DrawableTarget {
     }
 
     draw(): Colour[][] {
+        if (this.shape.length == 0) {
+            return [];
+        }
         let dimensions: [number, number] = [this.shape[0].length, this.shape.length];
         console.log(dimensions);
         let blank = [...Array(dimensions[1])].map(_ => [...Array(dimensions[0])].map(_ => this.defaultColour));
@@ -154,7 +157,7 @@ interface Effect {
     generateDisappearingFrames(numFrames: number): Target[];
     generateAppearingFrames(numFrames: number): Target[];
     generateCompleteFrames(numFrames: number): Target[];
-    generateGroupActions(time: number): GroupAction[];
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[];
 }
 
 class UniformMove implements Effect {
@@ -167,7 +170,7 @@ class UniformMove implements Effect {
         this.to = to;
         this.type = type;
     }
-    generateGroupActions(time: number): GroupAction[] {
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
         throw new Error("Method not implemented.");
     }
 
@@ -251,6 +254,13 @@ let extractShapeAndPositionFromFrame = (shape: Colour[][], defaultColour: Colour
         }
         extracted.push(row);
     }
+
+    if (xMin == Infinity && yMin == -1) {
+        xMin = 0;
+        yMin = 0;
+    }
+
+    console.log(xMin, yMin)
     return [[xMin, yMin], extracted]
 }
 // I need more transitions and more styles!
@@ -272,7 +282,7 @@ class TracePath implements DerivedEffect {
         // is it possible to get other transitions when making this?
         this.effect = otherEffect;
     }
-    generateGroupActions(time: number): GroupAction[] {
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
         throw new Error("Method not implemented.");
     }
 
@@ -770,8 +780,22 @@ class Instantaneous implements Effect {
         this.to = to;
         this.type = type;
     }
-    generateGroupActions(time: number): GroupAction[] {
-        throw new Error("Method not implemented.");
+    generateGroupActions(time: number, flips: number): ((h: HardwareInterface) => GroupAction[]) {
+        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
+        // // first is actually empty...
+        // let emptyFrame: Target = new PixelArtTarget([], false);
+        // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
+        
+        // console.log(frames.map(f => f.position))
+        let allFrames: Target[] = [this.from!, ...frames];
+
+        // console.log(allFrames)
+        console.log(frames)
+        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+        
+        return h => windowFrames.map(w => new SnapTransition().generateGroupActions(w[0], w[1], time, h)).flat();
+
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
@@ -819,7 +843,7 @@ class Wipe implements Effect {
         this.type = type;
         this.direction = direction;
     }
-    generateGroupActions(time: number): GroupAction[] {
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
         throw new Error("Method not implemented.");
     }
 
@@ -884,7 +908,7 @@ class DrawingHeadWipe implements Effect {
         this.startingPoint = startingPoint;
 
     }
-    generateGroupActions(time: number): GroupAction[] {
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
         throw new Error("Method not implemented.");
     }
 
@@ -1065,7 +1089,7 @@ class GrowWipe implements Effect {
         // is there a difference...?
         // let's just go with 1) for now.        
     }
-    generateGroupActions(time: number): GroupAction[] {
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
         throw new Error("Method not implemented.");
     }
 
@@ -1382,7 +1406,7 @@ function diffIndices(a: boolean[][], b: boolean[][]): number[] {
     return differences;
 }
 
-let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: number[]): GroupAction[] => {
+let generateAnimationToGroupAction_old = (objects: Target[][], transitionTiming: number[], h: HardwareInterface): GroupAction[] => {
     // first, write a function that handles just a set of objects to other 
     // let framesComposed: Colour[][][][] = [...Array(transitionTiming.reduce((acc, cur) => acc + cur, 0))].map(_ => []);
     // console.log(framesComposed)
@@ -1428,9 +1452,9 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
         while (o && o.effect != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
             
-            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum])
+            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum], 1)
             // console.log(fullObjects.map(o => o.draw()))
-            actions = actions.concat(fullObjects)
+            actions = actions.concat(fullObjects(h))
             // allFrameValues.push(fullObjects.map(o => o.draw()));
             // console.log("generated", o.debugTag, o.frameId, allFrameValues)
             o = o.effect.to;
@@ -1450,11 +1474,50 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
     // no need to compose because each of thse will handle a different area.
     // jsut need to "collapse" all the group actions 
 
-    return groupActions;
+    return actions;
 }
 
 
+let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: number[], h: HardwareInterface): GroupAction[] => {
+    let actions: GroupAction[] = [];
+    for (let object of objects) {
+        let frameNum = 0;
 
+        // I need to start with a start object to initialize it
+        let emptyFrame: Target = new PixelArtTarget(object[0].draw().map(r => r.map(c => false)), false);
+        actions = actions.concat(new SnapTransition().generateGroupActions(emptyFrame, object[0], 0, h));
+        console.log(actions)
+
+        let o: Target | undefined = object[0];
+        console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
+        while (o && o.effect != undefined && frameNum <= 50) {
+            console.log(o.frameId, frameNum)
+            
+            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum], 1)
+            // console.log(fullObjects.map(o => o.draw()))
+            console.log(fullObjects(h))
+            actions = actions.concat(fullObjects(h))
+            // allFrameValues.push(fullObjects.map(o => o.draw()));
+            // console.log("generated", o.debugTag, o.frameId, allFrameValues)
+            o = o.effect.to;
+            frameNum += 1;
+            console.log("compiling!")
+        }
+    }
+
+    // there's another thing that I must do. if a space isn't covered by any object, then I need to reset it.
+    // TODO: figure out if it is or not 
+    let timesToUnits: Map<number, number[]> = new Map();
+    for (let action of actions) {
+        let current = timesToUnits.get(action.tPlus);
+        current = current ? current : [];
+        timesToUnits.set(action.tPlus, current.concat(action.actions[0] as number[]))
+    }
+
+
+
+    return actions;
+}
 
 
 let generateAnimation = (objects: Target[][], transitionTiming: number[]): Colour[][][] => {
@@ -1718,7 +1781,8 @@ export let parseToGroupAction = async (input: string): Promise<HardwareInterface
 
     /// 
 
-    let frames: GroupAction[] = generateAnimationToGroupAction(graph, timing)
+    let frames: GroupAction[] = generateAnimationToGroupAction(graph, timing, hardware)
+    console.log(frames)
     hardware.compile(frames);
     return hardware;
 }

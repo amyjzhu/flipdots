@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import { RowOfDiscs } from './flipdisc';
-import { parseToGroupAction } from './language2';
-import { Target } from './language';
+import { parseToGroupAction, Target } from './language2';
 
 export interface HardwareInterface {
     units: Unit[] // need to map these somewhere somehow
     actionDurations: Map<Action, Duration>;
+    coordToIndex: (coord: [number, number]) => number;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
@@ -84,6 +84,7 @@ export class FlipdotHardware implements HardwareInterface {
     flipDurationMS: number;
     actionDurations: Map<Action, number> = new Map();
     units: Unit[];
+    coordToIndex: (coord: [number, number]) => number;
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
@@ -98,7 +99,7 @@ export class FlipdotHardware implements HardwareInterface {
         }
     }
 
-    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[]) {
+    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], coordToIndex: (coord: [number, number]) => number) {
         this.flipDurationMS = 20;
         this.actionDurations.set(Action.FLIP, this.flipDurationMS);
         this.units = units;
@@ -107,6 +108,7 @@ export class FlipdotHardware implements HardwareInterface {
             this.unitIdToUnit.set(u.id, u);
         }
 
+        this.coordToIndex = coordToIndex;
         this.unitAdjacency = adjacency;
         this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
             // is this true?
@@ -226,7 +228,13 @@ export class FlipdotHardware implements HardwareInterface {
             return neighbours;
         }
 
-        return new FlipdotHardware(unitList, adjacency);
+        let coordToIndex = (n: [number, number]) => {
+            // console.log("check: ", width);
+            // console.log("check: ", n[0], n[1])
+            return n[0] * width + n[1]
+        };
+
+        return new FlipdotHardware(unitList, adjacency, coordToIndex);
     }
 
 
@@ -242,6 +250,7 @@ export class FlipdotSimHardware implements HardwareInterface {
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
     simulation: RowOfDiscs;
+    coordToIndex: (coord: [number, number]) => number;
     totalNumFrames: number = 0;
 
     getRealTiming(time: Time): number {
@@ -283,7 +292,13 @@ export class FlipdotSimHardware implements HardwareInterface {
 
             this.units = unitList;
             this.unitAdjacency = adjacency;
-
+        
+            
+            this.coordToIndex = (n: [number, number]) => {
+                // console.log("check: ", width);
+                // console.log("check: ", n[0], n[1], n[0] * width + n[1])
+                return n[0] * width + n[1]
+            };
 
             this.simulation = new RowOfDiscs(width, height);
 
@@ -297,6 +312,7 @@ export class FlipdotSimHardware implements HardwareInterface {
                 throw new Error("No mesh input and not flat");
             }
             this.simulation.makeArbitraryMeshDiscSetup(meshInput);
+            this.coordToIndex = i => i[0] // need to fix this
         }
 
 
@@ -389,6 +405,9 @@ export class FlipdotSimHardware implements HardwareInterface {
             for (let action of actionSet) {
                 let actionType: Action = action[0];
                 let unitsInUse: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
+                console.log(action[1]);
+                console.log(this.units.map(u => u.id))
+                console.log(unitsInUse)
                 // first, I need to check the timing by inputting the group action and seeing 
                 // if it's possible.
                 // first, make sure we can do everything simultaneously
@@ -460,49 +479,141 @@ export class FlipdotUnit implements Unit {
 
 
 
-function diffIndices(a: boolean[][], b: boolean[][]): number[] {
-    const differences: number[] = [];
+// function diffIndices(a: Target, b: Target, h: HardwareInterface): number[] {
+//     // todo: need to check the matching on the GLOBAL grid.
+//     let shapeA = a.draw();
+//     let shapeB = b.draw();
+//     let [ax, ay] = a.position;
+//     let [bx, by] = b.position;
 
-    // Basic safety checks — dimensions should match
-    if (a.length !== b.length) {
-        throw new Error("Arrays differ in number of rows.");
-    }
+//     let coords: [number, number][] = [];
 
-    let index = 0;
+//     let startRealRow = ay < by ? ay : by;
+//     let startRealCol = ax < bx ? ax : bx;
+//     for (let i = 0; i < Math.max(shapeA.length, shapeB.length); i++) {
+//         let realRow = startRealRow + i;
+        
+//         let shapeARowLength = i < shapeA.length ? shapeA[i].length : 0;
+//         let shapeBRowLength = i < shapeB.length ? shapeB[i].length : 0;
 
-    for (let row = 0; row < a.length; row++) {
-        if (a[row].length !== b[row].length) {
-            throw new Error(`Row ${row} differs in length.`);
-        }
+//         for (let j = 0; j < Math.max(shapeARowLength, shapeBRowLength); j++) {
+//             // everything that falls outside the shapes should count right.... argh
+//             let realCol = startRealCol + j;
+            
+//             // first, if I'm outside the bounds of one or the other, let me just add everything.
+//             if (shapeARowLength == 0 || shapeBRowLength == 0 || j >= shapeARowLength || j >= shapeBRowLength) {
+//                 coords.push([i, j]);
+//             }
 
-        for (let col = 0; col < a[row].length; col++) {
-            if (a[row][col] !== b[row][col]) {
-                differences.push(index);
+//             // second, let's compare.
+//             let compA = shapeA[realRow - ay][realCol - ax];
+//             let compB = shapeB[realRow - by][realCol - bx];
+
+//             if (compA != compB) {
+//                 coords.push([i,j])
+//             }
+//             // great. now, I ask: do they match?
+
+
+//         }
+//     }
+
+//     let differences: number[] = coords.map(c => h.coordToIndex(c));
+
+//     return differences;
+// }
+
+
+function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
+    const result: [number, number][] = [];
+
+    // const [aCol0, aRow0] = at.position;
+    // const [bCol0, bRow0] = bt.position;
+
+    const [aCol0, aRow0] = [0,0];
+    const [bCol0, bRow0] = [0,0];
+
+    console.log(aCol0, aRow0, bCol0, bRow0);
+    
+
+    let a = at.draw();
+    let b = bt.draw();
+
+    console.log(a.length, b.length)
+
+    const aRows = a.length;
+    const aCols = a[0]?.length ?? 0;
+    const bRows = b.length;
+    const bCols = b[0]?.length ?? 0;
+
+    // Global bounds
+    const aRow1 = aRow0 + aRows;
+    const aCol1 = aCol0 + aCols;
+    const bRow1 = bRow0 + bRows;
+    const bCol1 = bCol0 + bCols;
+
+    // Union bounds (everything either array touches)
+    const rowStart = Math.min(aRow0, bRow0);
+    const rowEnd   = Math.max(aRow1, bRow1);
+    const colStart = Math.min(aCol0, bCol0);
+    const colEnd   = Math.max(aCol1, bCol1);
+
+    console.log(rowStart, rowEnd, colStart, colEnd);
+    for (let r = rowStart; r < rowEnd; r++) {
+        for (let c = colStart; c < colEnd; c++) {
+            // console.log(rowStart, rowEnd)
+            // console.log(colStart, colEnd)
+            // console.log(at.position)
+            // console.log(bt.position)
+            // console.log(r,c)
+            // console.log(i++)
+            // if (i > 50) return []
+
+            const inA =
+                r >= aRow0 && r < aRow1 &&
+                c >= aCol0 && c < aCol1;
+
+            const inB =
+                r >= bRow0 && r < bRow1 &&
+                c >= bCol0 && c < bCol1;
+
+            // I want to flip it 
+            const aVal = inA ? a[r - aRow0][c - aCol0] : false;
+            const bVal = inB ? b[r - bRow0][c - bCol0] : false;
+
+            // Rules:
+            // - both present → include if different
+            // - only one present → include if true
+            if (
+                (inA && inB && aVal !== bVal) ||
+                (inA && !inB && aVal) ||
+                (!inA && inB && bVal)
+            ) {
+                result.push([r, c]);
             }
-            index++;
         }
     }
 
-    return differences;
+    console.log(result)
+    return result.map(c => h.coordToIndex(c));
 }
+
 
 
 // let's implement a transition...
 
 
+// oh I know the problem. the background isn't drawn.
+// didn't I do something about this before...?
+
 export class SnapTransition implements Transition {
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
 
-        let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction => {
-            // let's just assume it's an instantaneous action... but we can create more of these later and hook it up properly 
-            let flip = diffIndices(start as boolean[][], end as boolean[][]);
-            return new GroupAction(time, [[Action.FLIP, flip]]);
-        }
-
-        let groupAction = generateAnimationBetweenFrames(o1.draw(), o2.draw(), t);
+        let flip = diffIndices(o1, o2, h);
+        console.log(flip)
+        return [new GroupAction(t, [[Action.FLIP, flip]])];
 
 
-        return [groupAction];
     }
 
 }
@@ -513,11 +624,11 @@ export class SnapTransition implements Transition {
 
 export class FlipTransition implements Transition {
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
-        
+
         // o1 and o2 - for things not 
         // the difference is things that must get flipped.
         // everything else must stay the same
-        let oddFlips = new Set(diffIndices(o1.draw(), o2.draw()));
+        let oddFlips = new Set(diffIndices(o1, o2, h));
         let evenFlips = new Set(o2.draw()).difference(oddFlips);
 
         // how many flips should I do?
@@ -527,7 +638,7 @@ export class FlipTransition implements Transition {
         let evenCount = maxFlips % 2 == 1 ? maxFlips : maxFlips - 1;
 
         let groupActions: GroupAction[] = [];
-        
+
         for (let i = 0; i < oddCount; i++) {
             let time = i * flipTiming;
             let action = new GroupAction(time, [[Action.FLIP, [...oddFlips]]])
@@ -604,7 +715,7 @@ export class WaveTransition implements Transition {
         // how many steps do I get though?
         // let flipTiming = h.actionDurations.get(Action.FLIP)!;
 
-        let unitsToFlap = new Set(diffIndices(o1.draw(), o2.draw()));
+        let unitsToFlap = new Set(diffIndices(o1, o2, h));
         // let steps = t / flipTiming;
         // what's the "width" of the units, so to speak?
 
@@ -615,7 +726,7 @@ export class WaveTransition implements Transition {
 
         // in the time that I have, how much distance must I cover? 
         let timePerRow = maxDistance / t; // number of rows divided by time
-        
+
         let actions: GroupAction[] = [];
 
         for (let time = 0; time < t; t += timePerRow) {
@@ -629,7 +740,7 @@ export class WaveTransition implements Transition {
 
             actions.push(action);
         }
-        
+
 
         return actions;
 
