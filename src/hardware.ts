@@ -100,7 +100,7 @@ export class FlipdotHardware implements HardwareInterface {
     }
 
     constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], coordToIndex: (coord: [number, number]) => number) {
-        this.flipDurationMS = 20;
+        this.flipDurationMS = 1;
         this.actionDurations.set(Action.FLIP, this.flipDurationMS);
         this.units = units;
         this.unitIdToUnit = new Map();
@@ -242,7 +242,7 @@ export class FlipdotHardware implements HardwareInterface {
 
 
 export class FlipdotSimHardware implements HardwareInterface {
-    flipDurationMS: number = 10;
+    flipDurationMS: number = 1;
     actionDurations: Map<Action, number> = new Map();
     units: Unit[];
     unitIdToUnit: Map<UnitId, Unit>;
@@ -262,7 +262,7 @@ export class FlipdotSimHardware implements HardwareInterface {
     }
 
     constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string) {
-        this.flipDurationMS = 20;
+        this.flipDurationMS = 1;
         this.actionDurations.set(Action.FLIP, this.flipDurationMS);
         console.log(dimensions)
         if (dimensions != undefined) {
@@ -341,7 +341,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             let idxes: number[][] = [];
             let blankIdxes: number[][] = [];
             if (dimensions) {
-                console.log("dimensions are", dimensions)
+                // console.log("dimensions are", dimensions)
                 let [height, width] = dimensions;
                 idxes = [...new Array(height)].map(_ => []);
                 blankIdxes = idxes.map(i => i.map(u => u));
@@ -357,24 +357,24 @@ export class FlipdotSimHardware implements HardwareInterface {
 
             // here's what I do: if this is lower than the current number, delegate
             this.simulation.resetAnimation(i => {
-                console.log(`i is ${i}, currentNumFrames is ${currNumFrames}, this.totalNumFrames is ${this.totalNumFrames}, closestInterval is ${closestInterval}`)
+                // console.log(`i is ${i}, currentNumFrames is ${currNumFrames}, this.totalNumFrames is ${this.totalNumFrames}, closestInterval is ${closestInterval}`)
                 if (i >= currNumFrames) {
                     if (i - currNumFrames < closestInterval) {
-                        console.log("returning wait")
-                        console.log(blankIdxes)
+                        // console.log("returning wait")
+                        // console.log(blankIdxes)
 
                         return blankIdxes;
                     } else if (i - currNumFrames == closestInterval) {
-                        console.log("returning current index")
+                        // console.log("returning current index")
                         return idxes;
                     } else {
-                        console.log("returning wait 2")
-                        console.log(blankIdxes)
+                        // console.log("returning wait 2")
+                        // console.log(blankIdxes)
                         return blankIdxes;
                     }
 
                 } else {
-                    console.log("counting up:", i, currNumFrames)
+                    // console.log("counting up:", i, currNumFrames)
                     return originalAnim(i);
                 }
             })
@@ -386,6 +386,7 @@ export class FlipdotSimHardware implements HardwareInterface {
     }
 
     compile(groupActions: GroupAction[]) {
+        console.log(groupActions)
         let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
         // let cumulativeTime = 0;
         let lastTime = 0;
@@ -466,7 +467,7 @@ export class FlipdotState extends State { }
 
 export class FlipdotUnit implements Unit {
     id: UnitId;
-    actionTiming: [Action, number] = [Action.FLIP, 10];
+    actionTiming: [Action, number] = [Action.FLIP, 1];
     actions: Action[];
     states: [Action, State[]][];
 
@@ -624,12 +625,21 @@ export class SnapTransition implements Transition {
 
 export class FlipTransition implements Transition {
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
-
+        
         // o1 and o2 - for things not 
         // the difference is things that must get flipped.
         // everything else must stay the same
         let oddFlips = new Set(diffIndices(o1, o2, h));
-        let evenFlips = new Set(o2.draw()).difference(oddFlips);
+        // the first flips are this, but the subsequent flips should just be the same as o1.
+        let subsequent = [];
+        let o2Flips = o2.draw();
+        for (let i = 0; i < o2Flips.length; i++) {
+            for (let j = 0; j < o2Flips[0].length; j++) {
+                if (o2Flips[i][j]) {
+                    subsequent.push(h.coordToIndex([i, j]));
+                }
+            }
+        }
 
         // how many flips should I do?
         let flipTiming = h.actionDurations.get(Action.FLIP)!;
@@ -641,7 +651,12 @@ export class FlipTransition implements Transition {
 
         for (let i = 0; i < oddCount; i++) {
             let time = i * flipTiming;
-            let action = new GroupAction(time, [[Action.FLIP, [...oddFlips]]])
+            console.log("time is ", time)
+            let idxes = [...oddFlips];
+            if (i != 0) {
+                idxes = subsequent;
+            } 
+            let action = new GroupAction(time, [[Action.FLIP, idxes]])
             groupActions.push(action);
         }
 
@@ -734,7 +749,7 @@ export class WaveTransition implements Transition {
             // drawFrame(rectSize, [, ], hardware);
 
             // time is from 0 to 1
-            let unitsPassedOver = new Set(this.direction(time / t));
+            let unitsPassedOver = new Set(this.direction(time / t)); 
             let draw = unitsPassedOver.intersection(unitsToFlap);
             let action = new GroupAction(time, [[Action.FLIP, [...draw]]]);
 
@@ -766,6 +781,14 @@ if (typeof window != 'undefined') {
     // parser(teapotExample);
 
     parseToGroupAction(teapotExample);
+
+    let teapot2Example = "timing: [3,6,9,12,16,19,22,26,29,32]\n\
+    filepath: /animations/teapot${i}.png \n\
+    objects: [#000000 teapot] \n\
+    teapot 0 ->* motion ->* teapot 9"
+    // parser(teapotExample);
+
+    parseToGroupAction(teapot2Example);
 }
 
 // now I need to compile an example INTO group actions.

@@ -16,7 +16,7 @@
 // or we have something called Universe which takes the whole universe...? at each time point? 
 // animation...
 
-import { Action, FlipdotSimHardware, GroupAction, HardwareInterface, SnapTransition } from "./hardware";
+import { Action, FlipdotSimHardware, FlipTransition, GroupAction, HardwareInterface, SnapTransition, WaveTransition } from "./hardware";
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 
 let collisionStats = [4, 2];
@@ -771,6 +771,75 @@ function allCollisionPoints(targets: Colour[][][], defaultColour: Colour): [numb
 }
 
 
+class MotionFlipTo implements Effect {
+    from: Target | undefined;
+    to: Target | undefined;
+    type: EffectType;
+
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
+        this.from = from;
+        this.to = to;
+        this.type = type;
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        if (!this.from || !this.to) {
+            throw new Error("Effect isn't actually complete")
+        }
+
+        let transitionPoint = Math.floor(numFrames / 2);
+        // if it's zero, then I don't actually have enough frames.
+        // just flip to the second one
+        if (transitionPoint == 0) {
+            return [this.to];
+        } else {
+            // console.log(numFrames - transitionPoint)
+            // console.log(this.to!)
+            return [...Array(transitionPoint)].map(_ => this.from!).concat([...Array(numFrames - transitionPoint)].map(_ => this.to!));
+        }
+    }
+
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
+        // throw new Error("Method not implemented.");
+        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
+        // // first is actually empty...
+        // let emptyFrame: Target = new PixelArtTarget([], false);
+        // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
+        
+        // console.log(frames.map(f => f.position))
+        let allFrames: Target[] = [this.from!, ...frames];
+
+        // console.log(allFrames)
+        console.log(frames)
+        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+ 
+        console.log("time is (groupaction) ", time)
+        
+         
+        return h => {
+            // the duration should be consistent.
+            // but I actually want to change the time 
+            console.log("time is...logging!")
+            let actions = windowFrames.map(w => new FlipTransition().generateGroupActions(w[0], w[1], 3, h)).flat();
+            console.log("time is (before adding) ", actions.map(a => a.tPlus))
+
+            for (let action of actions) {
+                action.tPlus = action.tPlus + time + 1;
+            }
+            console.log("time is (after adding) ", actions.map(a => a.tPlus))
+            return actions;
+        };
+    }
+
+}
+
 class Instantaneous implements Effect {
     from: Target | undefined;
     to: Target | undefined;
@@ -844,7 +913,25 @@ class Wipe implements Effect {
         this.direction = direction;
     }
     generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        throw new Error("Method not implemented.");
+        // throw new Error("Method not implemented.");
+        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
+        // // first is actually empty...
+        // let emptyFrame: Target = new PixelArtTarget([], false);
+        // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
+        
+        // console.log(frames.map(f => f.position))
+        let allFrames: Target[] = [this.from!, ...frames];
+
+        // console.log(allFrames)
+        console.log(frames)
+        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+        
+        let direction = (t: number) => {
+            // I basically want to go from top to bottom...
+
+        }
+        return h => windowFrames.map(w => new WaveTransition().generateGroupActions(w[0], w[1], time, h)).flat();
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
@@ -1495,7 +1582,7 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
             
             let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum], 1)
             // console.log(fullObjects.map(o => o.draw()))
-            console.log(fullObjects(h))
+            // console.log(fullObjects(h))
             actions = actions.concat(fullObjects(h))
             // allFrameValues.push(fullObjects.map(o => o.draw()));
             // console.log("generated", o.debugTag, o.frameId, allFrameValues)
@@ -1504,6 +1591,8 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
             console.log("compiling!")
         }
     }
+
+    console.log("times are ", actions.map(t => t.tPlus))
 
     // there's another thing that I must do. if a space isn't covered by any object, then I need to reset it.
     // TODO: figure out if it is or not 
@@ -2002,6 +2091,7 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                         effect == "wipe" ? new Wipe(obj, eo, EffectType.Complete, WipeDirection.TTB) :
                             effect == "grow" ? new GrowWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
                                 effect == "move" ? new UniformMove(obj, eo, EffectType.Complete) :
+                                effect == "motion" ? new MotionFlipTo(obj, eo, EffectType.Complete) :
                                     new DrawingHeadWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
 
 
@@ -2148,6 +2238,7 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                     effect == "wipe" ? new Wipe(startTarget, endTarget, EffectType.Complete, WipeDirection.TTB) :
                         effect == "grow" ? new GrowWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
                             effect == "move" ? new UniformMove(startTarget, endTarget, EffectType.Complete) :
+                            effect == "motion" ? new MotionFlipTo(startTarget, endTarget, EffectType.Complete) :
                                 new DrawingHeadWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)])
 
                 // the transition might have arguments.
