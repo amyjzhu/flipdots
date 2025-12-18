@@ -6,6 +6,7 @@ export interface HardwareInterface {
     units: Unit[] // need to map these somewhere somehow
     actionDurations: Map<Action, Duration>;
     coordToIndex: (coord: [number, number]) => number;
+    indexToCoord: Map<number, [number, number]>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
@@ -85,11 +86,14 @@ export class FlipdotHardware implements HardwareInterface {
     actionDurations: Map<Action, number> = new Map();
     units: Unit[];
     coordToIndex: (coord: [number, number]) => number;
+    indexToCoord: Map<number, [number, number]>;
     unitIdToUnit: Map<UnitId, Unit>;
     unitAdjacency: (toCheck: UnitId) => UnitId[];
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
     filename: string = "";
+
+
 
     getRealTiming(time: Time): number {
         if (typeof time == "number") {
@@ -99,7 +103,7 @@ export class FlipdotHardware implements HardwareInterface {
         }
     }
 
-    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], coordToIndex: (coord: [number, number]) => number) {
+    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], indexToCoord: Map<number, [number, number]>) {
         this.flipDurationMS = 1;
         this.actionDurations.set(Action.FLIP, this.flipDurationMS);
         this.units = units;
@@ -108,7 +112,8 @@ export class FlipdotHardware implements HardwareInterface {
             this.unitIdToUnit.set(u.id, u);
         }
 
-        this.coordToIndex = coordToIndex;
+        this.indexToCoord = indexToCoord;
+        this.coordToIndex = (coord: [number, number]) => this.indexToCoord.entries().find(([k, v]) => v[0] == coord[0] && v[1] == coord[1])![0];
         this.unitAdjacency = adjacency;
         this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
             // is this true?
@@ -208,6 +213,10 @@ export class FlipdotHardware implements HardwareInterface {
     static Rectangular(width: number, height: number) {
         let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(i * height + j)).flat()).flat();
 
+        let indexToCoord = new Map<number, [number, number]>();
+
+        unitList.forEach(u => indexToCoord.set(u.id, [Math.floor(u.id / width), u.id % width]))
+
         let adjacency = (i: UnitId) => {
             let neighbours: UnitId[] = [];
             // if we're at the edge, don't include some:
@@ -228,13 +237,14 @@ export class FlipdotHardware implements HardwareInterface {
             return neighbours;
         }
 
-        let coordToIndex = (n: [number, number]) => {
-            // console.log("check: ", width);
-            // console.log("check: ", n[0], n[1])
-            return n[0] * width + n[1]
-        };
+        // let coordToIndex = (n: [number, number]) => {
+        //     // console.log("check: ", width);
+        //     // console.log("check: ", n[0], n[1])
+        //     return n[0] * width + n[1]
+        // };
 
-        return new FlipdotHardware(unitList, adjacency, coordToIndex);
+
+        return new FlipdotHardware(unitList, adjacency, indexToCoord);
     }
 
 
@@ -250,6 +260,7 @@ export class FlipdotSimHardware implements HardwareInterface {
     allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
     actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
     simulation: RowOfDiscs;
+    indexToCoord: Map<number, [number, number]>;
     coordToIndex: (coord: [number, number]) => number;
     totalNumFrames: number = 0;
 
@@ -291,9 +302,10 @@ export class FlipdotSimHardware implements HardwareInterface {
             }
 
             this.units = unitList;
+            this.indexToCoord = new Map(unitList.map(u => [u.id, [Math.floor(u.id / width), u.id % width]]));
             this.unitAdjacency = adjacency;
-        
-            
+
+
             this.coordToIndex = (n: [number, number]) => {
                 // console.log("check: ", width);
                 // console.log("check: ", n[0], n[1], n[0] * width + n[1])
@@ -313,6 +325,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             }
             this.simulation.makeArbitraryMeshDiscSetup(meshInput);
             this.coordToIndex = i => i[0] // need to fix this
+            this.indexToCoord = new Map(); // need to fix this 
         }
 
 
@@ -493,14 +506,14 @@ export class FlipdotUnit implements Unit {
 //     let startRealCol = ax < bx ? ax : bx;
 //     for (let i = 0; i < Math.max(shapeA.length, shapeB.length); i++) {
 //         let realRow = startRealRow + i;
-        
+
 //         let shapeARowLength = i < shapeA.length ? shapeA[i].length : 0;
 //         let shapeBRowLength = i < shapeB.length ? shapeB[i].length : 0;
 
 //         for (let j = 0; j < Math.max(shapeARowLength, shapeBRowLength); j++) {
 //             // everything that falls outside the shapes should count right.... argh
 //             let realCol = startRealCol + j;
-            
+
 //             // first, if I'm outside the bounds of one or the other, let me just add everything.
 //             if (shapeARowLength == 0 || shapeBRowLength == 0 || j >= shapeARowLength || j >= shapeBRowLength) {
 //                 coords.push([i, j]);
@@ -531,11 +544,11 @@ function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
     // const [aCol0, aRow0] = at.position;
     // const [bCol0, bRow0] = bt.position;
 
-    const [aCol0, aRow0] = [0,0];
-    const [bCol0, bRow0] = [0,0];
+    const [aCol0, aRow0] = [0, 0];
+    const [bCol0, bRow0] = [0, 0];
 
     console.log(aCol0, aRow0, bCol0, bRow0);
-    
+
 
     let a = at.draw();
     let b = bt.draw();
@@ -555,9 +568,9 @@ function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
 
     // Union bounds (everything either array touches)
     const rowStart = Math.min(aRow0, bRow0);
-    const rowEnd   = Math.max(aRow1, bRow1);
+    const rowEnd = Math.max(aRow1, bRow1);
     const colStart = Math.min(aCol0, bCol0);
-    const colEnd   = Math.max(aCol1, bCol1);
+    const colEnd = Math.max(aCol1, bCol1);
 
     console.log(rowStart, rowEnd, colStart, colEnd);
     for (let r = rowStart; r < rowEnd; r++) {
@@ -625,7 +638,7 @@ export class SnapTransition implements Transition {
 
 export class FlipTransition implements Transition {
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
-        
+
         // o1 and o2 - for things not 
         // the difference is things that must get flipped.
         // everything else must stay the same
@@ -655,7 +668,7 @@ export class FlipTransition implements Transition {
             let idxes = [...oddFlips];
             if (i != 0) {
                 idxes = subsequent;
-            } 
+            }
             let action = new GroupAction(time, [[Action.FLIP, idxes]])
             groupActions.push(action);
         }
@@ -726,6 +739,151 @@ export class WaveTransition implements Transition {
         this.direction = direction;
     }
 
+    static generateDirection(startId: UnitId, vec: [number, number], h: HardwareInterface): (t: number) => number[] {
+        type Vec2 = { x: number; y: number }
+
+        function toVec2(n: [number, number]): Vec2 { return { x: n[0], y: n[1] } };
+
+        let direction: Vec2 = toVec2(vec);
+
+        function normalize(v: Vec2): Vec2 {
+            const len = Math.hypot(v.x, v.y)
+            return len === 0 ? { x: 0, y: 0 } : { x: v.x / len, y: v.y / len }
+        }
+
+        function dot(a: Vec2, b: Vec2): number {
+            return a.x * b.x + a.y * b.y
+        }
+
+        function sub(a: Vec2, b: Vec2): Vec2 {
+            return { x: a.x - b.x, y: a.y - b.y }
+        }
+
+        function cellsBehindFrontier(
+            startId: number,
+            direction: Vec2,
+            getAdjacent: (id: number) => number[],
+            getPosition: (id: number) => Vec2,
+            epsilon = 1e-6
+        ): Set<number> {
+            const dir = normalize(direction)
+
+            function computeFrontierMax(
+                startId: number,
+                direction: Vec2,
+                getAdjacent: (id: number) => number[],
+                getPosition: (id: number) => Vec2,
+                minDot = 0.5
+            ): number {
+                const dir = normalize(direction)
+                let current = startId
+                let maxS = dot(getPosition(current), dir)
+
+                while (true) {
+                    const currPos = getPosition(current)
+                    let bestNext: number | null = null
+                    let bestScore = -Infinity
+
+                    for (const n of getAdjacent(current)) {
+                        const v = sub(getPosition(n), currPos)
+                        const vNorm = normalize(v)
+                        const score = dot(dir, vNorm)
+
+                        if (score > bestScore && score >= minDot) {
+                            bestScore = score
+                            bestNext = n
+                        }
+                    }
+
+                    if (bestNext === null) break
+
+                    current = bestNext
+                    maxS = Math.max(maxS, dot(getPosition(current), dir))
+                }
+
+                return maxS
+            }
+
+            const frontierMax = computeFrontierMax(
+                startId,
+                direction,
+                getAdjacent,
+                getPosition
+            )
+
+            const result = new Set<number>()
+            const queue: number[] = [startId]
+            result.add(startId)
+
+            while (queue.length > 0) {
+                const current = queue.shift()!
+                const currS = dot(getPosition(current), dir)
+
+                for (const n of getAdjacent(current)) {
+                    if (result.has(n)) continue
+
+                    const s = dot(getPosition(n), dir)
+
+                    // Behind or on the frontier
+                    if (s <= frontierMax + epsilon) {
+                        result.add(n)
+                        queue.push(n)
+                    }
+                }
+            }
+
+            return result
+        }
+
+
+        let getPosition = (i: UnitId) => toVec2(h.indexToCoord.get(i)!);
+        const dir = normalize(direction)
+
+        // Step A: compute full region behind frontier
+        const allCells = cellsBehindFrontier(
+            startId,
+            dir,
+            h.unitAdjacency,
+            getPosition
+        )
+
+        // Step B: compute scalar projections
+        const s0 = dot(getPosition(startId), dir)
+
+        let sMax = s0
+        const scalar = new Map<number, number>()
+
+        for (const id of allCells) {
+            const s = dot(getPosition(id), dir)
+            scalar.set(id, s)
+            if (s > sMax) sMax = s
+        }
+
+        const denom = Math.max(1e-9, sMax - s0)
+
+        // Step C: normalize to [0, 1]
+        const normalized = new Map<number, number>()
+        for (const [id, s] of scalar) {
+            normalized.set(id, (s - s0) / denom)
+        }
+
+        // Step D: return time-sliced function
+        return (t: number) => {
+            const clampedT = Math.max(0, Math.min(1, t))
+            const result = new Set<number>()
+
+            for (const [id, u] of normalized) {
+                if (u <= clampedT) {
+                    result.add(id)
+                }
+            }
+
+            return [...result]
+        }
+
+
+    }
+
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
         // how many steps do I get though?
         // let flipTiming = h.actionDurations.get(Action.FLIP)!;
@@ -749,7 +907,7 @@ export class WaveTransition implements Transition {
             // drawFrame(rectSize, [, ], hardware);
 
             // time is from 0 to 1
-            let unitsPassedOver = new Set(this.direction(time / t)); 
+            let unitsPassedOver = new Set(this.direction(time / t));
             let draw = unitsPassedOver.intersection(unitsToFlap);
             let action = new GroupAction(time, [[Action.FLIP, [...draw]]]);
 
@@ -789,6 +947,17 @@ if (typeof window != 'undefined') {
     // parser(teapotExample);
 
     parseToGroupAction(teapot2Example);
+
+
+    let wipeExample = "timing: [15,15]\n\
+    filepath: /animations/wipe${i}.png \n\
+    objects: [#000000 rectangle] \n\
+    rectangle 0 -> wipe -> rectangle 1";
+
+    // parser(wipeExample, true);
+    parseToGroupAction(wipeExample);
+
+
 }
 
 // now I need to compile an example INTO group actions.

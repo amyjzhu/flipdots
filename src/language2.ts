@@ -927,11 +927,11 @@ class Wipe implements Effect {
         let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
         // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
         
-        let direction = (t: number) => {
-            // I basically want to go from top to bottom...
-
-        }
-        return h => windowFrames.map(w => new WaveTransition().generateGroupActions(w[0], w[1], time, h)).flat();
+        
+        return h => {
+            let direction = WaveTransition.generateDirection(0, [1,1], h);
+            return windowFrames.map(w => new WaveTransition(direction).generateGroupActions(w[0], w[1], time, h)).flat()
+        };
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
