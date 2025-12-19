@@ -914,23 +914,22 @@ class Wipe implements Effect {
     }
     generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
         // throw new Error("Method not implemented.");
+        console.log(flips)
         let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
-        // // first is actually empty...
-        // let emptyFrame: Target = new PixelArtTarget([], false);
-        // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
         
-        // console.log(frames.map(f => f.position))
-        let allFrames: Target[] = [this.from!, ...frames];
-
-        // console.log(allFrames)
-        console.log(frames)
+        let allFrames: Target[] = [this.from!, this.to!];
+        // let allFrames: Target[] = [this.from!, ...frames];
         let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
         // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
         
         
         return h => {
-            let direction = WaveTransition.generateDirection(0, [1,1], h);
-            return windowFrames.map(w => new WaveTransition(direction).generateGroupActions(w[0], w[1], time, h)).flat()
+            let dir: [number, number] = [1,1];
+            let direction = h.timeFrontier(0, dir)
+            // let direction = (t: number) => []
+            
+            // return [];
+            return windowFrames.map(w => new WaveTransition(direction, dir, 0).generateGroupActions(w[0], w[1], time, h)).flat()
         };
     }
 
