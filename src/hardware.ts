@@ -20,8 +20,10 @@ function sub(a: Vec2, b: Vec2): Vec2 {
     return { x: a.x - b.x, y: a.y - b.y }
 }
 
-let generateDirection = (startId: UnitId, vec: [number, number], h: HardwareInterface): {atTime: (t: number) => number[], 
-    timeOf: (unitId: number) => number | undefined} => {
+let generateDirection = (startId: UnitId, vec: [number, number], h: HardwareInterface): {
+    atTime: (t: number) => number[],
+    timeOf: (unitId: number) => number | undefined
+} => {
     let direction: Vec2 = toVec2(vec);
 
     function computeFrontierMax(
@@ -144,28 +146,28 @@ let generateDirection = (startId: UnitId, vec: [number, number], h: HardwareInte
         normalized.set(id, (s - s0) / denom)
     }
 
-  const timeMap = new Map<number, number>()
-  for (const id of allCells) {
-    const s = dot(getPosition(id), dir)
-    timeMap.set(id, (s - s0) / denom)
-  }
+    const timeMap = new Map<number, number>()
+    for (const id of allCells) {
+        const s = dot(getPosition(id), dir)
+        timeMap.set(id, (s - s0) / denom)
+    }
 
     return {
-    atTime: (t: number) => {
-      const clamped = Math.max(0, Math.min(1, t))
-      const result = new Set<number>()
+        atTime: (t: number) => {
+            const clamped = Math.max(0, Math.min(1, t))
+            const result = new Set<number>()
 
-      for (const [id, u] of timeMap) {
-        if (u <= clamped) result.add(id)
-      }
+            for (const [id, u] of timeMap) {
+                if (u <= clamped) result.add(id)
+            }
 
-      return [...result]
-    },
+            return [...result]
+        },
 
-    timeOf: (unitId: number) => {
-      return timeMap.get(unitId)
+        timeOf: (unitId: number) => {
+            return timeMap.get(unitId)
+        }
     }
-  }
 
 }
 
@@ -929,7 +931,7 @@ export function maxDirectionalGraphDistance(
 ): { distance: number; start: number; end: number } | null {
     let dir = toVec2(_dir);
 
-    if (units.length < 2) return {distance: 0, start: units[0], end: units[0]};
+    if (units.length < 2) return { distance: 0, start: units[0], end: units[0] };
 
     // Normalize direction
     const len = Math.hypot(dir.x, dir.y);
@@ -1000,6 +1002,98 @@ export function maxDirectionalGraphDistance(
 }
 
 
+
+type NoiseFn = (tBase: number) => number
+
+function generateActivationSequence(units: UnitId[], startId: UnitId, h: HardwareInterface,
+    options: {
+        centralBias?: number        // default 0.8
+        radiusFn?: (t: number) => number
+        radiusInvFn?: (r: number) => number
+        localNoise?: NoiseFn
+        globalNoise?: NoiseFn
+    } = {}): [Time, UnitId][] {
+
+    const {
+        centralBias = 0.8,
+        radiusFn = t => t,
+        radiusInvFn = r => r,
+        localNoise = () => (Math.random() - 0.5) * 0.1,
+        globalNoise = tBase => Math.random() - tBase
+    } = options
+
+
+    let cells = units.map(u => {
+        let coord = h.indexToCoord.get(u)!;
+        return { id: u, x: coord[0], y: coord[1] };
+    })
+
+    const start = cells.find(c => c.id === startId)!
+
+    // distances
+    const distances = cells.map(c =>
+        Math.hypot(c.x - start.x, c.y - start.y)
+    )
+    const maxD = Math.max(...distances)
+
+    // assign times
+    let activations: [Time, UnitId][] = cells.map((cell, i) => {
+        const r = maxD === 0 ? 0 : distances[i] / maxD
+        const tBase = radiusInvFn(r)
+
+        const noise =
+            Math.random() < centralBias
+                ? localNoise(tBase)
+                : globalNoise(tBase)
+
+        const t = Math.min(1, Math.max(0, tBase + noise))
+        return [t, cell.id]
+    })
+
+    // normalize so last activation is exactly at t = 1
+    const maxT = Math.max(...activations.map(a => a[0]))
+    activations = activations.map(([t, id]) => [t / maxT, id])
+
+    // sort by activation time
+    activations.sort((a, b) => a[0] - b[0])
+
+    return activations
+}
+
+
+export class StochasticTransition implements Transition {
+    startingId: UnitId;
+
+    constructor(starting: UnitId) {
+        this.startingId = starting;
+    }
+
+    // I want to give an ordering to the 
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        let unitsToFlap = diffIndices(o1, o2, h);
+
+        let activations = generateActivationSequence(unitsToFlap, this.startingId, h);
+
+        let actions: GroupAction[] = []
+        let time = activations[0][0];
+        let groupActUnits = [];
+        for (let act of activations) {
+            let t = act[0];
+            if (time == t) {
+                groupActUnits.push(act[1]);
+            } else {
+                actions.push(new GroupAction(time, [[Action.FLIP, groupActUnits]]));
+                time = act[0];
+                groupActUnits = [];
+            }
+        }
+
+        return actions;
+    }
+
+
+}
+
 export class WaveTransition implements Transition {
     dir: [number, number];
     direction: (t: Time) => number[];
@@ -1032,9 +1126,9 @@ export class WaveTransition implements Transition {
         // console.log(last);
         let maxDistance2 = maxL1Distance(first, last, h);
         // TODO: max distance actually depends on the drawing shape
-        
+
         let max = maxDirectionalGraphDistance([...unitsToFlap], (i: number) => h.indexToCoord.get(i)!, h.unitAdjacency, this.dir)!
-        
+
         // let maxDistance = 5
         console.log("max dist is", max, maxDistance2)
         // TODO: why isn't it the full 15 frames? 
@@ -1059,7 +1153,7 @@ export class WaveTransition implements Transition {
         let unitsSoFar: Set<UnitId> = new Set();
 
         for (let time = 0; time < t; time += timePerRow) {
-            
+
             // now we are going to make each step with time
             // drawFrame(rectSize, [, ], hardware);
 

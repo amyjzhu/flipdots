@@ -16,7 +16,7 @@
 // or we have something called Universe which takes the whole universe...? at each time point? 
 // animation...
 
-import { Action, FlipdotSimHardware, FlipTransition, GroupAction, HardwareInterface, SnapTransition, WaveTransition } from "./hardware";
+import { Action, FlipdotSimHardware, FlipTransition, GroupAction, HardwareInterface, SnapTransition, StochasticTransition, WaveTransition } from "./hardware";
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 
 let collisionStats = [4, 2];
@@ -900,6 +900,62 @@ enum WipeDirection {
 }
 
 
+class Sparkle implements Effect {
+    from: Target | undefined;
+    to: Target | undefined;
+    type: EffectType;
+
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, direction: WipeDirection) {
+        this.to = to;
+        this.from = from;
+        this.type = type;
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        if (!this.to || !this.from) {
+            throw new Error("Cannot generate complete animation because one of to or from is missing");
+        }
+
+        return [this.from, this.to];
+    }
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
+        let frames = this.generateCompleteFrames(flips);
+        if (!this.to || !this.from) {
+            throw new Error("Cannot generate complete animation because one of to or from is missing");
+        }
+
+        // find the centre of the to
+        let centre = this.to?.draw();
+        let idxes = centre?.map((r, i) => r.map((c, j) => {
+            if (c) { 
+                return [i, j]
+            } else {
+                return undefined;
+            }
+    })).flat().filter(i => i != undefined);
+
+        let midPointX = Math.round((idxes.map(x => x[0]).reduce((acc, x) => acc + x, 0)) / idxes.length);
+        let midPointY = Math.round((idxes.map(x => x[1]).reduce((acc, x) => acc + x, 0)) / idxes.length);
+
+        
+
+        return h => {
+            // it's okay since I know what kind of thing this is for...
+            let dists = idxes.map(idx => Math.sqrt((midPointX - idx[0]) ** 2 + (midPointY - idx[1]) ** 2));
+            let max = dists.reduce((max: [number, number], dist: number, i: number) => dist > max[1] ? [i, dist] as [number, number] : max, [0, dists[0]]);
+            let closestUnit = h.coordToIndex(idxes[max[0]] as [number, number]);
+            return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+        }
+    }
+
+}
+
 class Wipe implements Effect {
     from: Target | undefined;
     to: Target | undefined;
@@ -925,6 +981,7 @@ class Wipe implements Effect {
         
         return h => {
             let dir: [number, number] = [1,1];
+            // let dir: [number, number] = [1, 0]
             let direction = h.timeFrontier(0, dir)
             // let direction = (t: number) => []
             

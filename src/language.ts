@@ -413,8 +413,10 @@ export class FlipDotHardware implements Hardware {
 
     refresh(): void {
         for (let [key, value] of this.channelsToValues) {
+            // console.log(key, value)
             if (value != 0) {
-                console.log(`channel:${key} value:${value} row:${Math.floor(key / this.dimensions[0])} col:${key % this.dimensions[0]}`);
+                console.log(`setfixture:0 ch:${key} val:${value}`);
+                // console.log(`channel:${key} value:${value} row:${Math.floor(key / this.dimensions[0])} col:${key % this.dimensions[0]}`);
             }
         }
         console.log(`wait:${this.refreshingTimingMs}`)
@@ -572,11 +574,11 @@ export class UniformInterpolateStrategy implements AnimationStrategy {
             let x = Math.round(startAt[0] + xInc * i);
             let y = Math.round(startAt[1] + yInc * i);
 
-            console.log([x, y])
+            // console.log([x, y])
 
             obj.setStartAt([x, y])
             let frame = obj.draw();
-            console.log(frame)
+            // console.log(frame)
 
 
             frames.push(frame);
@@ -615,8 +617,8 @@ export class AccelerateInterpolationStrategy implements AnimationStrategy {
         let xIncs = [...new Array(this.numFrames)].map((_, i) => Math.round((endAt[0] - startAt[0]) * Math.pow(i / (this.numFrames - 1), this.accelerationRate)));
         let yIncs = [...new Array(this.numFrames)].map((_, i) => Math.round((endAt[1] - startAt[1]) * Math.pow(i / (this.numFrames - 1), this.accelerationRate)));
 
-        console.log(xIncs)
-        console.log(yIncs)
+        // console.log(xIncs)
+        // console.log(yIncs)
         let frames: boolean[][][] = [];
         for (let i = 0; i < this.numFrames; i++) {
             // drawFrame(rectSize, [, ], hardware);
@@ -1043,7 +1045,7 @@ export class Background implements Target {
             if (self != undefined) {
                 newFrame = self[f].map(e => e);
             }
-            console.log(newFrame)
+            // console.log(newFrame)
             for (let y = 0; y < this.dimensions[1]; y++) {
                 for (let x = 0; x < this.dimensions[0]; x++) {
 
@@ -1139,7 +1141,7 @@ export class MovingNoise implements Style<boolean> {
             }
             animCycle += 1;
             editedFrames.push(edited);
-            console.log(edited)
+            // console.log(edited)
         }
         return editedFrames
     }
@@ -1194,7 +1196,7 @@ export class Noise implements Style<boolean> {
             }
             animCycle += 1;
             editedFrames.push(edited);
-            console.log(edited)
+            // console.log(edited)
         }
         return editedFrames
     }
@@ -1228,7 +1230,7 @@ export class Static implements Style<boolean> {
             }
             animCycle += 1;
             editedFrames.push(edited);
-            console.log(edited)
+            // console.log(edited)
         }
         return editedFrames
     }
@@ -1297,6 +1299,7 @@ function move(obj: DrawableTarget, startAt: [number, number], endAt: [number, nu
     let flutter = new Static(2);
 
     let effect = "area-flutter";
+    effect = ""
     let composed;
     let withEffect
     switch (effect) {
@@ -1310,21 +1313,21 @@ function move(obj: DrawableTarget, startAt: [number, number], endAt: [number, nu
         case "area-flutter":
             let area = new AreaEffect([2, 2], hardware.dimensions);
             let areaFrame = framesColour.map(f => { area.setDrawableTargetSingle(f); return area.draw() });
-            console.log(areaFrame)
+            // console.log(areaFrame)
             withEffect = flutter.apply(areaFrame);
 
             composed = bg.compose([framesColour], withEffect);
-            console.log(composed)
+            // console.log(composed)
             break;
         case "path-flutter":
             let path = new Path(hardware.dimensions);
             path.setTargetFrames(framesColour);
             let pathFrames = path.drawSequence();
-            console.log(pathFrames)
+            // console.log(pathFrames)
             withEffect = flutter.apply(pathFrames);
 
             composed = bg.compose([framesColour], withEffect);
-            console.log(composed)
+            // console.log(composed)
             break;
         case "anticipate-flutter":
             let antPath = new AnticipatedPath(hardware.dimensions);
@@ -1334,7 +1337,7 @@ function move(obj: DrawableTarget, startAt: [number, number], endAt: [number, nu
             withEffect = flutter.apply(antPathFrames);
 
             composed = bg.compose([framesColour], withEffect);
-            console.log(composed)
+            // console.log(composed)
             break;
         default:
             composed = framesColour;
@@ -1343,7 +1346,7 @@ function move(obj: DrawableTarget, startAt: [number, number], endAt: [number, nu
     // let frames = interp.convertColourToUpdateIdx(framesColour);
     let frames = interp.convertColourToUpdateIdx(composed);
 
-
+    // console.log(frames)
     // let frames = new AccelerateInterpolationStrategy(numFrames).generateFrames(obj, startAt, endAt, hardware);
 
     let drawFrame = (frame: number[]) => {
@@ -1362,9 +1365,9 @@ function move(obj: DrawableTarget, startAt: [number, number], endAt: [number, nu
 
 
 
-if (false) {
+if (true) {
 
-    let sim = new SimulationHardware(34, 28);
+    // let sim = new SimulationHardware(34, 28);
     let real = new FlipDotHardware(5, 7);
 
 
@@ -1385,7 +1388,8 @@ if (false) {
     // console.log(seq)
 
 
-    move(new Rect(5, sim.dimensions), [15, 5], [15, 15], sim, 5);
+    move(new Rect(2, real.dimensions), [0, 0], [0, 5], real, 5);
+    // move(new Rect(5, sim.dimensions), [15, 5], [15, 15], sim, 5);
 }
 
 
