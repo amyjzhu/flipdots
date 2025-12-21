@@ -493,6 +493,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             this.coordToIndex = (n: [number, number]) => {
                 // console.log("check: ", width);
                 // console.log("check: ", n[0], n[1], n[0] * width + n[1])
+                console.log(n)
                 return n[0] * width + n[1]
             };
 
@@ -593,14 +594,17 @@ export class FlipdotSimHardware implements HardwareInterface {
     }
 
     compile(groupActions: GroupAction[]) {
-        // console.log(groupActions)
+        console.log(groupActions)
         let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
         // let cumulativeTime = 0;
         let lastTime = 0;
-        console.log("units before and after", this.units)
+        // console.log("units before and after", this.units)
 
         this.units.flat().map(u => unitAvailableAt.set(u.id, 0));
-        console.log("units before and after", this.units)
+        console.log(unitAvailableAt)
+
+        // console.log("units before and after", this.units)
+        
 
         // at the very beginning, they are all available
         for (let ga of groupActions) {
@@ -636,10 +640,12 @@ export class FlipdotSimHardware implements HardwareInterface {
                         // and is current time at least later than next available time?
                         (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= time))) {
 
-                        // console.log(unit.actions.includes(action[0]))
-                        // console.log(unitAvailableAt.get(unit.id))
-                        // console.log(unitAvailableAt.get(unit.id)! <= time)
-                        // console.log(unit.id, time, time, unitAvailableAt.get(unit.id), actionType);
+                        console.log(action)
+                        console.log("Actions is part of the unit's action set?", unit.actions.includes(action[0]));
+                        console.log("Unit is able to act? (Defined acting time)", unitAvailableAt.get(unit.id));
+                        console.log("Acting time precedes current time?", unitAvailableAt.get(unit.id)! <= time);
+                        console.log(`id ${unit.id} is trying to ${actionType} at ${time} but is available at ${unitAvailableAt.get(unit.id)}`);
+                        
                         throw new Error("could not compile");
 
                     }
@@ -1074,11 +1080,18 @@ export class StochasticTransition implements Transition {
 
         let activations = generateActivationSequence(unitsToFlap, this.startingId, h);
 
+        // round up
+        // want to clamp to 
+        let minClamp = 1;
+        let maxClamp = t-1
+        activations = activations.map(a => [Math.round(a[0] * (maxClamp - minClamp)) + minClamp, a[1]])
+        console.log(activations)
         let actions: GroupAction[] = []
         let time = activations[0][0];
         let groupActUnits = [];
         for (let act of activations) {
             let t = act[0];
+            console.log(t)
             if (time == t) {
                 groupActUnits.push(act[1]);
             } else {
@@ -1088,6 +1101,9 @@ export class StochasticTransition implements Transition {
             }
         }
 
+        actions.push(new GroupAction(time, [[Action.FLIP, groupActUnits]]));
+
+        
         return actions;
     }
 
@@ -1197,7 +1213,7 @@ if (typeof window != 'undefined') {
     teapot 0 ->* instantaneous ->* teapot 9"
     // parser(teapotExample);
 
-    parseToGroupAction(teapotExample);
+    // parseToGroupAction(teapotExample);
 
     let teapot2Example = "timing: [3,6,9,12,16,19,22,26,29,32]\n\
     filepath: /animations/teapot${i}.png \n\
@@ -1205,7 +1221,7 @@ if (typeof window != 'undefined') {
     teapot 0 ->* motion ->* teapot 9"
     // parser(teapotExample);
 
-    parseToGroupAction(teapot2Example);
+    // parseToGroupAction(teapot2Example);
 
 
     let wipeExample = "timing: [15,15]\n\
@@ -1213,7 +1229,16 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 1 -> wipe -> rectangle 0";
 
-    parseToGroupAction(wipeExample);
+    // parseToGroupAction(wipeExample);
+
+    
+    let sparkleExample = "timing: [15,15]\n\
+    filepath: /animations/wipe${i}.png \n\
+    objects: [#000000 rectangle] \n\
+    rectangle 0 -> sparkle -> rectangle 1"; 
+    // TODO: the opposite doesn't work - you can't sparkle OUT 
+
+    parseToGroupAction(sparkleExample);
 
 
 }

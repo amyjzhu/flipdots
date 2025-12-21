@@ -905,7 +905,7 @@ class Sparkle implements Effect {
     to: Target | undefined;
     type: EffectType;
 
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, direction: WipeDirection) {
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
         this.to = to;
         this.from = from;
         this.type = type;
@@ -940,6 +940,10 @@ class Sparkle implements Effect {
             }
     })).flat().filter(i => i != undefined);
 
+        if (idxes.length == 0) {
+            idxes = [this.from.position];
+        }
+        
         let midPointX = Math.round((idxes.map(x => x[0]).reduce((acc, x) => acc + x, 0)) / idxes.length);
         let midPointY = Math.round((idxes.map(x => x[1]).reduce((acc, x) => acc + x, 0)) / idxes.length);
 
@@ -2148,6 +2152,7 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                             effect == "grow" ? new GrowWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
                                 effect == "move" ? new UniformMove(obj, eo, EffectType.Complete) :
                                 effect == "motion" ? new MotionFlipTo(obj, eo, EffectType.Complete) :
+                                effect == "sparkle" ? new Sparkle(obj, eo, EffectType.Complete) : 
                                     new DrawingHeadWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
 
 
@@ -2295,6 +2300,7 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                         effect == "grow" ? new GrowWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
                             effect == "move" ? new UniformMove(startTarget, endTarget, EffectType.Complete) :
                             effect == "motion" ? new MotionFlipTo(startTarget, endTarget, EffectType.Complete) :
+                            effect == "sparkle" ? new Sparkle(startTarget, endTarget, EffectType.Complete) : 
                                 new DrawingHeadWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)])
 
                 // the transition might have arguments.
