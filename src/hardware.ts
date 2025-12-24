@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { RowOfDiscs } from './flipdisc';
 import { parseToGroupAction, Target } from './language2';
+import { BrixelDisplay } from './brixel';
 
 type Vec2 = { x: number; y: number }
 
@@ -1228,7 +1229,7 @@ if (typeof window != 'undefined') {
     teapot 0 ->* sparkle ->* teapot 9"
     // parser(teapotExample);
 
-    parseToGroupAction(teapot2Example);
+    // parseToGroupAction(teapot2Example);
 
 
     let wipeExample = "timing: [15,15]\n\
@@ -1247,7 +1248,8 @@ if (typeof window != 'undefined') {
 
     // parseToGroupAction(sparkleExample);
 
-
+    let brixels = new BrixelDisplay(10, 20);
+    brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
 }
 
 // now I need to compile an example INTO group actions.
