@@ -1640,16 +1640,26 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
         while (o && o.effect != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
             
-            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum], 1)
+            // timing issue - subtract the duration
+            let prev = frameNum == 0 ? 0 : transitionTiming[frameNum-1]
+            console.log(prev)
+            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, 1)
             // console.log(fullObjects.map(o => o.draw()))
             // console.log(fullObjects(h))
-            actions = actions.concat(fullObjects(h))
+            let objs = fullObjects(h);
+            console.log(objs)
+            objs.forEach(o => o.tPlus = o.tPlus + prev)
+            console.log(objs)
+
+            actions = actions.concat(objs)
+            console.log(transitionTiming[frameNum])
             // allFrameValues.push(fullObjects.map(o => o.draw()));
             // console.log("generated", o.debugTag, o.frameId, allFrameValues)
             o = o.effect.to;
             frameNum += 1;
             console.log("compiling!")
         }
+
     }
 
     console.log("times are ", actions.map(t => t.tPlus))

@@ -493,7 +493,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             this.coordToIndex = (n: [number, number]) => {
                 // console.log("check: ", width);
                 // console.log("check: ", n[0], n[1], n[0] * width + n[1])
-                console.log(n)
+                // console.log(n)
                 return n[0] * width + n[1]
             };
 
@@ -608,12 +608,14 @@ export class FlipdotSimHardware implements HardwareInterface {
 
         // at the very beginning, they are all available
         for (let ga of groupActions) {
+            console.log(ga)
             let time = this.getRealTiming(ga.tPlus);
             // console.log(time)
             // cumulativeTime += time;
             // console.log("updating time!", cumulativeTime, time)
             let possibleTime // keep track.... 
             let actionSet = ga.actions;
+            
             for (let action of actionSet) {
                 let actionType: Action = action[0];
                 let unitsInUse: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
@@ -664,6 +666,7 @@ export class FlipdotSimHardware implements HardwareInterface {
                 // console.log(nextAvailable)
                 for (let [ids, interval] of nextAvailable) {
                     // console.log(cumulativeTime + this.getRealTiming(interval))
+                    console.log("updating ids!")
                     ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
                 }
 
@@ -1034,7 +1037,11 @@ function generateActivationSequence(units: UnitId[], startId: UnitId, h: Hardwar
         return { id: u, x: coord[0], y: coord[1] };
     })
 
-    const start = cells.find(c => c.id === startId)!
+    console.log(startId)
+    let startCoord = h.indexToCoord.get(startId)!;
+    const start = {id: startId, x: startCoord[0], y: startCoord[1]}
+    // how can the start id not be part of the cells?
+    console.log(start)
 
     // distances
     const distances = cells.map(c =>
@@ -1218,10 +1225,10 @@ if (typeof window != 'undefined') {
     let teapot2Example = "timing: [3,6,9,12,16,19,22,26,29,32]\n\
     filepath: /animations/teapot${i}.png \n\
     objects: [#000000 teapot] \n\
-    teapot 0 ->* motion ->* teapot 9"
+    teapot 0 ->* sparkle ->* teapot 9"
     // parser(teapotExample);
 
-    // parseToGroupAction(teapot2Example);
+    parseToGroupAction(teapot2Example);
 
 
     let wipeExample = "timing: [15,15]\n\
@@ -1238,7 +1245,7 @@ if (typeof window != 'undefined') {
     rectangle 0 -> sparkle -> rectangle 1"; 
     // TODO: the opposite doesn't work - you can't sparkle OUT 
 
-    parseToGroupAction(sparkleExample);
+    // parseToGroupAction(sparkleExample);
 
 
 }
