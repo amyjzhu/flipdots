@@ -215,7 +215,8 @@ export interface Unit {
 export enum Action {
     FLIP,
     SET,
-    FLUTTER
+    FLUTTER,
+    INCREMENT
 }
 
 let actionToString = (action: Action) => {
@@ -250,6 +251,202 @@ export interface Transition {
 
 
 ///////////////
+
+export class BrixelState implements State {
+    id: StateId;
+    getId(): StateId {
+        return this.id;
+    }
+
+    constructor(angleDeg: number) {
+        this.id = angleDeg;
+    }
+}
+
+export class BrixelUnit implements Unit {
+    id: number;
+    actions: Action[];
+    actionTiming: [Action, number];
+    states: [Action, State[]][];
+
+    constructor(id: number) {
+        this.id = id;
+        this.actions = [Action.INCREMENT];
+        this.actionTiming = [Action.INCREMENT, 1];
+        this.states = [[Action.INCREMENT, [...new Array(360)].map(i => new BrixelState(i))]];
+    }
+}
+
+export class BrixelSimHardware implements HardwareInterface {
+    units: Unit[];
+    actionDurations: Map<Action, number>;
+    coordToIndex: (coord: [number, number]) => number;
+    indexToCoord: Map<number, [number, number]>;
+    timeFrontier: (start: number, dir: [number, number]) => (t: Time) => UnitId[];
+    unitAdjacency: (toCheck: UnitId) => UnitId[];
+    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
+    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
+
+    dirsToTime: Map<string, (t: Time) => number[]> = new Map();
+    idsToStates: Map<UnitId, State>;
+    sim: BrixelDisplay;
+
+
+    constructor(units: Unit[], indexToCoord: Map<number, [number, number]>, unitAdjacency: (toCheck: UnitId) => UnitId[], sim: BrixelDisplay) {
+        this.units = units;
+        this.actionDurations = new Map();
+        this.actionDurations.set(units[0].actionTiming[0], units[0].actionTiming[1]);
+        this.indexToCoord = indexToCoord;
+        this.coordToIndex = (coord: [number, number]) => this.indexToCoord.entries().find(([k, v]) => v[0] == coord[0] && v[1] == coord[1])![0];
+        this.unitAdjacency = unitAdjacency;
+        this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
+            // is this true?
+            // surely it takes some time for units to flip!
+            let otherIds = [...new Set(this.units.map(r => r.id).flat()).difference(new Set(ids))];
+            return [[otherIds, incrementTime(time, 1)],
+            [ids, incrementTime(time, this.actionDurations.get(Action.INCREMENT)!)]] as [UnitId[], Time][];
+        }
+
+        this.idsToStates = new Map(this.units.map(u => u.id).map(u => [u, new BrixelState(0)]));
+        
+        
+        this.timeFrontier = (start: number, dir: [number, number]): (t: Time) => UnitId[] => {
+            let key = `${start}|${dir[0]}|${dir[1]}`
+            if (this.dirsToTime.has(key)) {
+                return this.dirsToTime.get(key)!;
+            } else {
+                let fn = generateDirection(start, dir, this);
+                this.dirsToTime.set(key, fn.atTime);
+                return fn.atTime;
+            }
+        }
+
+        this.actionsToHardwareAction = (action: Action, id: UnitId[], time: Time): [UnitId, State][] => {
+            // generate a new set of actions.
+            let actions: [UnitId, State][] = [];
+            for (let i of id) {
+                let currState = this.idsToStates.get(i)!;
+                actions.push([i, new BrixelState(currState.getId() as number + 1)])
+            }
+
+            return actions;
+        }
+
+        this.sim = sim;
+        
+    }   
+
+    static Rectangular(width: number, height: number) {
+        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(i * height + j)).flat()).flat();
+
+        let indexToCoord = new Map<number, [number, number]>();
+
+        unitList.forEach(u => indexToCoord.set(u.id, [Math.floor(u.id / width), u.id % width]))
+
+        let adjacency = (i: UnitId) => {
+            let neighbours: UnitId[] = [];
+            // if we're at the edge, don't include some:
+
+            let xCoord = i % width;
+            let yCoord = Math.floor(i / width);
+
+            for (let yPlus of [-1, 0, 1]) {
+                for (let xPlus of [-1, 0, 1]) {
+                    if (!((xPlus == 0 && yPlus == 0) ||
+                        (xCoord + xPlus >= width || xCoord + xPlus < 0
+                            || yCoord + yPlus < 0 || yCoord + yPlus >= height))) {
+                        neighbours.push(i + yPlus * width + xPlus);
+                    }
+                }
+            }
+            console.log(neighbours);
+            return neighbours;
+        }
+
+        // let coordToIndex = (n: [number, number]) => {
+        //     // console.log("check: ", width);
+        //     // console.log("check: ", n[0], n[1])
+        //     return n[0] * width + n[1]
+        // };
+
+
+        return new BrixelSimHardware(unitList, indexToCoord, adjacency, new BrixelDisplay(width, height));
+    }
+    
+    getRealTiming(time: Time): number {
+        if (typeof time == "number") {
+            return time;
+        } else {
+            return time[0] * this.actionDurations.get(Action.INCREMENT)! + time[2];
+        }
+    }
+
+    compile(groupActions: GroupAction[]) {
+
+        let allStates: [Time, UnitId, number][] = [];
+
+        let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
+        // let cumulativeTime = 0;
+        let lastTime = 0;
+        this.units.flat().map(u => unitAvailableAt.set(u.id, 0));
+
+        // at the very beginning, they are all available
+        for (let ga of groupActions) {
+            let time = this.getRealTiming(ga.tPlus);
+            // cumulativeTime += time;
+            // console.log("updating time!", cumulativeTime, time)
+            let possibleTime // keep track.... 
+            let actionSet = ga.actions;
+            for (let action of actionSet) {
+                let actionType: Action = action[0];
+                let units: Unit[] = action[1].map(i => this.units.find(u => u.id == i)!);
+
+                // first, I need to check the timing by inputting the group action and seeing 
+                // if it's possible.
+                // first, make sure we can do everything simultaneously
+
+
+                console.log(unitAvailableAt)
+                let violations = false;
+                for (let unit of units) {
+                    // do we actually know what the action is?
+                    if (!(unit.actions.includes(action[0]) &&
+                        // and is current time at least later than next available time?
+                        (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= time))) {
+
+                        console.log(unit.actions.includes(action[0]))
+                        console.log(unitAvailableAt.get(unit.id))
+                        console.log(unitAvailableAt.get(unit.id)! <= time)
+                        console.log(unit.id, time, time, unitAvailableAt.get(unit.id), actionType);
+                        throw new Error("could not compile");
+
+                    }
+                }
+
+                let states = this.actionsToHardwareAction(actionType, action[1], time - lastTime);
+                allStates = allStates.concat(states.map(tuple => [time, tuple[0], tuple[1].getId()] as [Time, UnitId, number]));
+
+
+                // should this actually be like, when are each of the next available elements available?
+                // some thigns won't be available until another move is made.
+                let nextAvailable = this.allowedNextActive(actionType, action[1], time);
+                // remember, if we didn't set it, it must not be possible to use!!
+                unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));
+
+                console.log(nextAvailable)
+                for (let [ids, interval] of nextAvailable) {
+                    // console.log(cumulativeTime + this.getRealTiming(interval))
+                    ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
+                }
+
+            }
+            lastTime = time;
+        
+
+            this.sim.setAnimationSequence(allStates);
+        }
+    }
+}
 
 
 export class FlipdotHardware implements HardwareInterface {
@@ -1201,10 +1398,6 @@ export class WaveTransition implements Transition {
         return actions;
 
     }
-
-
-
-
 
     // what's the difference between effect and transition?
     // transiton can perform 
