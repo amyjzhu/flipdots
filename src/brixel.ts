@@ -242,6 +242,7 @@ export class BrixelDisplay {
     // }
 
 
+    // unit id, time, angle
     setAnimationSequence(keyframes: [number, number, number][]) {
         // interpolate each position, so that for each time, 
         // I have all units and angles. 
@@ -251,8 +252,10 @@ export class BrixelDisplay {
         // this.timelines = this.bricks.map(() => ({ times: [], angles: [] }));
 
         // Populate
+        console.log(this.timelines.length)
         for (const kf of keyframes) {
             const tl = this.timelines[kf[0]];
+            // console.log(kf[0])
             // convert timing to frames
             tl.times.push(kf[1] * this.framesPerMs);
             tl.angles.push(kf[2] * Math.PI / 180);
@@ -267,6 +270,7 @@ export class BrixelDisplay {
             tl.angles = zipped.map(z => z.a);
         }
 
+        console.log(this.timelines)
     }
 
     runningCount = 0;
@@ -307,7 +311,7 @@ export class BrixelDisplay {
             const last = tl.times.length - 1;
             if (now >= tl.times[last]) {
                 this.bricks[i].rotation.x = tl.angles[last];
-                console.log("after last")
+                // console.log("after last")
                 continue;
             }
 

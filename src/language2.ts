@@ -69,6 +69,54 @@ interface TemporalTarget extends Target {
     parentEffects: Effect[]
 }
 
+
+export class CircleTarget implements DrawableTarget {
+    shape: Colour[][];
+    position: [number, number];
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    effect: Effect | undefined;
+    debugTag: string | undefined;
+
+    extractedShape: Colour[][];
+    defaultColour: Colour = false;
+
+    
+    constructor(radius: number, position: [number, number], canvasSize: [number, number]) {
+        this.position = position;
+        
+        let centre = [this.position[0] + radius, this.position[1] + radius];
+
+        this.shape = [...Array(canvasSize[1])].map(_ => [...Array(canvasSize[0])].map(_ => this.defaultColour));
+
+        let extractedShape = [];
+
+        for (let i = 0; i < radius; i++) {
+            let shapeRow = [];
+            for (let j = 0; j < radius; j++) {
+                shapeRow.push(Math.sqrt(((centre[0] - j) ** 2) + ((centre[1] - i) ** 2)) <= radius)
+
+                if (inBounds([i + this.position[0], j + this.position[1]], canvasSize)) {
+                    this.shape[i+ this.position[0]][j+ this.position[1]] = true;
+                }
+            }
+            extractedShape.push(shapeRow);
+        }
+
+        this.extractedShape = extractedShape;
+    }
+
+    
+    draw(): Colour[][] {
+        if (this.shape.length == 0) {
+            return [];
+        }
+        return this.shape;
+    }
+}
+
 class PixelArtTarget implements DrawableTarget {
     position: [number, number];
     // this specification of shape should be the full size

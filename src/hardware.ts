@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import { RowOfDiscs } from './flipdisc';
-import { parseToGroupAction, Target } from './language2';
+import { parseToGroupAction, Target, CircleTarget } from './language2';
 import { BrixelDisplay } from './brixel';
+
 
 type Vec2 = { x: number; y: number }
 
@@ -326,7 +327,9 @@ export class BrixelSimHardware implements HardwareInterface {
             let actions: [UnitId, State][] = [];
             for (let i of id) {
                 let currState = this.idsToStates.get(i)!;
-                actions.push([i, new BrixelState(currState.getId() as number + 1)])
+                let newState = new BrixelState(currState.getId() as number + 1);
+                actions.push([i, newState])
+                this.idsToStates.set(i, newState);
             }
 
             return actions;
@@ -337,12 +340,12 @@ export class BrixelSimHardware implements HardwareInterface {
     }   
 
     static Rectangular(width: number, height: number) {
-        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(i * height + j)).flat()).flat();
+        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new BrixelUnit(i * width + j)).flat()).flat();
 
         let indexToCoord = new Map<number, [number, number]>();
 
         unitList.forEach(u => indexToCoord.set(u.id, [Math.floor(u.id / width), u.id % width]))
-
+        console.log(indexToCoord)
         let adjacency = (i: UnitId) => {
             let neighbours: UnitId[] = [];
             // if we're at the edge, don't include some:
@@ -382,6 +385,7 @@ export class BrixelSimHardware implements HardwareInterface {
     }
 
     compile(groupActions: GroupAction[]) {
+        console.log(groupActions)
 
         let allStates: [Time, UnitId, number][] = [];
 
@@ -424,8 +428,9 @@ export class BrixelSimHardware implements HardwareInterface {
                 }
 
                 let states = this.actionsToHardwareAction(actionType, action[1], time - lastTime);
-                allStates = allStates.concat(states.map(tuple => [time, tuple[0], tuple[1].getId()] as [Time, UnitId, number]));
-
+                allStates = allStates.concat(states.map(tuple => [tuple[0], time, tuple[1].getId()] as [Time, UnitId, number]));
+                console.log(allStates)
+                console.log(groupActions)
 
                 // should this actually be like, when are each of the next available elements available?
                 // some thigns won't be available until another move is made.
@@ -1403,6 +1408,19 @@ export class WaveTransition implements Transition {
     // transiton can perform 
 }
 
+export class RotateRevealTransition implements Transition {
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+
+        let flip = diffIndices(o1, o2, h);
+        // I need to actually generate enough of these that this flips 180 in the specified target duration
+        // or put another way.... it's 180 at the time.
+        console.log(flip)
+        // but I can't generate the state.... 
+        return [...new Array(180).keys()].map(i => new GroupAction(t/180*i, [[Action.INCREMENT, flip]]));
+
+
+    }
+}
 
 // let's set up some test cases...
 
@@ -1441,8 +1459,13 @@ if (typeof window != 'undefined') {
 
     // parseToGroupAction(sparkleExample);
 
-    let brixels = new BrixelDisplay(10, 20);
-    brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
+    // let brixels = new BrixelDisplay(10, 20);
+    // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
+    let brixelHw = BrixelSimHardware.Rectangular(10, 20);
+
+    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1,[5,5], [10, 20]), new CircleTarget(2, [5,5], [10, 20]), 200, brixelHw)
+    console.log(actions)
+    brixelHw.compile(actions);
 }
 
 // now I need to compile an example INTO group actions.

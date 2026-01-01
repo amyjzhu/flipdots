@@ -698,6 +698,7 @@ let inBounds = (coord: [number, number], bounds: [number, number]): boolean => {
     return (x >= 0 && x < bounds[0] && y >= 0 && y < bounds[1]);
 }
 
+
 export class PixelArtTarget implements DrawableTarget {
     colourAt: [number, number][];
     size: number[];
