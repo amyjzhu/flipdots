@@ -291,7 +291,7 @@ export class BrixelUnit implements Unit {
         this.actions = [Action.INCREMENT, Action.DECREMENT];
         this.actionTiming = [[Action.INCREMENT, 1], [Action.DECREMENT, 1]];
         this.states = [[Action.INCREMENT, [...new Array(360)].map(i => new BrixelState(i))],
-    [Action.DECREMENT, [...new Array(360)].map(i => new BrixelState(360 - i))]]; // I should use this instead...
+        [Action.DECREMENT, [...new Array(360)].map(i => new BrixelState(360 - i))]]; // I should use this instead...
     }
 }
 
@@ -322,15 +322,16 @@ export class BrixelSimHardware implements HardwareInterface {
             // is this true?
             // surely it takes some time for units to flip!
             let otherIds = [...new Set(this.units.map(r => r.id).flat()).difference(new Set(ids))];
-            console.log("time, incTime, incDuration", time, incrementTime(time,1), incrementTime(time, this.actionDurations.get(Action.INCREMENT)!));
-            
-            return [[otherIds, incrementTime(time, 1)],
+            console.log("time, otherTime, incDuration", time, time, incrementTime(time, this.actionDurations.get(Action.INCREMENT)!));
+
+            return [[otherIds, time],
+            // return [[otherIds, incrementTime(time, 1)],
             [ids, incrementTime(time, this.actionDurations.get(Action.INCREMENT)!)]] as [UnitId[], Time][];
         }
 
         this.idsToStates = new Map(this.units.map(u => u.id).map(u => [u, new BrixelState(0)]));
-        
-        
+
+
         this.timeFrontier = (start: number, dir: [number, number]): (t: Time) => UnitId[] => {
             let key = `${start}|${dir[0]}|${dir[1]}`
             if (this.dirsToTime.has(key)) {
@@ -356,8 +357,8 @@ export class BrixelSimHardware implements HardwareInterface {
         }
 
         this.sim = sim;
-        
-    }   
+
+    }
 
     static Rectangular(width: number, height: number) {
         let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new BrixelUnit(i * width + j)).flat()).flat();
@@ -395,7 +396,7 @@ export class BrixelSimHardware implements HardwareInterface {
 
         return new BrixelSimHardware(unitList, indexToCoord, adjacency, new BrixelDisplay(width, height));
     }
-    
+
     getRealTiming(time: Time): number {
         if (typeof time == "number") {
             return time;
@@ -462,13 +463,13 @@ export class BrixelSimHardware implements HardwareInterface {
                 console.log("updating to ", nextAvailable);
                 for (let [ids, interval] of nextAvailable) {
                     // console.log(cumulativeTime + this.getRealTiming(interval))
-                    
+
                     ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
                 }
 
             }
             lastTime = time;
-        
+
 
             this.sim.setAnimationSequence(allStates);
         }
@@ -829,7 +830,7 @@ export class FlipdotSimHardware implements HardwareInterface {
         console.log(unitAvailableAt)
 
         // console.log("units before and after", this.units)
-        
+
 
         // at the very beginning, they are all available
         for (let ga of groupActions) {
@@ -840,7 +841,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             // console.log("updating time!", cumulativeTime, time)
             let possibleTime // keep track.... 
             let actionSet = ga.actions;
-            
+
             for (let action of actionSet) {
                 let actionType: Action = action[0];
                 let unitsInUse: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
@@ -872,7 +873,7 @@ export class FlipdotSimHardware implements HardwareInterface {
                         console.log("Unit is able to act? (Defined acting time)", unitAvailableAt.get(unit.id));
                         console.log("Acting time precedes current time?", unitAvailableAt.get(unit.id)! <= time);
                         console.log(`id ${unit.id} is trying to ${actionType} at ${time} but is available at ${unitAvailableAt.get(unit.id)}`);
-                        
+
                         throw new Error("could not compile");
 
                     }
@@ -1264,7 +1265,7 @@ function generateActivationSequence(units: UnitId[], startId: UnitId, h: Hardwar
 
     console.log(startId)
     let startCoord = h.indexToCoord.get(startId)!;
-    const start = {id: startId, x: startCoord[0], y: startCoord[1]}
+    const start = { id: startId, x: startCoord[0], y: startCoord[1] }
     // how can the start id not be part of the cells?
     console.log(start)
 
@@ -1315,7 +1316,7 @@ export class StochasticTransition implements Transition {
         // round up
         // want to clamp to 
         let minClamp = 1;
-        let maxClamp = t-1
+        let maxClamp = t - 1
         activations = activations.map(a => [Math.round(a[0] * (maxClamp - minClamp)) + minClamp, a[1]])
         console.log(activations)
         let actions: GroupAction[] = []
@@ -1335,7 +1336,7 @@ export class StochasticTransition implements Transition {
 
         actions.push(new GroupAction(time, [[Action.FLIP, groupActUnits]]));
 
-        
+
         return actions;
     }
 
@@ -1432,8 +1433,8 @@ export class WaveTransition implements Transition {
 
 
 export class OverrotateRevealTransition implements Transition {
-    overrotateAt: Time = 0.8;
-    overrotateDeg: number = 15;
+    overrotateAt: (unit: UnitId) => Time = _ => 0.8;
+    overrotateDeg: (unit: UnitId) => number = _ => 15;
 
     // wavefront target -> it's a pixel path
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
@@ -1446,25 +1447,69 @@ export class OverrotateRevealTransition implements Transition {
         // but I can't generate the state.... 
 
         // this is the way to rotate, but what I need to do is like, reach
-        let reachBy = t * this.overrotateAt;
-        let overrotateDuration = t * (1 - this.overrotateAt) / 2;
-        let startToReturn = reachBy + overrotateDuration;
-        
-        // so first, generate the initial rotation
-        let firstRotation = [...new Array(180).keys()].map(i => new GroupAction(reachBy/180*i, [[Action.INCREMENT, flip]]));
 
-        // don't need zero
-        // how long does it take to rotate one degree? well, I have overotateDuration time to do it. 
-        let overRotate = [...new Array(this.overrotateDeg - 1).keys()].map(i => i + 1).map(i => new GroupAction(reachBy + (overrotateDuration / this.overrotateDeg)*i, [[Action.INCREMENT, flip]]));
-        // omg lol I can't rotate back? 
-        // don't need zero either
-        let returnToPos = [...new Array(this.overrotateDeg - 1).keys()].map(i => i + 1).map(i => new GroupAction(startToReturn +(overrotateDuration / this.overrotateDeg)*i, [[Action.DECREMENT, flip]]));
 
-        console.log(t, reachBy, startToReturn)
-        console.log(firstRotation);
-        console.log(overRotate);
-        console.log(returnToPos)
-        return firstRotation.concat(overRotate).concat(returnToPos);
+        let groupActions: Map<number, GroupAction> = new Map();
+        for (let id of flip) {
+            let ora = this.overrotateAt(id);
+            let ord = this.overrotateDeg(id);
+
+            let reachBy = t * ora;
+            let overrotateDuration = t * (1 - ora) / 2;
+            let startToReturn = reachBy + overrotateDuration;
+
+            console.log(ora, ord)
+            console.log(t, reachBy, startToReturn);
+
+            // so first, generate the initial rotation
+            [...new Array(180).keys()].forEach(i => {
+                let time = reachBy / 180 * i;
+                let ga = groupActions.has(time) ? groupActions.get(time)! : new GroupAction(time, [[Action.INCREMENT, []]]);
+                // maybe I should use the multiplicity feature
+                if (ga.actions.find(a => a[0] == Action.INCREMENT) == undefined) {
+                    ga.actions.push([Action.INCREMENT, []]);
+                }
+                ga.actions.find(a => a[0] == Action.INCREMENT)![1].push(id);
+
+                groupActions.set(time, ga);
+            });
+
+            // don't need zero
+            // how long does it take to rotate one degree? well, I have overotateDuration time to do it. 
+            [...new Array(ord - 1).keys()].map(i => i + 1).forEach(i => {
+                let time = reachBy + (overrotateDuration / ord) * i;
+                let ga = groupActions.has(time) ? groupActions.get(time)! : new GroupAction(time, [[Action.INCREMENT, []]]);
+                // maybe I should use the multiplicity feature
+                if (ga.actions.find(a => a[0] == Action.INCREMENT) == undefined) {
+                    ga.actions.push([Action.INCREMENT, []]);
+                }
+                ga.actions.find(a => a[0] == Action.INCREMENT)![1].push(id);
+                
+                groupActions.set(time, ga);
+            });
+            // omg lol I can't rotate back? 
+            // don't need zero either
+            [...new Array(ord - 1).keys()].map(i => i + 1).forEach(i => {
+                let time = startToReturn + (overrotateDuration / ord) * i;
+                let ga = groupActions.has(time) ? groupActions.get(time)! : new GroupAction(time, [[Action.DECREMENT, []]]);
+                // maybe I should use the multiplicity feature
+                if (ga.actions.find(a => a[0] == Action.DECREMENT) == undefined) {
+                    ga.actions.push([Action.DECREMENT, []]);
+                }
+                ga.actions.find(a => a[0] == Action.DECREMENT)![1].push(id);
+                groupActions.set(time, ga);
+            });
+
+        }
+
+        let actions = [...groupActions.values()];
+        actions.sort((a, b) => a.tPlus - b.tPlus);
+        return actions;
+        // console.log(t, reachBy, startToReturn)
+        // console.log(firstRotation);
+        // console.log(overRotate);
+        // console.log(returnToPos)
+        // return firstRotation.concat(overRotate).concat(returnToPos);
 
     }
 }
@@ -1478,7 +1523,7 @@ export class RotateRevealTransition implements Transition {
         console.log(o1.draw(), o2.draw())
         console.log(flip)
         // but I can't generate the state.... 
-        return [...new Array(180).keys()].map(i => new GroupAction(t/180*i, [[Action.INCREMENT, flip]]));
+        return [...new Array(180).keys()].map(i => new GroupAction(t / 180 * i, [[Action.INCREMENT, flip]]));
 
 
     }
@@ -1512,11 +1557,11 @@ if (typeof window != 'undefined') {
 
     // parseToGroupAction(wipeExample);
 
-    
+
     let sparkleExample = "timing: [15,15]\n\
     filepath: /animations/wipe${i}.png \n\
     objects: [#000000 rectangle] \n\
-    rectangle 0 -> sparkle -> rectangle 1"; 
+    rectangle 0 -> sparkle -> rectangle 1";
     // TODO: the opposite doesn't work - you can't sparkle OUT 
 
     // parseToGroupAction(sparkleExample);
@@ -1525,8 +1570,16 @@ if (typeof window != 'undefined') {
     // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
     let brixelHw = BrixelSimHardware.Rectangular(10, 20);
 
-    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1,[5,5], [10, 20]), new CircleTarget(3, [4,4], [10, 20]), 200, brixelHw)
-    let actions2 = new OverrotateRevealTransition().generateGroupActions(new CircleTarget(1,[5,5], [10, 20]), new CircleTarget(3, [4,4], [10, 20]), 240, brixelHw)
+    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
+
+    let orrt = new OverrotateRevealTransition();
+    orrt.overrotateAt = id => {
+        let row = brixelHw.indexToCoord.get(id)![0];
+        console.log(row)
+        return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
+        // return 0.7
+    }
+    let actions2 = orrt.generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 300, brixelHw)
     // console.log(actions)
     // now, how do I do it so that it takes more time depending on its location?
     brixelHw.compile(actions2);
