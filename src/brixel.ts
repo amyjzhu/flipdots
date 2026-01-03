@@ -164,7 +164,8 @@ export class BrixelDisplay {
         let domino = new THREE.Object3D();
         domino.add(obj);
         domino.add(backObj);
-        backObj.position.set(0, 0, this.unitThickness / 2);
+        backObj.position.set(0, 0, this.unitThickness / 4);
+        obj.position.set(0, 0, -this.unitThickness / 4);
         this.scene.add(domino);
 
         return domino
