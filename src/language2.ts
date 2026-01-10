@@ -18,6 +18,7 @@
 
 import { Action, FlipdotSimHardware, FlipTransition, GroupAction, HardwareInterface, SnapTransition, StochasticTransition, WaveTransition } from "./hardware";
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
+import { getImages, rgb2Hex } from "./util";
 
 let collisionStats = [4, 2];
 
@@ -1372,57 +1373,6 @@ function hex2Rgb(hex: string): [number, number, number] | undefined {
 
 
 
-function componentToHex(c: number) {
-    var hex = c.toString(16);
-    return hex.length == 1 ? "0" + hex : hex;
-}
-
-function rgb2Hex(r: number, g: number, b: number) {
-    return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
-}
-import * as THREE from 'three';
-
-let getImages = async (urls: string[]): Promise<[number, number, [number, number, number][][][]]> => {
-    console.log(urls)
-    let loader = new THREE.ImageBitmapLoader();
-    loader.setOptions({ imageOrientation: 'flipY' })
-
-    var canvas = document.createElement('canvas');
-    let context2d = canvas.getContext('2d', { willReadFrequently: true })!;
-
-    let frames = [];
-    // can't use for loop here or order will be disrupted?
-    let promises = urls.map(async url => {
-        return await loader.loadAsync(url);
-    })
-
-    frames = await Promise.all(promises);
-    let width = frames[0].width;
-    let height = frames[0].height;
-
-    canvas.width = width;
-    canvas.height = height;
-    let images: [number, number, number][][][] = [];
-    for (let imageBitmap of frames) {
-        context2d.drawImage(imageBitmap, 0, 0, imageBitmap.width, imageBitmap.height);
-        let rgba = context2d.getImageData(0, 0, imageBitmap.width, imageBitmap.height).data;
-        console.log(rgba)
-        let resultingImg: [number, number, number][][] = [];
-        for (let i = 0; i < imageBitmap.height; i++) {
-            let curRow: [number, number, number][] = [];
-            for (let j = 0; j < imageBitmap.width; j++) {
-                curRow.push([rgba[(i * imageBitmap.width + j) * 4], rgba[(i * imageBitmap.width + j) * 4 + 1], rgba[(i * imageBitmap.width + j) * 4 + 2]]);
-            }
-            resultingImg.push(curRow);
-        }
-        images.push(resultingImg);
-        console.log(resultingImg.length)
-        console.log(resultingImg[0].length)
-        // nextFlips.push(this.generateFlipBitmap(resultingImg, [255, 255, 255]));
-    }
-    return [width, height, images];
-}
-
 
 let parseImagesIntoFrames = async (urls: string[]): Promise<[Target[][], number, number, string[]]> => {
 
@@ -1949,7 +1899,7 @@ let graphModifyToAddPathTrace = (input: Target[][]): Target[][] => {
 // named object + frame tag indexes a specific target
 
 // generateAnimationToGroupAction
-export let parseToGroupAction = async (input: string): Promise<HardwareInterface> => {
+export let parseToGroupAction = async (input: string, hardware?: HardwareInterface): Promise<HardwareInterface> => {
     // todo: it'd be more robust to search for the correct tag 
     let lines = input.split("\n");
     lines = lines.map(l => l.trim());
@@ -1980,8 +1930,11 @@ export let parseToGroupAction = async (input: string): Promise<HardwareInterface
 
     console.log("width and height are", width, height);
 
-    let hardware = new FlipdotSimHardware([], i => [], [height, width]);
-    hardware.flipDurationMS = 1;
+    if (hardware == undefined) {
+        hardware = new FlipdotSimHardware([], i => [], [height, width]);
+        (hardware as FlipdotSimHardware).flipDurationMS = 1;
+    }
+    
 
     console.log(graph);
     console.log("hejsdh")

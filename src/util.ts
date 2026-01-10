@@ -332,3 +332,55 @@ export function selectGeodesicDiskFaces(
   }
   return faces;
 }
+
+
+
+export function componentToHex(c: number) {
+    var hex = c.toString(16);
+    return hex.length == 1 ? "0" + hex : hex;
+}
+
+export function rgb2Hex(r: number, g: number, b: number) {
+    return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+}
+
+export let getImages = async (urls: string[]): Promise<[number, number, [number, number, number][][][]]> => {
+    console.log(urls)
+    let loader = new THREE.ImageBitmapLoader();
+    loader.setOptions({ imageOrientation: 'flipY' })
+
+    var canvas = document.createElement('canvas');
+    let context2d = canvas.getContext('2d', { willReadFrequently: true })!;
+
+    let frames = [];
+    // can't use for loop here or order will be disrupted?
+    let promises = urls.map(async url => {
+        return await loader.loadAsync(url);
+    })
+
+    frames = await Promise.all(promises);
+    let width = frames[0].width;
+    let height = frames[0].height;
+
+    canvas.width = width;
+    canvas.height = height;
+    let images: [number, number, number][][][] = [];
+    for (let imageBitmap of frames) {
+        context2d.drawImage(imageBitmap, 0, 0, imageBitmap.width, imageBitmap.height);
+        let rgba = context2d.getImageData(0, 0, imageBitmap.width, imageBitmap.height).data;
+        console.log(rgba)
+        let resultingImg: [number, number, number][][] = [];
+        for (let i = 0; i < imageBitmap.height; i++) {
+            let curRow: [number, number, number][] = [];
+            for (let j = 0; j < imageBitmap.width; j++) {
+                curRow.push([rgba[(i * imageBitmap.width + j) * 4], rgba[(i * imageBitmap.width + j) * 4 + 1], rgba[(i * imageBitmap.width + j) * 4 + 2]]);
+            }
+            resultingImg.push(curRow);
+        }
+        images.push(resultingImg);
+        console.log(resultingImg.length)
+        console.log(resultingImg[0].length)
+        // nextFlips.push(this.generateFlipBitmap(resultingImg, [255, 255, 255]));
+    }
+    return [width, height, images];
+}

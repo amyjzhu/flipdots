@@ -28,7 +28,6 @@ export class SplitFlapDisplay {
     // canvases: [HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement, HTMLCanvasElement][] = [];
     // canvases: [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D][] = [];
 
-    nextLetter = "A";
     setNextFlips: (f: number) => (i: number) => [number | undefined, number | undefined] = f => i => [undefined, undefined];
     canvases: THREE.Material[] = [];
     canvasBacks: THREE.Material[] = [];
@@ -186,7 +185,7 @@ export class SplitFlapDisplay {
     setUpAlphabetRolls() {
         for (let _ of this.flaps) {
             // this.flipCycle.push([...new Array(6).keys()]);
-            this.flipCycle.push([...new Array(27).keys()]);
+            this.flipCycle.push([...new Array(28).keys()]);
             this.flapPos.push(0);
         }
     }
@@ -205,9 +204,11 @@ export class SplitFlapDisplay {
         ctx.font = "250px Arial";
         ctx.fillStyle = colour;
         if (top) {
-            ctx.fillText(this.nextLetter, 70, 250);
+            ctx.fillStyle = "blue";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         } else {
-            ctx.fillText(this.nextLetter, 70, 100);
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
         // document.body.appendChild(canvas);
 
@@ -221,7 +222,7 @@ export class SplitFlapDisplay {
     WIDTH = 5;
     HEIGHT = 7;
 
-    makeRowsOfSplitFlaps(numTall: number, numWide: number) {
+    makeRowsOfSplitFlaps(numWide: number, numTall: number) {
         let backingBorder = 10;
         let offsetZ = -5;
 
@@ -281,7 +282,7 @@ export class SplitFlapDisplay {
         let backingPiece = new THREE.Mesh(backing, backingMaterial);
         this.scene.add(backingPiece)
         // should be behind the discs.
-        backingPiece.position.set(this.WIDTH * numWide - this.WIDTH - backingBorder / 2, this.HEIGHT * numTall - this.HEIGHT - backingBorder / 2, offsetZ)
+        backingPiece.position.set((this.SPACING_X * numWide - backingBorder)/2, (this.SPACING_Y * numTall - backingBorder)/2, offsetZ)
     }
 
     makePiece = (top: boolean): [THREE.Mesh, HTMLCanvasElement, HTMLCanvasElement] => {

@@ -8,7 +8,7 @@ import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryU
 
 
 import { FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, CAMERA_DISTANCE, SOUND_ENABLED, USE_X_DISC, DISC_SIDE_COLOUR, DISC_FRONT_COLOUR, DISC_BACK_COLOUR, PERFORMANT_SOUND_ENABLED, PERFORMANT_NUM_X_SPEAKERS, PERFORMANT_NUM_Y_SPEAKERS, RENDERER_SIZE_SCALEDOWN } from './constants';
-import { buildFaceAdjacency, computeFaceGeodesicDistances, faceMostExtremeInDirection, faceMostExtremeInDirectionSubset, selectGeodesicDiskFaces, selectGeodesicRingFaces } from './geomutil';
+import { buildFaceAdjacency, computeFaceGeodesicDistances, faceMostExtremeInDirection, faceMostExtremeInDirectionSubset, selectGeodesicDiskFaces, selectGeodesicRingFaces } from './util';
 
 export class RowOfDiscs {
     width: number;
@@ -98,7 +98,8 @@ export class RowOfDiscs {
     initScene() {
 
         // skybox
-        const geometry = new THREE.BoxGeometry(450, 450, 450);
+        const geometry = new THREE.BoxGeometry(900, 900, 900);
+        // const geometry = new THREE.BoxGeometry(450, 450, 450);
         var materials = [
             new THREE.MeshBasicMaterial({
                 map: new THREE.TextureLoader().load('/skybox/Daylight Box_Left.bmp'),
