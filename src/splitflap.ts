@@ -196,6 +196,9 @@ export class SplitFlapDisplay {
         // console.log(this.idxToUpdate)
         this.animationFrameCounters = this.flaps.map(_ => 0);
         this.setNextFlips = newFlip;
+        // I assume I should reset this?
+        this.flipCycles = this.flaps.map(_ => 0);
+
     }
 
     generateCanvasTexture(colour: string, top: boolean): [THREE.Texture, HTMLCanvasElement] {
@@ -458,9 +461,10 @@ export class SplitFlapDisplay {
                 // this one is negative 
                 // console.log("rot flap back / num frames rotating", rotFlapBack / this.numFramesRotating);
             } else if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
-
+                // console.log("updating flipcycle for", idx);
 
                 // idk why but I need this?
+                // TODO this gets triggered first and removes everything that acts at zero 
                 this.flipCycles[idx] += 1;
                 // reset the rising falling etc 
 
@@ -548,7 +552,7 @@ export class SplitFlapDisplay {
                 this.flapPos[idx] = nextIdx;
                 this.flaps[idx] = [stepping, falling, rising];
 
-
+                // console.log("looking at flipcycle for", idx, this.flipCycles[idx])
                 let [newPause, newCycle] = this.setNextFlips(this.flipCycles[idx])(idx);
                 this.perPixelPauses[idx] = newPause;
                 this.perPixelCycleLength[idx] = newCycle;

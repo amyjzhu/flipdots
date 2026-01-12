@@ -509,26 +509,29 @@ export class SplitflapHardware implements HardwareInterface {
             // this.sim.resetAnimation(sequence);
         }
 
-        const byUnit = new Map<UnitId, [UnitId, number][]>();
+        const byUnit = new Map<UnitId, number[]>();
 
+        console.log(unitsUsedAtTimes)
         for (const a of unitsUsedAtTimes) {
             if (!byUnit.has(a[0])) {
                 byUnit.set(a[0], []);
             }
-            byUnit.get(a[0])!.push(a as [number, number]);
+            byUnit.get(a[0])!.push(a[1]);
         }
+        console.log(byUnit)
 
         const scheduled = new Map<UnitId, [[number, number][], number]>();
 
         for (const [unitId, acts] of byUnit) {
-            acts.sort((a, b) => a[0] - b[0]);
+            acts.sort((a, b) => a - b);
 
             let lastEnd = -Infinity;
             const timeline: [number, number][] = [];
 
             for (const act of acts) {
-                const start = Math.max(act[0], lastEnd);
-                const end = start + this.sim.numFramesRotating;
+                const start = Math.max(act, lastEnd);
+                const end = start + this.actionDurations.get(Action.FLIP)!;
+                // const end = start + this.sim.numFramesRotating;
 
                 timeline.push([start, end]);
                 lastEnd = end;
@@ -536,17 +539,81 @@ export class SplitflapHardware implements HardwareInterface {
 
             scheduled.set(unitId, [timeline, lastEnd]);
         }
+        console.log(scheduled);
+
+        let PAUSE_DEFAULT = this.sim.numFramesRotating / 3;
+        // I need to figure out what the "time" spent for one rotation is 
+
+        //////
+
+        let tickSchedule = new Map<UnitId, number[]>();
+        for (let [i, timeline] of scheduled.entries()) {
+            const msPerTick = 1 / framesPerMs;
+            const animationDurationMs = this.sim.numFramesRotating * msPerTick;
+
+            let timelineMs = timeline[0];
+            // Precompute delays (fail fast if invalid)
+            const delaysInTicks: number[] = [];
+
+            let previousAnimationEndMs = 0;
+
+            for (let i = 0; i < timelineMs.length; i++) {
+                const startMs = timelineMs[i][0];
+
+                if (i > 0 && startMs < previousAnimationEndMs) {
+                    throw new Error(
+                        `Timeline error at index ${i}: ` +
+                        `not enough time to finish previous animation`
+                    );
+                }
+
+                const delayMs = startMs - previousAnimationEndMs;
+                const delayTicks = Math.round(delayMs / msPerTick);
+
+                delaysInTicks.push(delayTicks);
+                previousAnimationEndMs = startMs + animationDurationMs;
+
+            }
+            tickSchedule.set(i, delaysInTicks);
+
+        }
 
         let schedule = (f: number) => {
             return (i: number): [number | undefined, number | undefined] => {
+                let delaysInTicks = tickSchedule.get(i)!;
+
                 const timeline = scheduled.get(i);
                 if (!timeline) return [undefined, 0];
+                if (f > timeline[1]) return [undefined, 0];
 
-                if (f >= timeline[1]) return [undefined, 0];
+                if (f < 0 || f >= delaysInTicks.length) {
+                    return [undefined, 0];
+                }
+                return [delaysInTicks[f], 0];
+            }
+        }
+
+        let _schedule = (f: number) => {
+            return (i: number): [number | undefined, number | undefined] => {
+
+                const timeline = scheduled.get(i);
+                if (!timeline) return [undefined, 0];
+                if (f > timeline[1]) return [undefined, 0];
 
                 for (const act of timeline[0]) {
                     if (act[0] >= f) {
-                        return [act[0] - f, 0];
+                        // this isn't quite the right number, because the pause... 
+                        // I need something like, 
+                        let seconds = act[0] - f;
+                        let frames = framesPerMs * seconds;
+                        // subtract...
+                        let newTime = frames - PAUSE_DEFAULT;
+                        if (newTime < 0) {
+                            throw new Error("not enough time to rotate")
+                        }
+                        return [newTime, 0];
+                    } else {
+                        console.log(act, f, i)
                     }
                 }
 
@@ -1907,14 +1974,14 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 0 -> sparkle -> rectangle 1";
 
-    parseToGroupAction(logoExample);
+    // parseToGroupAction(logoExample);
 
     let logoBasicExample = "timing: [15,15]\n\
     filepath: /animations/text-logo${i}.png \n\
     objects: [#000000 rectangle] \n\
     rectangle 0 -> instantaneous -> rectangle 1";
 
-    parseToGroupAction(logoBasicExample);
+    // parseToGroupAction(logoBasicExample);
 
     let dandelion = "timing: [15,15]\n\
     filepath: /animations/dandelion${i}.png \n\
@@ -1933,7 +2000,7 @@ if (typeof window != 'undefined') {
     // parseToGroupAction(dandelion_basic);
 
 
-    
+    /*
     // let brixels = new BrixelDisplay(10, 20);
     // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
     let brixelHw = BrixelSimHardware.Rectangular(10, 20);
@@ -1952,7 +2019,7 @@ if (typeof window != 'undefined') {
     // now, how do I do it so that it takes more time depending on its location?
     brixelHw.compile(actions);
 
-
+*/
 
 
     let data = await getImages(["/animations/thinking.png"]);
@@ -1972,7 +2039,9 @@ if (typeof window != 'undefined') {
     console.log(frameUnitId)
 
     // start by taking this and converting the image to flips.
-    let frame1 = new GroupAction(0, [[Action.FLIP, frameUnitId]]);
+    let frame1 = new GroupAction(1, [[Action.FLIP, frameUnitId]]);
+    // keeping it at zero breaks first frame
+    // let frame1 = new GroupAction(0, [[Action.FLIP, frameUnitId]]);
     console.log(frame1);
 
 
@@ -1991,8 +2060,11 @@ if (typeof window != 'undefined') {
 
     let schedule = scheduleConstantSpeed(sfhw.units as SplitflapUnit[], finalState, 1)
     console.log(schedule)
-    let restGA = buildTimeline(schedule);
-    sfhw.compile([frame1, ...restGA]);
+    let restGA = buildTimeline(schedule, 4);
+    console.log("frame 1 is ", frame1);
+    console.log("other schedule is ", restGA);
+    sfhw.compile([frame1]);
+    // sfhw.compile([frame1, ...restGA]);
     // now I want the position of the text.
     // row 7 from 12 to 20
 
@@ -2027,7 +2099,8 @@ function computeFlipDistance(unit: SplitflapUnit, target: SplitflapState): numbe
 }
 
 function buildTimeline(
-    flipSchedule: Map<UnitId, Time[]>
+    flipSchedule: Map<UnitId, Time[]>,
+    startAt: Time = 0
 ): GroupAction[] {
     const timeMap = new Map<Time, UnitId[]>();
 
@@ -2042,7 +2115,7 @@ function buildTimeline(
         .sort((a, b) => a[0] - b[0])
         .map(
             ([t, ids]) =>
-                new GroupAction(t, [[Action.FLIP, ids]])
+                new GroupAction(t + startAt, [[Action.FLIP, ids]])
         );
 }
 
@@ -2050,7 +2123,7 @@ function scheduleConstantSpeed(
     units: SplitflapUnit[],
     targets: SplitflapState[],
     flipsPerSecond: number,
-    maxSimultaneousFinishes = Infinity
+    maxSimultaneousFinishes = Infinity,
 ): Map<UnitId, Time[]> {
     const schedule = new Map<UnitId, Time[]>();
     const finishBuckets = new Map<Time, UnitId[]>();
