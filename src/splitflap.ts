@@ -191,7 +191,16 @@ export class SplitFlapDisplay {
     }
 
     resetAnimation = (newFlip: (f: number) => (i: number) => [number | undefined, number | undefined]) => {
-        this.runningCount = 0;
+        
+        for (let idx of this.flaps) {
+            let [falling, rising, stepping] = idx;
+            console.log("resetting: ", falling.rotation.x, rising.rotation.x, stepping.rotation.x)
+            // "about to start" doing what we say
+            rising.rotation.x = 0;
+            falling.rotation.x = 0;
+            stepping.rotation.x =  rotFlapBack;
+
+        }
         // console.log(this.flipCycles)
         // console.log(this.idxToUpdate)
         this.animationFrameCounters = this.flaps.map(_ => 0);
@@ -402,43 +411,26 @@ export class SplitFlapDisplay {
         // let OFFSET = this.numFramesRotating / 3;
 
         let PAUSE_DEFAULT = Math.floor(this.numFramesRotating / 3);
-        let rotationRate = Math.PI / this.numFramesRotating;
-
-        // this.renderer.render(this.scene, this.camera);
-        let done = false;
 
         // what's going on? why is this like 100?
-        if (this.animationFrameCounters.filter(a => a != 0).length != 0) console.log("inside animate", this.animationFrameCounters.filter(a => a != 0))
+        // if (this.animationFrameCounters.filter(a => a != 0).length != 0) console.log("inside animate", this.animationFrameCounters.filter(a => a != 0))
         for (let idx = 0; idx < this.flaps.length; idx++) {
-            // for (let i = 0; i < this.updateIdxs.length; i++) {
-
-            // console.log(this.perPixelPauses)
-            // console.log(this.perPixelCycleLength)
-
-            let perPixelPause = this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT;
-            // let perPixelPause = this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT;
-            let perPixelCycleLength = this.perPixelCycleLength.length > idx ? this.perPixelCycleLength[idx] : this.splitFlapCycleLength;
-
             
-            if (perPixelPause == undefined || perPixelCycleLength == undefined) {
+            let perPixelPause = this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT;
+           // let perPixelCycleLength = this.perPixelCycleLength.length > idx ? this.perPixelCycleLength[idx] : this.splitFlapCycleLength;
+
+            if (perPixelPause == undefined) {
                 // skip this one
+                // console.log("undefined")
                 continue;
             }
-
-            // perPixelPause = perPixelCycleLength - this.numFramesRotating;
-            perPixelCycleLength = perPixelPause + this.numFramesRotating;
-            // perPixelPause = Math.floor(perPixelPause / 2);
-            // console.log("info: ", perPixelPause, perPixelCycleLength, this.flipCycles[idx], this.flapPos[idx])
-
-
-            // perPixelPause = Math.floor(perPixelPause);
-
-            // instead of having a uniform "updateidxs"... we woul need to check each one 
+            
+            let perPixelCycleLength = perPixelPause + this.numFramesRotating;
+            
             let [falling, rising, stepping] = this.flaps[idx];
-            // basically, the wait and the splitflapcyclelength need to balance out. 
-            // wait n, then wait until splitflapcycle - n (since everything must be synced)
-
-            // console.log(perPixelPause)
+            let rad2deg = (r: number) => r *  180 / Math.PI;
+            
+            console.log(rad2deg(stepping.rotation.x))
             if (perPixelPause + this.numFramesRotating > perPixelCycleLength) {
                 throw new Error("pause is too long")
             }
@@ -448,50 +440,40 @@ export class SplitFlapDisplay {
             // the flap that is falling will fall to the bottom (after OFFSET) - angle change / num frames minus offset -> becomes falling
             // the flap that is at the bottom will move to step position (after OFFSET) -> becomes rising 
             
-            let rad2deg = (r: number) => r *  180 / Math.PI;
 
-            let countOffset = 0;
-            let countRotate = 0;
-            let countDone = 0;
             if (this.animationFrameCounters[idx] < perPixelPause) {
                 // this doesn't seem super consistent?
                 // todo?
                 // why does this move it doubly up?
-                console.log("inside offset ", this.animationFrameCounters[idx], rad2deg(stepping.rotation.x));
-                countOffset += 1;
+                console.log("inside offset ", this.animationFrameCounters[idx], rad2deg(rotFlapBack * -1 / perPixelPause), rad2deg(stepping.rotation.x));
+                // countOffset += 1;
+                console.log("completing (offset): ", this.animationFrameCounters[idx], perPixelPause, rad2deg(rotFlapBack * -1 / perPixelPause),rad2deg(stepping.rotation.x))
+
                 stepping.rotation.x += rotFlapBack * -1 / perPixelPause;
             } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < perPixelCycleLength) {
-                console.log("inside rotate", this.animationFrameCounters[idx])
-                countRotate += 1;
+                // console.log("inside rotate", this.animationFrameCounters[idx])
+                // countRotate += 1;
             // } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < this.numFramesRotating + perPixelPause) {
                 rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating);
                 falling.rotation.x += Math.PI / (this.numFramesRotating)
             } else if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
-                console.log("inside after rotate", this.animationFrameCounters[idx])
-                countDone += 1;
-                // this.flipCycles[idx] += 1;
-                
+                console.log("completing: ",  this.flaps[idx].map(f => rad2deg(f.rotation.x)))
                 let nextIdx = this.flapPos[idx] + 1 >= this.flipCycle[idx].length ? 0 : this.flapPos[idx] + 1;
-                // this.flapPos[idx] = nextIdx;
-
-                // console.log("comparing flipcycle and flappos: ", this.flipCycles[idx], nextIdx);
-
+                
                 let front = this.canvases[this.flipCycle[idx][this.flapPos[idx]]];
                 let back = this.canvasBacks[this.flipCycle[idx][nextIdx]];
+                this.flapPos[idx] = nextIdx;
                 
-
                 ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
                 ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = back;
                  
                 if (this.flapPos[idx] % 3 == 0) {
-                // if (this.flipCycles[idx] % 3 == 0) {
                     let backTexture = (back as THREE.MeshBasicMaterial).map!;
                     backTexture.center.set(0.5, 0.5);  // rotate around the center
                     backTexture.rotation = Math.PI;    // 180 degrees
                     backTexture.needsUpdate = true;
                 
-                } else if (this.flapPos[idx] % 3 == 1) { // 0, 2
-                // } else if (this.flipCycles[idx] % 3 == 1) { // 0, 2
+                } else if (this.flapPos[idx] % 3 == 1) { 
                     let texture = (front as THREE.MeshBasicMaterial).map!;
                     texture.center.set(0.5, 0.5);  // rotate around the center
                     texture.rotation = Math.PI;    // 180 degrees
@@ -500,7 +482,6 @@ export class SplitFlapDisplay {
                     ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = front;
 
                 } else if (this.flapPos[idx] % 3 == 2) {
-                // } else if (this.flipCycles[idx] % 3 == 2) {
                     let backTexture = (back as THREE.MeshBasicMaterial).map!;
                     backTexture.center.set(0.5, 0.5);  // rotate around the center
                     backTexture.rotation = Math.PI;    // 180 degrees
@@ -509,24 +490,19 @@ export class SplitFlapDisplay {
 
                 // I need to figure out something about how to advance this.
                 // start with the first next flips... 
-                this.flapPos[idx] = nextIdx;
                 this.flaps[idx] = [stepping, falling, rising];
 
-                // console.log("looking at flipcycle for", idx, this.flipCycles[idx])
                 let [newPause, newCycle] = this.setNextFlips(this.flapPos[idx])(idx);
-                // let [newPause, newCycle] = this.setNextFlips(this.flipCycles[idx])(idx);
                 this.perPixelPauses[idx] = newPause;
-                this.perPixelCycleLength[idx] = newCycle;
-
             }
-            console.log("offset, rotate, done", countOffset, countRotate, countDone)
 
             if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
-                console.log("all done")
+                console.log("all done ", this.animationFrameCounters[idx])
                 console.log(rad2deg(rotFlapBack), rad2deg((Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating)), rad2deg(Math.PI / (this.numFramesRotating)), rad2deg( rotFlapBack * -1 / perPixelPause / 2), rad2deg( rotFlapBack * -1 / perPixelPause), this.flaps[idx].map(f => rad2deg(f.rotation.x)))
                 this.animationFrameCounters[idx] = 0;
-                this.runningCount += 1;
+                
             } else {
+
                 this.animationFrameCounters[idx] += 1;
             }
 

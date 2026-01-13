@@ -428,7 +428,7 @@ export class SplitflapHardware implements HardwareInterface {
         // at the very beginning, they are all available
         for (let ga of groupActions) {
             let time = this.getRealTiming(ga.tPlus);
-            const frame = Math.round(ga.tPlus * framesPerMs);
+            const frame = Math.round(ga.tPlus);
             console.log(time, frame)
 
             // cumulativeTime += time;
@@ -578,6 +578,8 @@ export class SplitflapHardware implements HardwareInterface {
 
         }
 
+        console.log("schedule is ", tickSchedule);
+        console.log("schedule is ",scheduled);
         let schedule = (f: number) => {
             return (i: number): [number | undefined, number | undefined] => {
                 let delaysInTicks = tickSchedule.get(i)!;
@@ -2040,15 +2042,18 @@ if (typeof window != 'undefined') {
 
     // start by taking this and converting the image to flips.
     let frame1 = new GroupAction(1, [[Action.FLIP, frameUnitId]]);
+    let frame2 = new GroupAction(2, [[Action.FLIP, frameUnitId]]);
     // keeping it at zero breaks first frame
     // let frame1 = new GroupAction(0, [[Action.FLIP, frameUnitId]]);
     console.log(frame1);
 
 
-    let finalMessage = "cheese".split("").map(c => new SplitflapState(c));
+    let msgString = "cheese";
+    msgString = "ejggug"
+    let finalMessage = msgString.split("").map(c => new SplitflapState(c));
     // the message should be from like 12 to 20 in row 7
     let finalState = [...new Array(h * w)].map(j => new SplitflapState(" "));
-    [...new Array("cheese".length).keys()].forEach(i => finalState[6 * w + i + 13] = finalMessage[i]);
+    [...new Array(msgString.length).keys()].forEach(i => finalState[6 * w + i + 13] = finalMessage[i]);
 
     // let schedule = scheduleDirectional(
     //     sfhw.units as SplitflapUnit[],
@@ -2059,12 +2064,15 @@ if (typeof window != 'undefined') {
     // );
 
     let schedule = scheduleConstantSpeed(sfhw.units as SplitflapUnit[], finalState, 1)
-    console.log(schedule)
-    let restGA = buildTimeline(schedule, 4);
+    let schedule2 = scheduleDirectional(sfhw.units as SplitflapUnit[], finalState, 1, sfhw, "LEFT_TO_RIGHT");
+    let schedule3 = scheduleSyncEnd(sfhw.units as SplitflapUnit[], finalState, 1)
+    // console.log(schedule)
+
+    let restGA = buildTimeline(schedule3, 4);
     console.log("frame 1 is ", frame1);
     console.log("other schedule is ", restGA);
-    sfhw.compile([frame1]);
-    // sfhw.compile([frame1, ...restGA]);
+    // sfhw.compile([frame1]);
+    sfhw.compile([frame1, frame2, ...restGA]);
     // now I want the position of the text.
     // row 7 from 12 to 20
 
@@ -2095,6 +2103,7 @@ function computeFlipDistance(unit: SplitflapUnit, target: SplitflapState): numbe
     }
 
     console.log((end - start + states.length) % states.length)
+    
     return (end - start + states.length) % states.length;
 }
 
