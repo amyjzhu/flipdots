@@ -579,7 +579,7 @@ export class SplitflapHardware implements HardwareInterface {
         }
 
         console.log("schedule is ", tickSchedule);
-        console.log("schedule is ",scheduled);
+        console.log("schedule is ", scheduled);
         let schedule = (f: number) => {
             return (i: number): [number | undefined, number | undefined] => {
                 let delaysInTicks = tickSchedule.get(i)!;
@@ -2001,27 +2001,27 @@ if (typeof window != 'undefined') {
     // TODO: the opposite doesn't work - you can't sparkle OUT 
     // parseToGroupAction(dandelion_basic);
 
-
     /*
-    // let brixels = new BrixelDisplay(10, 20);
-    // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
-    let brixelHw = BrixelSimHardware.Rectangular(10, 20);
+        
+        // let brixels = new BrixelDisplay(10, 20);
+        // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
+        let brixelHw = BrixelSimHardware.Rectangular(10, 20);
+    
+        let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
+    
+        let orrt = new OverrotateRevealTransition();
+        orrt.overrotateAt = id => {
+            let row = brixelHw.indexToCoord.get(id)![0];
+            console.log(row)
+            return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
+            // return 0.7
+        }
+        let actions2 = orrt.generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 300, brixelHw)
+        // console.log(actions)
+        // now, how do I do it so that it takes more time depending on its location?
+        brixelHw.compile(actions2);
+    */
 
-    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
-
-    let orrt = new OverrotateRevealTransition();
-    orrt.overrotateAt = id => {
-        let row = brixelHw.indexToCoord.get(id)![0];
-        console.log(row)
-        return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
-        // return 0.7
-    }
-    let actions2 = orrt.generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 300, brixelHw)
-    // console.log(actions)
-    // now, how do I do it so that it takes more time depending on its location?
-    brixelHw.compile(actions);
-
-*/
 
 
     let data = await getImages(["/animations/thinking.png"]);
@@ -2079,6 +2079,69 @@ if (typeof window != 'undefined') {
 
 }
 
+// need basically a set of things to generate directions
+
+type OrderedGrid = number[][];
+type GridOrder = (width: number, height: number) => OrderedGrid;
+
+export let bottomLeftWildfire: GridOrder = (width: number, height: number) => {
+    let botttomleft = 0;
+    let frontier: Set<number> = new Set();
+    frontier.add(botttomleft);
+
+    let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+    let counter = 0;
+    grid[0][0] = 0;
+
+    while (grid[height-1][width-1] == undefined) {
+        let newFrontier: Set<number> = new Set();
+
+
+        // prune frontier
+        // find the greatest coord per y value
+        let pareto = [...frontier].map(x => [ x % width, Math.floor(x / width)]).reduce((prevMaxes: [number, number][], curr: number[]) => {
+            let prevMaxAtThisY = prevMaxes.findIndex(a => a[1] == curr[1]);
+            if (prevMaxAtThisY == -1 || prevMaxes[prevMaxAtThisY][0] < curr[0]) {
+                prevMaxes = prevMaxes.splice(prevMaxAtThisY, 1);
+                prevMaxes.push(curr as [number, number]);
+            }
+            
+            return prevMaxes as [number, number][];
+        }, [] as [number, number][]);
+        console.log(pareto)
+
+        for (let point of pareto) {
+            let x = point[0];
+            let y = point[1];
+            newFrontier.add((y + 1) * width + x);
+            newFrontier.add((y + 1) * width + x + 1);
+            newFrontier.add(y * width + x + 1);
+        }
+        console.log([...newFrontier])
+        
+        frontier = newFrontier;
+        // now we fill in the grid and also prune the entries that don't belong 
+        // also this should be like, an actual frontier
+
+
+        for (let point of [...newFrontier]) {
+            let y = Math.floor(point / width);
+            let x = point % width;
+            if (x < width && y < height) {
+                grid[y][x] = counter;
+            }
+        }
+        counter++;
+    }
+
+    return grid;
+}
+
+
+
+
+
+
 // now I need to compile an example INTO group actions.
 // so... let me pop over to main and try to borrow one of those compilers? 
 
@@ -2103,7 +2166,7 @@ function computeFlipDistance(unit: SplitflapUnit, target: SplitflapState): numbe
     }
 
     console.log((end - start + states.length) % states.length)
-    
+
     return (end - start + states.length) % states.length;
 }
 
