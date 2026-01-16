@@ -2001,26 +2001,27 @@ if (typeof window != 'undefined') {
     // TODO: the opposite doesn't work - you can't sparkle OUT 
     // parseToGroupAction(dandelion_basic);
 
-    /*
-        
-        // let brixels = new BrixelDisplay(10, 20);
-        // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
-        let brixelHw = BrixelSimHardware.Rectangular(10, 20);
-    
-        let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
-    
-        let orrt = new OverrotateRevealTransition();
-        orrt.overrotateAt = id => {
-            let row = brixelHw.indexToCoord.get(id)![0];
-            console.log(row)
-            return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
-            // return 0.7
-        }
-        let actions2 = orrt.generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 300, brixelHw)
-        // console.log(actions)
-        // now, how do I do it so that it takes more time depending on its location?
-        brixelHw.compile(actions2);
-    */
+
+
+    // let brixels = new BrixelDisplay(10, 20);
+    // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
+    let brixelHw = BrixelSimHardware.Rectangular(10, 20);
+
+    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
+
+    let orrt = new OverrotateRevealTransition();
+    orrt.overrotateAt = id => {
+        let row = brixelHw.indexToCoord.get(id)![0];
+        console.log(row)
+        return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
+        // return 0.7
+    }
+    let actions2 = orrt.generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 300, brixelHw);
+    let actions3 = orrt.generateGroupActions(new CircleTarget(3, [4, 4], [10, 20]), new CircleTarget(4, [5, 5], [10, 20]), 300, brixelHw);
+    // console.log(actions)
+    // now, how do I do it so that it takes more time depending on its location?
+    brixelHw.compile(actions3);
+
 
 
 
@@ -2083,54 +2084,168 @@ if (typeof window != 'undefined') {
 
 type OrderedGrid = number[][];
 type GridOrder = (width: number, height: number) => OrderedGrid;
+type Mask = boolean[][];
+// what does this mean? get all units UP TO this time? 
+type TimeFunction = (t: number) => [number, number][];
+
+// untested but w/e
+export let timeFunctionFromGridAndMask = (order: GridOrder, shape: Mask): TimeFunction => {
+
+    let ordered = order(shape.length, shape[0].length);
+    let masked = shape.map((row, i) => row.map((c, j) => c ? ordered[i][j] : -1));
+
+    return (t: number) => {
+        return shape.map((row, i) => row.map((c, j) =>
+            masked[i][j] != -1 && masked[i][j] <= t ? [i, j] : undefined
+        )).flat().filter(i => i != undefined) as [number, number][];
+    }
+}
 
 export let bottomLeftWildfire: GridOrder = (width: number, height: number) => {
-    let botttomleft = 0;
-    let frontier: Set<number> = new Set();
+    let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+
+    for (let i = 0; i < height; i++) {
+        for (let j = 0; j < width; j++) {
+            grid[i][j] = Math.max(i, j);
+        }
+    }
+
+    return grid;
+}
+
+
+export let genericGrowFromPoint: (startAt: [number, number], growBy: (x: number, y: number) => [number, number][]) => GridOrder =
+    (startAt: [number, number], growBy: (x: number, y: number) => [number, number][]) => {
+        return (width: number, height: number) => {
+            let frontier: Set<[number, number]> = new Set();
+            frontier.add(startAt);
+
+            let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+            let counter = 1;
+            grid[startAt[1]][startAt[0]] = 0;
+
+
+            while (grid.some(x => x == undefined) || counter <= width * height) {
+                let newFrontier: Set<[number, number]> = new Set();
+
+                let currentFrontier = frontier;
+
+
+                let pareto = [...new Set(currentFrontier)]
+                // console.log("pareto:", pareto)
+
+                // console.log("new poins before adding", newFrontier)
+                for (let point of pareto) {
+                    let x = point[0];
+                    let y = point[1];
+
+                    let newPts = growBy(x, y);
+
+                    for (let pt of newPts) {
+                        let u = pt[0];
+                        let v = pt[1];
+                        if (u < width && u >= 0 && v < height && v >= 0) {
+                            // console.log(u, v, width, height)
+                            if (grid[v][u] == undefined) {
+                                newFrontier.add(pt as [number, number]);
+                            }
+                            // console.log(newFrontier)
+                        }
+                    }
+
+                }
+                frontier = newFrontier;
+                for (let point of [...newFrontier]) {
+                    grid[point[1]][point[0]] = counter;
+                }
+
+                counter++;
+            }
+
+            return grid;
+        }
+    }
+
+
+// wait I'm dumb... this is really a lot easier
+export let wildfireTemplate: GridOrder = (width: number, height: number) => {
+    let botttomleft: [number, number] = [0, 0];
+    let frontier: Set<[number, number]> = new Set();
     frontier.add(botttomleft);
 
     let grid = [...new Array(height)].map(_ => [... new Array(width)]);
-    let counter = 0;
+    let counter = 1;
     grid[0][0] = 0;
 
-    while (grid[height-1][width-1] == undefined) {
-        let newFrontier: Set<number> = new Set();
+
+    while (grid.some(x => x == undefined) || counter <= width * height) {
+        let newFrontier: Set<[number, number]> = new Set();
 
 
         // prune frontier
         // find the greatest coord per y value
-        let pareto = [...frontier].map(x => [ x % width, Math.floor(x / width)]).reduce((prevMaxes: [number, number][], curr: number[]) => {
-            let prevMaxAtThisY = prevMaxes.findIndex(a => a[1] == curr[1]);
-            if (prevMaxAtThisY == -1 || prevMaxes[prevMaxAtThisY][0] < curr[0]) {
-                prevMaxes = prevMaxes.splice(prevMaxAtThisY, 1);
-                prevMaxes.push(curr as [number, number]);
-            }
-            
-            return prevMaxes as [number, number][];
-        }, [] as [number, number][]);
-        console.log(pareto)
+        let currentFrontier = [...frontier].reduce((prevMaxes: [number, number][][], curr: number[]) => {
+            // for each column and row, we only want to keep the lowest and rightmost parts
+            let prevMaxesX = prevMaxes[0];
+            let prevMaxesY = prevMaxes[1];
 
+            let prevMaxAtThisY = prevMaxesY.findIndex(a => a[1] == curr[1]);
+            if (prevMaxAtThisY == -1 || prevMaxesY[prevMaxAtThisY][0] < curr[0]) {
+                // console.log(prevMaxAtThisY, " existing is ", prevMaxes[prevMaxAtThisY], " curr is ", curr)
+                // only remove if we also have a better 
+                if (prevMaxAtThisY != -1) {
+                    prevMaxesY.splice(prevMaxAtThisY, 1);
+                }
+                prevMaxesY.push(curr as [number, number]);
+            }
+
+            let prevMaxAtThisX = prevMaxesX.findIndex(a => a[0] == curr[0]);
+            if (prevMaxAtThisX == -1 || prevMaxesX[prevMaxAtThisX][1] < curr[1]) {
+                // only remove if we also have a better 
+                if (prevMaxAtThisX != -1) {
+                    prevMaxesX.splice(prevMaxAtThisX, 1);
+                }
+                prevMaxesX.push(curr as [number, number]);
+            }
+
+            return [prevMaxesX, prevMaxesY] as [number, number][][];
+        }, [[], []] as [number, number][][]);
+
+
+        let pareto = [...new Set([...currentFrontier[0], ...currentFrontier[1]])]
+        // console.log("pareto:", pareto)
+
+        // console.log("new poins before adding", newFrontier)
         for (let point of pareto) {
             let x = point[0];
             let y = point[1];
-            newFrontier.add((y + 1) * width + x);
-            newFrontier.add((y + 1) * width + x + 1);
-            newFrontier.add(y * width + x + 1);
+
+            let newPts = [[x, y + 1], [x + 1, y + 1], [x + 1, y]];
+
+            for (let pt of newPts) {
+                let u = pt[0];
+                let v = pt[1];
+                if (u < width && v < height) {
+                    // console.log(u, v, width, height)
+                    newFrontier.add(pt as [number, number]);
+                    // console.log(newFrontier)
+                }
+            }
+
         }
-        console.log([...newFrontier])
-        
+        // console.log([...newFrontier])
+
         frontier = newFrontier;
         // now we fill in the grid and also prune the entries that don't belong 
         // also this should be like, an actual frontier
 
 
         for (let point of [...newFrontier]) {
-            let y = Math.floor(point / width);
-            let x = point % width;
-            if (x < width && y < height) {
-                grid[y][x] = counter;
-            }
+            console.log(point)
+            grid[point[1]][point[0]] = counter;
         }
+
+        // console.log("grid update", grid)
         counter++;
     }
 

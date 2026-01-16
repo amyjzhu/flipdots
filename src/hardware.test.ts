@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { Action, bottomLeftWildfire, Colour, FlipdotHardware, GroupAction } from './hardware';
+import { Action, bottomLeftWildfire, Colour, FlipdotHardware, genericGrowFromPoint, GroupAction, wildfireTemplate } from './hardware';
 
 
 // test('expect a failure', () => {
@@ -27,7 +27,16 @@ import { Action, bottomLeftWildfire, Colour, FlipdotHardware, GroupAction } from
 //     hw.compileToFile([f1, f2, f3], "test-working.txt");
 // });
 
+let visGrid = (grid: number[][]) => grid.map(r => r.join(" ")).join("\n");
 test("testing grid", () => {
     let grid = bottomLeftWildfire(10, 10);
+    // let grid = wildfireTemplate(10, 10);
+    console.log(grid)
     console.log(grid.map(r => r.join(" ")).join("\n"))
+})
+
+test("testing generic", () => {
+    // I think it should just discard the ones that are already set 
+    let circle = genericGrowFromPoint([4,4], (x: number, y: number) => [[x+1,y+1],[x+1,y],[x,y+1],[x-1,y],[x-1,y+1],[x-1,y-1],[x,y-1],[x+1,y-1]])(10, 10);
+    console.log(visGrid(circle))
 })
