@@ -1037,6 +1037,7 @@ export class FlipdotSimHardware implements HardwareInterface {
     totalNumFrames: number = 0;
 
     dirsToTime: Map<string, (t: Time) => number[]> = new Map();
+    meshLocationStr: string = "";
 
     getRealTiming(time: Time): number {
         if (typeof time == "number") {
@@ -1044,6 +1045,15 @@ export class FlipdotSimHardware implements HardwareInterface {
         } else {
             return time[0] * this.flipDurationMS + time[2];
         }
+    }
+
+    async finalize3D() {
+        console.log("start")
+        this.simulation.makeArbitraryMeshDiscSetup(this.meshLocationStr).catch(_ => {
+            console.log("done")
+            return new Promise(i=>i);
+        });
+
     }
 
     constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string) {
@@ -1098,7 +1108,7 @@ export class FlipdotSimHardware implements HardwareInterface {
             if (meshInput == undefined) {
                 throw new Error("No mesh input and not flat");
             }
-            this.simulation.makeArbitraryMeshDiscSetup(meshInput);
+            this.meshLocationStr = meshInput;
             this.coordToIndex = i => i[0] // need to fix this
             this.indexToCoord = new Map(); // need to fix this 
         }
@@ -1182,6 +1192,7 @@ export class FlipdotSimHardware implements HardwareInterface {
         }
 
     }
+
 
     compile(groupActions: GroupAction[]) {
         console.log(groupActions)
@@ -2002,7 +2013,12 @@ if (typeof window != 'undefined') {
     // parseToGroupAction(dandelion_basic);
 
 
+    let offsetGroupActions = (ga: GroupAction[], t: Time): GroupAction[] => {
+        return ga.map(g => new GroupAction(g.tPlus + t, g.actions));
+    }
 
+
+    /*
     // let brixels = new BrixelDisplay(10, 20);
     // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
     let brixelHw = BrixelSimHardware.Rectangular(10, 20);
@@ -2013,15 +2029,21 @@ if (typeof window != 'undefined') {
     orrt.overrotateAt = id => {
         let row = brixelHw.indexToCoord.get(id)![0];
         console.log(row)
-        return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
+        return row == 2 ? 0.6 : row == 3 ? 0.7 : row == 4 ? 0.8 : row == 5 ? 0.9 : 1;
+        // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
         // return 0.7
     }
-    let actions2 = orrt.generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 300, brixelHw);
-    let actions3 = orrt.generateGroupActions(new CircleTarget(3, [4, 4], [10, 20]), new CircleTarget(4, [5, 5], [10, 20]), 300, brixelHw);
+    let actions1 = orrt.generateGroupActions(new CircleTarget(0, [4, 4], [10, 20]), new CircleTarget(1, [4, 4], [10, 20]), 300, brixelHw);
+    let actions2 = orrt.generateGroupActions(new CircleTarget(1, [4, 4], [10, 20]), new CircleTarget(3, [3, 3], [10, 20]), 300, brixelHw);
+    let actions3 = orrt.generateGroupActions(new CircleTarget(3, [3, 3], [10, 20]), new CircleTarget(5, [2, 2], [10, 20]), 300, brixelHw);
     // console.log(actions)
     // now, how do I do it so that it takes more time depending on its location?
-    brixelHw.compile(actions3);
+    let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
+    brixelHw.compile(actionsTogether);
 
+    // let's try to make a splash outwards..
+    // I think this is like a 
+    // rotate centre, rotate outer ring, rotate even outer ring
 
 
 
@@ -2076,7 +2098,13 @@ if (typeof window != 'undefined') {
     sfhw.compile([frame1, frame2, ...restGA]);
     // now I want the position of the text.
     // row 7 from 12 to 20
+*/
 
+    let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
+    threed.finalize3D().then(_ => {
+        console.log("got it")
+        console.log(threed.simulation.getProjectionFor3DHardware([0,0,-1]));
+    });
 
 }
 
@@ -2086,10 +2114,12 @@ type OrderedGrid = number[][];
 type GridOrder = (width: number, height: number) => OrderedGrid;
 type Mask = boolean[][];
 // what does this mean? get all units UP TO this time? 
-type TimeFunction = (t: number) => [number, number][];
+type TimeFunction = (t: number) => UnitId[];
+// how do I get a projection? 
+type Projection = (maskGridIdx: [number, number]) => UnitId;
 
 // untested but w/e
-export let timeFunctionFromGridAndMask = (order: GridOrder, shape: Mask): TimeFunction => {
+export let timeFunctionFromGridAndMask = (order: GridOrder, shape: Mask, projection: Projection): TimeFunction => {
 
     let ordered = order(shape.length, shape[0].length);
     let masked = shape.map((row, i) => row.map((c, j) => c ? ordered[i][j] : -1));
@@ -2097,7 +2127,7 @@ export let timeFunctionFromGridAndMask = (order: GridOrder, shape: Mask): TimeFu
     return (t: number) => {
         return shape.map((row, i) => row.map((c, j) =>
             masked[i][j] != -1 && masked[i][j] <= t ? [i, j] : undefined
-        )).flat().filter(i => i != undefined) as [number, number][];
+        )).flat().filter(i => i != undefined).map(item => projection(item as [number, number])) as UnitId[];
     }
 }
 

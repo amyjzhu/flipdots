@@ -45,6 +45,9 @@ export class RowOfDiscs {
 
     audios: THREE.Object3D[] = [];
 
+    meshGeometry: THREE.BufferGeometry | undefined;
+    mesh: THREE.Mesh | undefined;
+    units: THREE.Vector3[] | undefined
 
     constructor(width: number, height: number, flat: boolean = true) {
 
@@ -401,19 +404,19 @@ varying vec3 vColor;
 
     moveCircleAcrossMesh(geometry: THREE.BufferGeometry): number[][] {
         // build neighbors
-        
+
         const neighbors = buildFaceAdjacency(geometry);
 
         console.log(neighbors)
         // find starting face pointing most in +X
         let startFace = faceMostExtremeInDirection(geometry, new THREE.Vector3(1, 0, 0));
         console.log(startFace)
-        
+
         // select ring at radius r
 
         let allFaces = [];
         for (let i = 0; i < 5; i++) {
-            
+
             // compute geodesic distances
             // this is so inefficient lol 
             let info = computeFaceGeodesicDistances(startFace, neighbors, geometry);
@@ -433,7 +436,7 @@ varying vec3 vColor;
         return allFaces;
     }
 
-    async makeArbitraryMeshDiscSetup(meshPath: string) {
+    async makeArbitraryMeshDiscSetup(meshPath: string): Promise<any> {
         const loader = new STLLoader();
         // const object = await loader.loadAsync('public/lowpolysphere.stl');
 
@@ -470,6 +473,7 @@ varying vec3 vColor;
             const quaternion = new THREE.Quaternion();
 
             // 6. Loop through faces
+            let units = [];
             for (let i = 0; i < faceCount; i++) {
                 vA.fromBufferAttribute(pos, i * 3 + 0);
                 vB.fromBufferAttribute(pos, i * 3 + 1);
@@ -490,6 +494,7 @@ varying vec3 vColor;
                 // Set instance matrix
                 matrix.compose(faceCenter, quaternion, new THREE.Vector3(1, 1, 1));
                 this.instanced.setMatrixAt(i, matrix);
+                units.push(faceCenter);
 
                 // reset reusable vectors
                 faceCenter.set(0, 0, 0);
@@ -513,12 +518,132 @@ varying vec3 vColor;
             // should be behind the discs.
             // backingPiece.position.set(-this.RADX - backingBorder / 2, -this.RADY - backingBorder / 2, offsetZ)
 
-
+            console.log("set up mesh")
+            this.meshGeometry = geometry;
+            this.units = units;
+            this.mesh = new THREE.Mesh(
+                geometry,
+                new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
+            );
         });
 
         // I think if we want this mode, we assume there's only one "row" and everything is a column
         this.idxToUpdate = [...Array(this.height)].map(_ => []);
         this.discStates = [...Array(this.height)].map(_ => [...Array(this.width)].map(_ => false));
+
+        return new Promise(i => i);
+    }
+
+
+    // filled matrix with Unit Ids
+    getProjectionFor3DHardware(rayDir: [number, number, number]): (number | undefined)[][] | undefined {
+        console.log("in projection")
+        if (this.meshGeometry == undefined) {
+            console.log("lol")
+            return undefined;
+        }
+
+        const dir = new THREE.Vector3(...rayDir).normalize();
+
+        function buildBasis(dir: THREE.Vector3) {
+            const up = Math.abs(dir.y) < 0.99
+                ? new THREE.Vector3(0, 1, 0)
+                : new THREE.Vector3(1, 0, 0);
+
+            const right = new THREE.Vector3().crossVectors(up, dir).normalize();
+            const trueUp = new THREE.Vector3().crossVectors(dir, right).normalize();
+
+            return { right, up: trueUp };
+        }
+
+
+        function isVisible(
+            point: THREE.Vector3,
+            mesh: THREE.Mesh,
+            dir: THREE.Vector3
+        ): boolean {
+            const raycaster = new THREE.Raycaster();
+
+            // Offset slightly so we don’t immediately hit the face we’re on
+            const origin = point.clone().addScaledVector(dir, 1e-4);
+            raycaster.set(origin, dir.clone().negate());
+
+            const hits = raycaster.intersectObject(mesh, false);
+            if (hits.length === 0) return true;
+
+            // If the closest intersection is extremely close, assume it’s this face
+            return hits[0].distance < 1e-3;
+        }
+        const { right, up } = buildBasis(dir);
+
+        type ProjectedUnit = {
+            id: number;
+            u: number;
+            v: number;
+            depth: number;
+        };
+
+        const projected: ProjectedUnit[] = [];
+
+        for (let i = 0; i < this.units!.length; i++) {
+            let p = this.units![i];
+
+            if (!isVisible(p, this.mesh!, dir)) continue;
+
+            console.log("hit point")
+            projected.push({
+                id: i,
+                u: p.dot(right),
+                v: p.dot(up),
+                depth: p.dot(dir) // useful for tie-breaking
+            });
+        }
+
+        const us = projected.map(p => p.u);
+        const vs = projected.map(p => p.v);
+
+        const minU = Math.min(...us);
+        const maxU = Math.max(...us);
+        const minV = Math.min(...vs);
+        const maxV = Math.max(...vs);
+
+
+        function estimateUnitSpacing(points: THREE.Vector3[]): number {
+            let minDist = Infinity;
+
+            for (let i = 0; i < points.length; i++) {
+                for (let j = i + 1; j < points.length; j++) {
+                    const d = points[i].distanceTo(points[j]);
+                    if (d > 0 && d < minDist) minDist = d;
+                }
+            }
+
+            return minDist === Infinity ? 1 : minDist;
+        }
+        const cellSize = estimateUnitSpacing(this.units!); // or inferred
+        const cols = Math.ceil((maxU - minU) / cellSize);
+        const rows = Math.ceil((maxV - minV) / cellSize);
+
+        const grid: (number | undefined)[][] =
+            Array.from({ length: rows }, () => Array(cols).fill(undefined));
+
+        const depthGrid: number[][] =
+            Array.from({ length: rows }, () => Array(cols).fill(Infinity));
+
+        for (const p of projected) {
+            const x = Math.floor((p.u - minU) / cellSize);
+            const y = Math.floor((p.v - minV) / cellSize);
+
+            if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+
+            if (p.depth < depthGrid[y][x]) {
+                depthGrid[y][x] = p.depth;
+                grid[y][x] = p.id;
+            }
+        }
+
+        return grid;
+
     }
 
 
