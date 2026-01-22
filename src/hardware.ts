@@ -5,6 +5,7 @@ import { BrixelDisplay } from './brixel';
 import { SplitFlapDisplay } from './splitflap';
 import { getImages } from './util';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
+import { start } from 'repl';
 
 
 type Vec2 = { x: number; y: number }
@@ -1051,7 +1052,7 @@ export class FlipdotSimHardware implements HardwareInterface {
         console.log("start")
         this.simulation.makeArbitraryMeshDiscSetup(this.meshLocationStr).catch(_ => {
             console.log("done")
-            return new Promise(i=>i);
+            return new Promise(i => i);
         });
 
     }
@@ -1719,6 +1720,77 @@ export class StochasticTransition implements Transition {
 }
 
 export class WaveTransition implements Transition {
+    order: GridOrder;
+
+    constructor(order: GridOrder)  {
+        this.order = order;
+    }
+
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        // how many steps do I get though?
+        // let flipTiming = h.actionDurations.get(Action.FLIP)!;
+
+        let unitsToFlap = new Set(diffIndices(o1, o2, h));
+        
+        // let steps = t / flipTiming;
+        // what's the "width" of the units, so to speak?
+
+        // let's take the order that spans the shape
+        let coords = [...unitsToFlap].map(u => h.indexToCoord.get(u)!);
+        
+
+
+        let minX = Math.min(...coords.map(u => u[0]))
+        let maxX = Math.max(...coords.map(u => u[0]))
+        let minY = Math.min(...coords.map(u => u[1]))
+        let maxY = Math.max(...coords.map(u => u[1]))
+
+        let spanX = maxX - minX;
+        let spanY = maxY - minY;
+        
+        let grid = [...new Array(spanY)].map(_ => new Array(spanX).map(_ => false));
+        coords.forEach(c => {
+            let x = c[0] - minX;
+            let y = c[1] - minY;
+            grid[y][x] = true;
+        })
+
+        let timeFunction = this.order.applyMask(grid, i => [i]);
+
+
+        let actions: GroupAction[] = [];
+
+        let unitsSoFar: Set<UnitId> = new Set();
+
+        for (let time = 0; time < t; time += timePerRow) {
+
+            // now we are going to make each step with time
+            // drawFrame(rectSize, [, ], hardware);
+
+            // time is from 0 to 1
+            // console.log("bbbbb")
+            let unitsPassedOver = new Set(this.direction(time / t));
+            console.log(unitsPassedOver)
+            let draw = unitsPassedOver.intersection(unitsToFlap);
+            console.log(unitsToFlap)
+            console.log(draw);
+
+            let update = draw.difference(unitsSoFar);
+            unitsSoFar = unitsSoFar.union(update);
+            let action = new GroupAction(time, [[Action.FLIP, [...update]]]);
+
+            actions.push(action);
+        }
+
+
+        console.log(actions)
+        return actions;
+
+    }
+}
+
+
+export class WaveTransitionOld implements Transition {
     dir: [number, number];
     direction: (t: Time) => number[];
     // I guess a time vector field?
@@ -2103,13 +2175,119 @@ if (typeof window != 'undefined') {
     let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
     threed.finalize3D().then(_ => {
         console.log("got it")
-        console.log(threed.simulation.getProjectionFor3DHardware([0,0,-1]));
+        console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
     });
 
 }
 
 // need basically a set of things to generate directions
 
+// need a v2 of this where everything is a function of gridorder
+// okay, let's try again...
+type OrderedGrid = number[][];
+type Projection = (maskGridIdx: [number, number]) => UnitId;
+
+abstract class GridOrder {
+    applyMask(shape: boolean[][], projection: Projection): ((t: number) => UnitId[]) {
+        let ordered = this.generateGrid(shape.length, shape[0].length);
+        let masked = shape.map((row, i) => row.map((c, j) => c ? ordered[i][j] : -1));
+
+        return (t: number) => {
+            return shape.map((row, i) => row.map((c, j) =>
+                masked[i][j] != -1 && masked[i][j] <= t ? [i, j] : undefined
+            )).flat().filter(i => i != undefined).map(item => projection(item as [number, number])) as UnitId[];
+        }
+    }
+
+    abstract generateGrid(width: number, height: number): OrderedGrid;
+}
+
+
+export class BottomLeftWildfire extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                grid[i][j] = Math.max(i, j);
+            }
+        }
+
+        return grid;
+    }
+}
+
+// we actually want the time to represent something though 
+export class GrowFromPoint extends GridOrder {
+    startAt: [number, number];
+    growBy: (x: number, y: number) => [number, number][];
+    stepTiming: number[]; // need to figure out what type to make this.. maybe just a list that cycles?
+
+    constructor(startAt: [number, number], growBy: (x: number, y: number) => [number, number][], stepTiming: number[] = [1]) {
+        super();
+        this.startAt = startAt;
+        this.growBy = growBy;
+        this.stepTiming = stepTiming;
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        let frontier: Set<[number, number]> = new Set();
+        frontier.add(this.startAt);
+
+        let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+        let counter = 0;
+        let stepTimingIdx = 0;
+        grid[this.startAt[1]][this.startAt[0]] = 0;
+
+
+        while (grid.some(x => x == undefined) || counter <= width * height) {
+            let newFrontier: Set<[number, number]> = new Set();
+
+            let currentFrontier = frontier;
+
+
+            let pareto = [...new Set(currentFrontier)]
+            // console.log("pareto:", pareto)
+
+            // console.log("new poins before adding", newFrontier)
+            for (let point of pareto) {
+                let x = point[0];
+                let y = point[1];
+
+                let newPts = this.growBy(x, y);
+
+                for (let pt of newPts) {
+                    let u = pt[0];
+                    let v = pt[1];
+                    if (u < width && u >= 0 && v < height && v >= 0) {
+                        // console.log(u, v, width, height)
+                        if (grid[v][u] == undefined) {
+                            newFrontier.add(pt as [number, number]);
+                        }
+                        // console.log(newFrontier)
+                    }
+                }
+
+            }
+            frontier = newFrontier;
+            for (let point of [...newFrontier]) {
+                grid[point[1]][point[0]] = counter;
+            }
+
+            // need to index into steptiming 
+            counter += this.stepTiming[stepTimingIdx]
+            stepTimingIdx = (stepTimingIdx + 1) % this.stepTiming.length;
+        }
+
+        return grid;
+    }
+}
+
+
+
+
+
+/*
 type OrderedGrid = number[][];
 type GridOrder = (width: number, height: number) => OrderedGrid;
 type Mask = boolean[][];
@@ -2282,7 +2460,7 @@ export let wildfireTemplate: GridOrder = (width: number, height: number) => {
     return grid;
 }
 
-
+*/
 
 
 
