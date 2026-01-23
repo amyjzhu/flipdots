@@ -1755,13 +1755,14 @@ export class WaveTransition implements Transition {
             grid[y][x] = true;
         })
 
-        let timeFunction = this.order.applyMask(grid, i => [i]);
+        let timeFunction = this.order.applyMask(grid, i => h.coordToIndex(i));
 
 
         let actions: GroupAction[] = [];
 
         let unitsSoFar: Set<UnitId> = new Set();
 
+        // maybe ti should give you a time list ike Adriana suggested 
         for (let time = 0; time < t; time += timePerRow) {
 
             // now we are going to make each step with time
@@ -1769,11 +1770,13 @@ export class WaveTransition implements Transition {
 
             // time is from 0 to 1
             // console.log("bbbbb")
-            let unitsPassedOver = new Set(this.direction(time / t));
-            console.log(unitsPassedOver)
-            let draw = unitsPassedOver.intersection(unitsToFlap);
-            console.log(unitsToFlap)
-            console.log(draw);
+            // let unitsPassedOver = new Set(this.direction(time / t));
+            // console.log(unitsPassedOver)
+            // let draw = unitsPassedOver.intersection(unitsToFlap);
+            // console.log(unitsToFlap)
+            // console.log(draw);
+        
+            let draw = new Set(timeFunction(time));
 
             let update = draw.difference(unitsSoFar);
             unitsSoFar = unitsSoFar.union(update);
