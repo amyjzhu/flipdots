@@ -1731,14 +1731,8 @@ export class WaveTransition implements Transition {
         // let flipTiming = h.actionDurations.get(Action.FLIP)!;
 
         let unitsToFlap = new Set(diffIndices(o1, o2, h));
-        
-        // let steps = t / flipTiming;
-        // what's the "width" of the units, so to speak?
 
-        // let's take the order that spans the shape
         let coords = [...unitsToFlap].map(u => h.indexToCoord.get(u)!);
-        
-
 
         let minX = Math.min(...coords.map(u => u[0]))
         let maxX = Math.max(...coords.map(u => u[0]))
@@ -1755,7 +1749,7 @@ export class WaveTransition implements Transition {
             grid[y][x] = true;
         })
 
-        let timeFunction = this.order.applyMask(grid, i => h.coordToIndex(i));
+        let [timeFunction, times] = this.order.applyMask(grid, i => h.coordToIndex(i));
 
 
         let actions: GroupAction[] = [];
@@ -1763,19 +1757,9 @@ export class WaveTransition implements Transition {
         let unitsSoFar: Set<UnitId> = new Set();
 
         // maybe ti should give you a time list ike Adriana suggested 
-        for (let time = 0; time < t; time += timePerRow) {
+        for (let ti = 0; ti < times.length; ti += 1) {
+            let time = times[ti];
 
-            // now we are going to make each step with time
-            // drawFrame(rectSize, [, ], hardware);
-
-            // time is from 0 to 1
-            // console.log("bbbbb")
-            // let unitsPassedOver = new Set(this.direction(time / t));
-            // console.log(unitsPassedOver)
-            // let draw = unitsPassedOver.intersection(unitsToFlap);
-            // console.log(unitsToFlap)
-            // console.log(draw);
-        
             let draw = new Set(timeFunction(time));
 
             let update = draw.difference(unitsSoFar);
@@ -2187,19 +2171,35 @@ if (typeof window != 'undefined') {
 
 // need a v2 of this where everything is a function of gridorder
 // okay, let's try again...
+
+
 type OrderedGrid = number[][];
 type Projection = (maskGridIdx: [number, number]) => UnitId;
 
+
+
 abstract class GridOrder {
-    applyMask(shape: boolean[][], projection: Projection): ((t: number) => UnitId[]) {
+    getTimeFunction(ordered: OrderedGrid, projection: Projection): (t: number) => UnitId[] {
+        return (t: number) => {
+            return ordered.map((row, i) => row.map((c, j) =>
+                ordered[i][j] != -1 && ordered[i][j] <= t ? [i, j] : undefined)
+            .flat().filter(i => i != undefined).map(item => projection(item as [number, number])) as UnitId[]);
+        }
+    }
+
+    // return times that change
+    applyMask(shape: boolean[][]): [number[][], number[]] {
         let ordered = this.generateGrid(shape.length, shape[0].length);
         let masked = shape.map((row, i) => row.map((c, j) => c ? ordered[i][j] : -1));
 
-        return (t: number) => {
-            return shape.map((row, i) => row.map((c, j) =>
+        let times = masked.flat().filter(t => t != -1);
+        times.sort();
+
+        shape.map((row, i) => row.map((c, j) =>
                 masked[i][j] != -1 && masked[i][j] <= t ? [i, j] : undefined
-            )).flat().filter(i => i != undefined).map(item => projection(item as [number, number])) as UnitId[];
-        }
+            ));
+
+        return [masked, times]
     }
 
     abstract generateGrid(width: number, height: number): OrderedGrid;
@@ -2287,7 +2287,17 @@ export class GrowFromPoint extends GridOrder {
 }
 
 
+// what if we had a transformer on the grid ordering 
+let StutterOrder = (originalOrder: GridOrder): (shape: boolean[][], projection: Projection) => [(t: number) => UnitId[], number[]] => {
+    // can it modify the method itself? 
+    // 
+    return (shape: boolean[][], projection: Projection) => {
+        let grid = originalOrder.applyMask(shape, projection);
+        // randomly swap some of the orders
 
+    }
+    
+}
 
 
 /*
