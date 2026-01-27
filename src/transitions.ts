@@ -1,5 +1,6 @@
-import { HardwareInterface, GroupAction, Action, Duration, GridOrder, Time, UnitId } from "./hardware";
+import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId } from "./hardware";
 import { Target } from "./language";
+import { GridOrder, StutterOrder } from "./order";
 
 export interface Transition {
     // just curry these later 
@@ -82,72 +83,6 @@ function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
     return result.map(c => h.coordToIndex(c));
 }
 
-
-
-// let's implement a transition...
-
-
-// oh I know the problem. the background isn't drawn.
-// didn't I do something about this before...?
-
-export class SnapTransition implements Transition {
-    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
-
-        let flip = diffIndices(o1, o2, h);
-        console.log(flip)
-        return [new GroupAction(t, [[Action.FLIP, flip]])];
-
-
-    }
-
-}
-
-// DITHERING IN MOTION - what does it mean?
-// different effects are like... 
-// how do I squeeze MORE MOTION out ofthings
-
-export class FlipTransition implements Transition {
-    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
-
-        // o1 and o2 - for things not 
-        // the difference is things that must get flipped.
-        // everything else must stay the same
-        let oddFlips = new Set(diffIndices(o1, o2, h));
-        // the first flips are this, but the subsequent flips should just be the same as o1.
-        let subsequent = [];
-        let o2Flips = o2.draw();
-        for (let i = 0; i < o2Flips.length; i++) {
-            for (let j = 0; j < o2Flips[0].length; j++) {
-                if (o2Flips[i][j]) {
-                    subsequent.push(h.coordToIndex([i, j]));
-                }
-            }
-        }
-
-        // how many flips should I do?
-        let flipTiming = h.actionDurations.get(Action.FLIP)!;
-        let maxFlips = Math.floor(t / flipTiming);
-        let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;
-        let evenCount = maxFlips % 2 == 1 ? maxFlips : maxFlips - 1;
-
-        let groupActions: GroupAction[] = [];
-
-        for (let i = 0; i < oddCount; i++) {
-            let time = i * flipTiming;
-            console.log("time is ", time)
-            let idxes = [...oddFlips];
-            if (i != 0) {
-                idxes = subsequent;
-            }
-            let action = new GroupAction(time, [[Action.FLIP, idxes]])
-            groupActions.push(action);
-        }
-
-        return groupActions;
-        // one extra at the end 
-    }
-    // just keep flipping
-}
 
 
 /**
@@ -512,42 +447,101 @@ function generateActivationSequence(units: UnitId[], startId: UnitId, h: Hardwar
 }
 
 
-export class StochasticTransition implements Transition {
-    startingId: UnitId;
+// let's implement a transition...
 
-    constructor(starting: UnitId) {
-        this.startingId = starting;
+
+// oh I know the problem. the background isn't drawn.
+// didn't I do something about this before...?
+
+export class SnapTransition implements Transition {
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+
+        let flip = diffIndices(o1, o2, h);
+        console.log(flip)
+        return [new GroupAction(t, [[Action.FLIP, flip]])];
+
+
+    }
+
+}
+
+// DITHERING IN MOTION - what does it mean?
+// different effects are like... 
+// how do I squeeze MORE MOTION out ofthings
+
+export class FlipTransition implements Transition {
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+
+        // o1 and o2 - for things not 
+        // the difference is things that must get flipped.
+        // everything else must stay the same
+        let oddFlips = new Set(diffIndices(o1, o2, h));
+        // the first flips are this, but the subsequent flips should just be the same as o1.
+        let subsequent = [];
+        let o2Flips = o2.draw();
+        for (let i = 0; i < o2Flips.length; i++) {
+            for (let j = 0; j < o2Flips[0].length; j++) {
+                if (o2Flips[i][j]) {
+                    subsequent.push(h.coordToIndex([i, j]));
+                }
+            }
+        }
+
+        // how many flips should I do?
+        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        let maxFlips = Math.floor(t / flipTiming);
+        let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;
+        let evenCount = maxFlips % 2 == 1 ? maxFlips : maxFlips - 1;
+
+        let groupActions: GroupAction[] = [];
+
+        for (let i = 0; i < oddCount; i++) {
+            let time = i * flipTiming;
+            console.log("time is ", time)
+            let idxes = [...oddFlips];
+            if (i != 0) {
+                idxes = subsequent;
+            }
+            let action = new GroupAction(time, [[Action.FLIP, idxes]])
+            groupActions.push(action);
+        }
+
+        return groupActions;
+        // one extra at the end 
+    }
+    // just keep flipping
+}
+
+
+
+export class StochasticTransition implements Transition {
+    order: GridOrder;
+    // startingId: UnitId;
+
+    constructor(order: GridOrder) {
+        this.order = order;
     }
 
     // I want to give an ordering to the 
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
         let unitsToFlap = diffIndices(o1, o2, h);
 
-        let activations = generateActivationSequence(unitsToFlap, this.startingId, h);
+        
+        let [timeGrid, times] = StutterOrder(this.order)(generateMaskFromCoords(unitsToFlap), (i: [number, number]) => h.coordToIndex(i)!);
 
-        // round up
-        // want to clamp to 
-        let minClamp = 1;
-        let maxClamp = t - 1
-        activations = activations.map(a => [Math.round(a[0] * (maxClamp - minClamp)) + minClamp, a[1]])
-        console.log(activations)
         let actions: GroupAction[] = []
-        let time = activations[0][0];
-        let groupActUnits = [];
-        for (let act of activations) {
-            let t = act[0];
-            console.log(t)
-            if (time == t) {
-                groupActUnits.push(act[1]);
-            } else {
-                actions.push(new GroupAction(time, [[Action.FLIP, groupActUnits]]));
-                time = act[0];
-                groupActUnits = [];
-            }
+
+        for (let t of times) {
+            let units = timeGrid.map((r, ri) => r.reduce((acc: number[], c: number, ci: number) => {
+                if (c == t) {
+                    acc.push(h.coordToIndex([ci, ri]));
+                }
+
+                return acc;
+            }, [] as number[])).flat();
+
+            actions.push(new GroupAction(t, [[Action.FLIP, units]]));
         }
-
-        actions.push(new GroupAction(time, [[Action.FLIP, groupActUnits]]));
-
 
         return actions;
     }
@@ -555,20 +549,8 @@ export class StochasticTransition implements Transition {
 
 }
 
-export class WaveTransition implements Transition {
-    order: GridOrder;
-
-    constructor(order: GridOrder) {
-        this.order = order;
-    }
-
-    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
-        // how many steps do I get though?
-        // let flipTiming = h.actionDurations.get(Action.FLIP)!;
-
-        let unitsToFlap = new Set(diffIndices(o1, o2, h));
-
-        let coords = [...unitsToFlap].map(u => h.indexToCoord.get(u)!);
+export let generateMaskFromCoords = (units: UnitId[]) => {
+    let coords = [...units].map(u => h.indexToCoord.get(u)!);
 
         let minX = Math.min(...coords.map(u => u[0]))
         let maxX = Math.max(...coords.map(u => u[0]))
@@ -584,6 +566,24 @@ export class WaveTransition implements Transition {
             let y = c[1] - minY;
             grid[y][x] = true;
         })
+
+        return grid;
+}
+
+export class WaveTransition implements Transition {
+    order: GridOrder;
+
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        // how many steps do I get though?
+        // let flipTiming = h.actionDurations.get(Action.FLIP)!;
+
+        let unitsToFlap = new Set(diffIndices(o1, o2, h));
+
+        let grid = generateMaskFromCoords([...unitsToFlap]);
 
         let [timeGrid, times] = this.order.applyMask(grid);
         let timeFunction = this.order.getTimeFunction(timeGrid, i => h.coordToIndex(i));
@@ -614,103 +614,113 @@ export class WaveTransition implements Transition {
 }
 
 
-export class WaveTransitionOld implements Transition {
-    dir: [number, number];
-    direction: (t: Time) => number[];
-    // I guess a time vector field?
-    start: UnitId
+// export class WaveTransitionOld implements Transition {
+//     dir: [number, number];
+//     direction: (t: Time) => number[];
+//     // I guess a time vector field?
+//     start: UnitId
 
-    // how do I specify this.........
-    constructor(direction: (t: Time) => number[], dir: [number, number], start: UnitId) {
-        this.direction = direction;
-        this.dir = dir;
-        this.start = start;
-    }
-
-
-    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
-        // how many steps do I get though?
-        // let flipTiming = h.actionDurations.get(Action.FLIP)!;
-
-        console.log(o1.draw())
-        console.log(o2.draw())
-        let unitsToFlap = new Set(diffIndices(o1, o2, h));
-        console.log(unitsToFlap);
-        // let steps = t / flipTiming;
-        // what's the "width" of the units, so to speak?
-
-        let first = this.direction(0);
-        let last = this.direction(1);
-
-        // console.log(first);
-        // console.log(last);
-        let maxDistance2 = maxL1Distance(first, last, h);
-        // TODO: max distance actually depends on the drawing shape
-
-        let max = maxDirectionalGraphDistance([...unitsToFlap], (i: number) => h.indexToCoord.get(i)!, h.unitAdjacency, this.dir)!
-
-        // let maxDistance = 5
-        console.log("max dist is", max, maxDistance2)
-        // TODO: why isn't it the full 15 frames? 
-
-        // you know what forget it. I'm calling this function again.
-        // TODO: OPTIMIZE/DECIDE WHERE THIS SHOULD LIVE!
-        let fn = generateDirection(this.start, this.dir, h);
-        let smallest = fn.timeOf(max.start)!;
-        let largest = fn.timeOf(max.end)!;
-        // console.log(`min is ${max.start} at time ${smallest}, max is ${max.end} at time ${largest}, giving ${smallest-largest} maxDistance2);
-
-        // let maxDistance = largest - smallest;
-        let maxDistance = max.distance
-
-        // in the time that I have, how much distance must I cover? 
-        let timePerRow = maxDistance / t; // number of rows divided by time
-        // TODO: time should actually only start AT the first unit... 
-        console.log(timePerRow)
-
-        let actions: GroupAction[] = [];
-
-        let unitsSoFar: Set<UnitId> = new Set();
-
-        for (let time = 0; time < t; time += timePerRow) {
-
-            // now we are going to make each step with time
-            // drawFrame(rectSize, [, ], hardware);
-
-            // time is from 0 to 1
-            // console.log("bbbbb")
-            let unitsPassedOver = new Set(this.direction(time / t));
-            console.log(unitsPassedOver)
-            let draw = unitsPassedOver.intersection(unitsToFlap);
-            console.log(unitsToFlap)
-            console.log(draw);
-
-            let update = draw.difference(unitsSoFar);
-            unitsSoFar = unitsSoFar.union(update);
-            let action = new GroupAction(time, [[Action.FLIP, [...update]]]);
-
-            actions.push(action);
-        }
+//     // how do I specify this.........
+//     constructor(direction: (t: Time) => number[], dir: [number, number], start: UnitId) {
+//         this.direction = direction;
+//         this.dir = dir;
+//         this.start = start;
+//     }
 
 
-        console.log(actions)
-        return actions;
+//     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+//         // how many steps do I get though?
+//         // let flipTiming = h.actionDurations.get(Action.FLIP)!;
 
-    }
+//         console.log(o1.draw())
+//         console.log(o2.draw())
+//         let unitsToFlap = new Set(diffIndices(o1, o2, h));
+//         console.log(unitsToFlap);
+//         // let steps = t / flipTiming;
+//         // what's the "width" of the units, so to speak?
 
-    // what's the difference between effect and transition?
-    // transiton can perform 
-}
+//         let first = this.direction(0);
+//         let last = this.direction(1);
+
+//         // console.log(first);
+//         // console.log(last);
+//         let maxDistance2 = maxL1Distance(first, last, h);
+//         // TODO: max distance actually depends on the drawing shape
+
+//         let max = maxDirectionalGraphDistance([...unitsToFlap], (i: number) => h.indexToCoord.get(i)!, h.unitAdjacency, this.dir)!
+
+//         // let maxDistance = 5
+//         console.log("max dist is", max, maxDistance2)
+//         // TODO: why isn't it the full 15 frames? 
+
+//         // you know what forget it. I'm calling this function again.
+//         // TODO: OPTIMIZE/DECIDE WHERE THIS SHOULD LIVE!
+//         let fn = generateDirection(this.start, this.dir, h);
+//         let smallest = fn.timeOf(max.start)!;
+//         let largest = fn.timeOf(max.end)!;
+//         // console.log(`min is ${max.start} at time ${smallest}, max is ${max.end} at time ${largest}, giving ${smallest-largest} maxDistance2);
+
+//         // let maxDistance = largest - smallest;
+//         let maxDistance = max.distance
+
+//         // in the time that I have, how much distance must I cover? 
+//         let timePerRow = maxDistance / t; // number of rows divided by time
+//         // TODO: time should actually only start AT the first unit... 
+//         console.log(timePerRow)
+
+//         let actions: GroupAction[] = [];
+
+//         let unitsSoFar: Set<UnitId> = new Set();
+
+//         for (let time = 0; time < t; time += timePerRow) {
+
+//             // now we are going to make each step with time
+//             // drawFrame(rectSize, [, ], hardware);
+
+//             // time is from 0 to 1
+//             // console.log("bbbbb")
+//             let unitsPassedOver = new Set(this.direction(time / t));
+//             console.log(unitsPassedOver)
+//             let draw = unitsPassedOver.intersection(unitsToFlap);
+//             console.log(unitsToFlap)
+//             console.log(draw);
+
+//             let update = draw.difference(unitsSoFar);
+//             unitsSoFar = unitsSoFar.union(update);
+//             let action = new GroupAction(time, [[Action.FLIP, [...update]]]);
+
+//             actions.push(action);
+//         }
+
+
+//         console.log(actions)
+//         return actions;
+
+//     }
+
+//     // what's the difference between effect and transition?
+//     // transiton can perform 
+// }
 
 
 export class OverrotateRevealTransition implements Transition {
+    order: GridOrder;
     overrotateAt: (unit: UnitId) => Time = _ => 0.8;
     overrotateDeg: (unit: UnitId) => number = _ => 15;
 
+    constructor(order: GridOrder) {
+        // todo: this order actually specifies the beginning time.
+        this.order = order;
+    }
+
     // wavefront target -> it's a pixel path
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
-
+        
         let flip = diffIndices(o1, o2, h);
+
+        // hmm... annoying
+        let mask = generateMaskFromCoords(flip);
+        let [maskTime, times] = this.order.applyMask(mask);
         // I need to actually generate enough of these that this flips 180 in the specified target duration
         // or put another way.... it's 180 at the time.
         console.log(o1.draw(), o2.draw())
@@ -725,6 +735,9 @@ export class OverrotateRevealTransition implements Transition {
             let ora = this.overrotateAt(id);
             let ord = this.overrotateDeg(id);
 
+            // all of these should be offset by the starting time according to the order
+            let coord = h.indexToCoord.get(id)!;
+            let startAtTime = maskTime[coord[1]][coord[0]];
             let reachBy = t * ora;
             let overrotateDuration = t * (1 - ora) / 2;
             let startToReturn = reachBy + overrotateDuration;
@@ -734,7 +747,7 @@ export class OverrotateRevealTransition implements Transition {
 
             // so first, generate the initial rotation
             [...new Array(180).keys()].forEach(i => {
-                let time = reachBy / 180 * i;
+                let time = reachBy / 180 * i + startAtTime;
                 let ga = groupActions.has(time) ? groupActions.get(time)! : new GroupAction(time, [[Action.INCREMENT, []]]);
                 // maybe I should use the multiplicity feature
                 if (ga.actions.find(a => a[0] == Action.INCREMENT) == undefined) {
@@ -748,7 +761,7 @@ export class OverrotateRevealTransition implements Transition {
             // don't need zero
             // how long does it take to rotate one degree? well, I have overotateDuration time to do it. 
             [...new Array(ord - 1).keys()].map(i => i + 1).forEach(i => {
-                let time = reachBy + (overrotateDuration / ord) * i;
+                let time = reachBy + (overrotateDuration / ord) * i + startAtTime;
                 let ga = groupActions.has(time) ? groupActions.get(time)! : new GroupAction(time, [[Action.INCREMENT, []]]);
                 // maybe I should use the multiplicity feature
                 if (ga.actions.find(a => a[0] == Action.INCREMENT) == undefined) {
@@ -761,7 +774,7 @@ export class OverrotateRevealTransition implements Transition {
             // omg lol I can't rotate back? 
             // don't need zero either
             [...new Array(ord - 1).keys()].map(i => i + 1).forEach(i => {
-                let time = startToReturn + (overrotateDuration / ord) * i;
+                let time = startToReturn + (overrotateDuration / ord) * i + startAtTime;
                 let ga = groupActions.has(time) ? groupActions.get(time)! : new GroupAction(time, [[Action.DECREMENT, []]]);
                 // maybe I should use the multiplicity feature
                 if (ga.actions.find(a => a[0] == Action.DECREMENT) == undefined) {
@@ -776,16 +789,17 @@ export class OverrotateRevealTransition implements Transition {
         let actions = [...groupActions.values()];
         actions.sort((a, b) => a.tPlus - b.tPlus);
         return actions;
-        // console.log(t, reachBy, startToReturn)
-        // console.log(firstRotation);
-        // console.log(overRotate);
-        // console.log(returnToPos)
-        // return firstRotation.concat(overRotate).concat(returnToPos);
 
     }
 }
 
 export class RotateRevealTransition implements Transition {
+    order: GridOrder;
+
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
 
         let flip = diffIndices(o1, o2, h);
@@ -793,8 +807,16 @@ export class RotateRevealTransition implements Transition {
         // or put another way.... it's 180 at the time.
         console.log(o1.draw(), o2.draw())
         console.log(flip)
+        
+        let mask = generateMaskFromCoords(flip);
+        let [maskTime, times] = this.order.applyMask(mask);
+        let getTime = (i: UnitId) => {
+            let coord = h.indexToCoord.get(i)!;
+            return maskTime[coord[1]][coord[0]]
+        }
+
         // but I can't generate the state.... 
-        return [...new Array(180).keys()].map(i => new GroupAction(t / 180 * i, [[Action.INCREMENT, flip]]));
+        return [...new Array(180).keys()].map(i => new GroupAction(t / 180 * i + getTime(i), [[Action.INCREMENT, flip]]));
 
 
     }
