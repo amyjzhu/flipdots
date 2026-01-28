@@ -29,6 +29,13 @@ export abstract class GridOrder {
     abstract generateGrid(width: number, height: number): OrderedGrid;
 }
 
+export class AllAtOnce extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = [...new Array(height)].map(_ => [... new Array(width)].map(_ => 0));
+        return grid;
+    }
+}
+
 
 export class BottomLeftWildfire extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {
@@ -110,6 +117,14 @@ export class GrowFromPoint extends GridOrder {
     }
 }
 
+
+export class GrowFromCentre extends GrowFromPoint {
+    constructor(startAt: [number, number], stepTiming: number[] = [1]) {
+        super(startAt, (x: number, y: number) => [[x+1,y+1],[x+1,y],[x,y+1],[x-1,y],[x-1,y+1],[x-1,y-1],[x,y-1],[x+1,y-1]], stepTiming);
+        
+    }
+
+}
 
 // what if we had a transformer on the grid ordering 
 export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], projection: Projection) => [OrderedGrid, number[]]) => {

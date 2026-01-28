@@ -1,6 +1,6 @@
 import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId } from "./hardware";
-import { Target } from "./language";
-import { GridOrder, StutterOrder } from "./order";
+import { Target } from "./language2";
+import { AllAtOnce, GridOrder, StutterOrder } from "./order";
 
 export interface Transition {
     // just curry these later 
@@ -470,6 +470,7 @@ export class SnapTransition implements Transition {
 // how do I squeeze MORE MOTION out ofthings
 
 export class FlipTransition implements Transition {
+    // this probably needs an order as well
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
 
         // o1 and o2 - for things not 
@@ -527,7 +528,7 @@ export class StochasticTransition implements Transition {
         let unitsToFlap = diffIndices(o1, o2, h);
 
         
-        let [timeGrid, times] = StutterOrder(this.order)(generateMaskFromCoords(unitsToFlap), (i: [number, number]) => h.coordToIndex(i)!);
+        let [timeGrid, times] = StutterOrder(this.order)(generateMaskFromCoords(unitsToFlap, h), (i: [number, number]) => h.coordToIndex(i)!);
 
         let actions: GroupAction[] = []
 
@@ -549,7 +550,7 @@ export class StochasticTransition implements Transition {
 
 }
 
-export let generateMaskFromCoords = (units: UnitId[]) => {
+export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
     let coords = [...units].map(u => h.indexToCoord.get(u)!);
 
         let minX = Math.min(...coords.map(u => u[0]))
@@ -583,7 +584,7 @@ export class WaveTransition implements Transition {
 
         let unitsToFlap = new Set(diffIndices(o1, o2, h));
 
-        let grid = generateMaskFromCoords([...unitsToFlap]);
+        let grid = generateMaskFromCoords([...unitsToFlap], h);
 
         let [timeGrid, times] = this.order.applyMask(grid);
         let timeFunction = this.order.getTimeFunction(timeGrid, i => h.coordToIndex(i));
@@ -708,7 +709,7 @@ export class OverrotateRevealTransition implements Transition {
     overrotateAt: (unit: UnitId) => Time = _ => 0.8;
     overrotateDeg: (unit: UnitId) => number = _ => 15;
 
-    constructor(order: GridOrder) {
+    constructor(order: GridOrder = new AllAtOnce()) {
         // todo: this order actually specifies the beginning time.
         this.order = order;
     }
@@ -719,7 +720,7 @@ export class OverrotateRevealTransition implements Transition {
         let flip = diffIndices(o1, o2, h);
 
         // hmm... annoying
-        let mask = generateMaskFromCoords(flip);
+        let mask = generateMaskFromCoords(flip, h);
         let [maskTime, times] = this.order.applyMask(mask);
         // I need to actually generate enough of these that this flips 180 in the specified target duration
         // or put another way.... it's 180 at the time.
@@ -796,7 +797,7 @@ export class OverrotateRevealTransition implements Transition {
 export class RotateRevealTransition implements Transition {
     order: GridOrder;
 
-    constructor(order: GridOrder) {
+    constructor(order: GridOrder = new AllAtOnce()) {
         this.order = order;
     }
 
@@ -808,7 +809,7 @@ export class RotateRevealTransition implements Transition {
         console.log(o1.draw(), o2.draw())
         console.log(flip)
         
-        let mask = generateMaskFromCoords(flip);
+        let mask = generateMaskFromCoords(flip, h);
         let [maskTime, times] = this.order.applyMask(mask);
         let getTime = (i: UnitId) => {
             let coord = h.indexToCoord.get(i)!;

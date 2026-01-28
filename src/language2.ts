@@ -16,9 +16,11 @@
 // or we have something called Universe which takes the whole universe...? at each time point? 
 // animation...
 
-import { Action, FlipdotSimHardware, FlipTransition, GroupAction, HardwareInterface, SnapTransition, StochasticTransition, WaveTransition } from "./hardware";
+import { Action, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
+import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions"
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 import { getImages, rgb2Hex } from "./util";
+import { BottomLeftWildfire, GrowFromCentre, StutterOrder } from "./order";
 
 let collisionStats = [4, 2];
 
@@ -1003,7 +1005,9 @@ class Sparkle implements Effect {
             let dists = idxes.map(idx => Math.sqrt((midPointX - idx[0]) ** 2 + (midPointY - idx[1]) ** 2));
             let max = dists.reduce((max: [number, number], dist: number, i: number) => dist > max[1] ? [i, dist] as [number, number] : max, [0, dists[0]]);
             let closestUnit = h.coordToIndex(idxes[max[0]] as [number, number]);
-            return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            
+            // return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
         }
     }
 
@@ -1033,13 +1037,13 @@ class Wipe implements Effect {
         
         
         return h => {
-            let dir: [number, number] = [1,1];
+            // let dir: [number, number] = [1,1];
             // let dir: [number, number] = [1, 0]
-            let direction = h.timeFrontier(0, dir)
+            // let direction = h.timeFrontier(0, dir)
             // let direction = (t: number) => []
             
             // return [];
-            return windowFrames.map(w => new WaveTransition(direction, dir, 0).generateGroupActions(w[0], w[1], time, h)).flat()
+            return windowFrames.map(w => new WaveTransition(new BottomLeftWildfire()).generateGroupActions(w[0], w[1], time, h)).flat()
         };
     }
 
