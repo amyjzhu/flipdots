@@ -561,10 +561,13 @@ export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
         let spanX = maxX - minX;
         let spanY = maxY - minY;
 
-        let grid = [...new Array(spanY)].map(_ => new Array(spanX).map(_ => false));
+        let grid = [...new Array(spanY + 1)].map(_ => new Array(spanX + 1).map(_ => false));
+        console.log(spanX, spanY, minX, minY)
+        console.log(coords)
         coords.forEach(c => {
             let x = c[0] - minX;
             let y = c[1] - minY;
+            // console.log(x, y)
             grid[y][x] = true;
         })
 

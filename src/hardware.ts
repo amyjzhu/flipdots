@@ -965,7 +965,8 @@ export class FlipdotSimHardware implements HardwareInterface {
             // is this true?
             // surely it takes some time for units to flip!
             let otherIds = [...new Set(this.units.map(r => r.id).flat()).difference(new Set(ids))];
-            return [[otherIds, incrementTime(time, 1)],
+            return [[otherIds, incrementTime(time, 0)],
+            // return [[otherIds, incrementTime(time, 1)],
             [ids, incrementTime(time, this.flipDurationMS)]] as [UnitId[], Time][];
         }
 
@@ -1073,24 +1074,27 @@ export class FlipdotSimHardware implements HardwareInterface {
                         // and is current time at least later than next available time?
                         (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= time))) {
 
+                        console.log("issue!")
                         console.log(action)
                         console.log("Actions is part of the unit's action set?", unit.actions.includes(action[0]));
                         console.log("Unit is able to act? (Defined acting time)", unitAvailableAt.get(unit.id));
                         console.log("Acting time precedes current time?", unitAvailableAt.get(unit.id)! <= time);
                         console.log(`id ${unit.id} is trying to ${actionType} at ${time} but is available at ${unitAvailableAt.get(unit.id)}`);
+                        console.log(unitAvailableAt)
 
                         throw new Error("could not compile");
 
                     }
                 }
 
-                // console.log(action[1], time - lastTime)
+                console.log(action[1], time - lastTime)
                 this.actionsToHardwareAction(actionType, action[1], time - lastTime);
 
 
                 // should this actually be like, when are each of the next available elements available?
                 // some thigns won't be available until another move is made.
                 let nextAvailable = this.allowedNextActive(actionType, action[1], time);
+                console.log(nextAvailable)
                 // remember, if we didn't set it, it must not be possible to use!!
                 unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));
 

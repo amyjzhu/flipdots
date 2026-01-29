@@ -17,7 +17,9 @@ export abstract class GridOrder {
 
     // return times that change
     applyMask(shape: boolean[][]): [OrderedGrid, number[]] {
-        let ordered = this.generateGrid(shape.length, shape[0].length);
+        let ordered = this.generateGrid(shape[0].length, shape.length);
+        console.log(shape);
+        console.log(ordered);
         let masked = shape.map((row, i) => row.map((c, j) => c ? ordered[i][j] : -1));
 
         let times = masked.flat().filter(t => t != -1);
@@ -65,8 +67,8 @@ export class GrowFromPoint extends GridOrder {
     }
 
     generateGrid(width: number, height: number): OrderedGrid {
-        let frontier: Set<[number, number]> = new Set();
-        frontier.add(this.startAt);
+        let frontier: Set<string> = new Set();
+        frontier.add(`${this.startAt[0]}|${this.startAt[1]}`);
 
         let grid = [...new Array(height)].map(_ => [... new Array(width)]);
         let counter = 0;
@@ -75,7 +77,7 @@ export class GrowFromPoint extends GridOrder {
 
 
         while (grid.some(x => x == undefined) || counter <= width * height) {
-            let newFrontier: Set<[number, number]> = new Set();
+            let newFrontier: Set<string> = new Set();
 
             let currentFrontier = frontier;
 
@@ -85,8 +87,8 @@ export class GrowFromPoint extends GridOrder {
 
             // console.log("new poins before adding", newFrontier)
             for (let point of pareto) {
-                let x = point[0];
-                let y = point[1];
+                let x = parseInt(point.split("|")[0]);
+                let y = parseInt(point.split("|")[1]);
 
                 let newPts = this.growBy(x, y);
 
@@ -96,16 +98,25 @@ export class GrowFromPoint extends GridOrder {
                     if (u < width && u >= 0 && v < height && v >= 0) {
                         // console.log(u, v, width, height)
                         if (grid[v][u] == undefined) {
-                            newFrontier.add(pt as [number, number]);
+                            let ptStr = `${u}|${v}`;
+                            try {
+                            newFrontier.add(ptStr);
+                            } catch (e) {
+                                console.log(pt);
+                                console.log(newFrontier.size);
+                                console.log(newPts.length);
+                                
+                            }
                         }
                         // console.log(newFrontier)
                     }
                 }
 
             }
+
             frontier = newFrontier;
             for (let point of [...newFrontier]) {
-                grid[point[1]][point[0]] = counter;
+                grid[parseInt(point.split("|")[1])][parseInt(point.split("|")[0])] = counter;
             }
 
             // need to index into steptiming 
@@ -131,6 +142,7 @@ export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], proj
     // can it modify the method itself? 
     // 
     return (shape: boolean[][], projection: Projection) => {
+        console.log(shape)
         let [grid, times] = originalOrder.applyMask(shape);
 
         // randomly swap some of the orders
