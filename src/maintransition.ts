@@ -47,7 +47,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 0 -> instantaneous -> rectangle 1";
 
-    parseToGroupAction(logoBasicExample);
+    // parseToGroupAction(logoBasicExample);
 
     let dandelion = "timing: [15,15]\n\
     filepath: /animations/dandelion${i}.png \n\

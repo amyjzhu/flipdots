@@ -10,7 +10,7 @@ export abstract class GridOrder {
     getTimeFunction(ordered: OrderedGrid, projection: Projection): (t: number) => UnitId[] {
         return (t: number) => {
             return ordered.map((row, i) => row.map((c, j) =>
-                c != -1 && c <= t ? [i, j] : undefined))
+                c != -1 && c <= t ? [j, i] : undefined))
                 .flat().filter(i => i != undefined).map(item => projection(item as [number, number])) as UnitId[];
         }
     }
@@ -22,8 +22,9 @@ export abstract class GridOrder {
         console.log(ordered);
         let masked = shape.map((row, i) => row.map((c, j) => c ? ordered[i][j] : -1));
 
-        let times = masked.flat().filter(t => t != -1);
-        times.sort();
+        let times: number[] = masked.flat().filter(t => t != -1);
+        times.sort((a, b) => a - b);
+        times = [... new Set(times)];
 
         return [masked, times]
     }

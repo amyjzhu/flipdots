@@ -1049,8 +1049,14 @@ export class FlipdotSimHardware implements HardwareInterface {
             let actionSet = ga.actions;
 
             for (let action of actionSet) {
+                // console.log(action)
                 let actionType: Action = action[0];
                 let unitsInUse: Unit[] = action[1].map(i => this.unitIdToUnit.get(i)!);
+
+                if (unitsInUse.some(u => u == undefined)) {
+                    action[1].forEach(i => console.log(i, this.unitIdToUnit.get(i)!))
+                    throw new Error("undefined units used in action")
+                }
                 // console.log(action[1]);
                 // console.log(this.units.map(u => u.id))
                 // console.log(unitsInUse)
@@ -1070,11 +1076,13 @@ export class FlipdotSimHardware implements HardwareInterface {
                     // console.log(all)
                     // console.log(unit)
                     // do we actually know what the action is?
+                    // console.log(unitsInUse)
                     if (!(unit.actions.includes(action[0]) &&
                         // and is current time at least later than next available time?
                         (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= time))) {
 
                         console.log("issue!")
+                        console.log(groupActions)
                         console.log(action)
                         console.log("Actions is part of the unit's action set?", unit.actions.includes(action[0]));
                         console.log("Unit is able to act? (Defined acting time)", unitAvailableAt.get(unit.id));
@@ -1094,14 +1102,14 @@ export class FlipdotSimHardware implements HardwareInterface {
                 // should this actually be like, when are each of the next available elements available?
                 // some thigns won't be available until another move is made.
                 let nextAvailable = this.allowedNextActive(actionType, action[1], time);
-                console.log(nextAvailable)
+                // console.log(nextAvailable)
                 // remember, if we didn't set it, it must not be possible to use!!
                 unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));
 
                 // console.log(nextAvailable)
                 for (let [ids, interval] of nextAvailable) {
                     // console.log(cumulativeTime + this.getRealTiming(interval))
-                    console.log("updating ids!")
+                    // console.log("updating ids!")
                     ids.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
                 }
 

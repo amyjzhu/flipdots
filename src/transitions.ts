@@ -530,6 +530,7 @@ export class StochasticTransition implements Transition {
         
         let [timeGrid, times] = StutterOrder(this.order)(generateMaskFromCoords(unitsToFlap, h), (i: [number, number]) => h.coordToIndex(i)!);
 
+        console.log(timeGrid, times)
         let actions: GroupAction[] = []
 
         for (let t of times) {
@@ -590,6 +591,7 @@ export class WaveTransition implements Transition {
         let grid = generateMaskFromCoords([...unitsToFlap], h);
 
         let [timeGrid, times] = this.order.applyMask(grid);
+        console.log(timeGrid, times);
         let timeFunction = this.order.getTimeFunction(timeGrid, i => h.coordToIndex(i));
 
 
