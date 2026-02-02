@@ -32,7 +32,8 @@ if (typeof window != 'undefined') {
     filepath: /animations/wipe${i}.png \n\
     objects: [#000000 rectangle] \n\
     rectangle 1 -> sparkle -> rectangle 0";
-    // parseToGroupAction(sparkleExample);
+    // there's an element of randomness here, which cannot be good. maybe one of assumptions violated 
+    parseToGroupAction(sparkleExample);
 
 
     let logoExample = "timing: [15,15]\n\
@@ -40,7 +41,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 0 -> sparkle -> rectangle 1";
 
-    parseToGroupAction(logoExample);
+    // parseToGroupAction(logoExample);
 
     let logoBasicExample = "timing: [15,15]\n\
     filepath: /animations/text-logo${i}.png \n\

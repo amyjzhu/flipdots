@@ -20,7 +20,7 @@ import { Action, FlipdotSimHardware, GroupAction, HardwareInterface } from "./ha
 import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions"
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 import { getImages, rgb2Hex } from "./util";
-import { BottomLeftWildfire, GrowFromCentre, StutterOrder } from "./order";
+import { BottomLeftWildfire, BottomUp, GrowFromCentre, StutterOrder } from "./order";
 
 let collisionStats = [4, 2];
 
@@ -1007,8 +1007,8 @@ class Sparkle implements Effect {
             let closestUnit = h.coordToIndex(idxes[max[0]] as [number, number]);
             
             // return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
-            return new WaveTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
-            // return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            // return new WaveTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
         }
     }
 
@@ -1044,7 +1044,7 @@ class Wipe implements Effect {
             // let direction = (t: number) => []
             
             // return [];
-            return windowFrames.map(w => new WaveTransition(new BottomLeftWildfire()).generateGroupActions(w[0], w[1], time, h)).flat()
+            return windowFrames.map(w => new WaveTransition(new BottomUp()).generateGroupActions(w[0], w[1], time, h)).flat()
         };
     }
 

@@ -39,6 +39,21 @@ export class AllAtOnce extends GridOrder {
     }
 }
 
+export class BottomUp extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+
+        // TODO: direction is flipped here, need to look into the whole flipping 
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                grid[i][j] = height - i;
+            }
+        }
+
+        return grid;
+    }
+}
+
 
 export class BottomLeftWildfire extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {
@@ -69,6 +84,7 @@ export class GrowFromPoint extends GridOrder {
 
     generateGrid(width: number, height: number): OrderedGrid {
         let frontier: Set<string> = new Set();
+        console.log(this.startAt);
         frontier.add(`${this.startAt[0]}|${this.startAt[1]}`);
 
         let grid = [...new Array(height)].map(_ => [... new Array(width)]);
@@ -146,56 +162,38 @@ export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], proj
         console.log(shape)
         let [grid, times] = originalOrder.applyMask(shape);
 
+        let newGrid = grid.map(r => r.map(c => c));
         // randomly swap some of the orders
         const
             swapProbability = 0.15,
             windowSize = 6,
             biasFn = (i: number, n: number) => Math.sin(Math.PI * i / n);
 
-
-
-        const cells: { order: number; x: number; y: number }[] = []
-
-        for (let y = 0; y < grid.length; y++) {
-            for (let x = 0; x < grid[0].length; x++) {
-                cells.push({ order: grid[y][x], x, y })
+        /// this effect isn't really the same as the "expanding" effect since there's no radius falloff likelihood 
+            let coords = grid.map((row, j) => row.map((c, i) => [i, j])).flat();
+            let numSwaps = Math.ceil(swapProbability * coords.length);
+            let swappedAlready: number[] = []
+            for (let n = 0; n < numSwaps; n++) {
+                let s1 = Math.round(Math.random() * coords.length);
+                while (swappedAlready.includes(s1)) {
+                    s1 = Math.round(Math.random() * coords.length);
+                }
+                swappedAlready.push(s1);
+                let s2 = Math.round(Math.random() * coords.length);
+                while (swappedAlready.includes(s2)) {
+                    s2 = Math.round(Math.random() * coords.length);
+                }
+                swappedAlready.push(s2);
+                
+                
+                let coord1 = coords[s1];
+                let coord2 = coords[s2];
+                let intermediate = newGrid[coord1[1]][coord1[0]];
+                newGrid[coord1[1]][coord1[0]] = newGrid[coord2[1]][coord2[0]];
+                newGrid[coord2[1]][coord2[0]] = intermediate;
             }
-        }
 
-        cells.sort((a, b) => a.order - b.order)
-        let orderedCells = cells.map(({ x, y }) => ({ x, y }))
-        const n = orderedCells.length
-
-        // Copy for swapping
-        const permuted = [...orderedCells]
-
-        for (let i = 0; i < n; i++) {
-            if (Math.random() > swapProbability * biasFn(i, n)) continue
-
-            const min = Math.max(0, i - windowSize)
-            const max = Math.min(n - 1, i + windowSize)
-            const j = min + Math.floor(Math.random() * (max - min + 1))
-
-            if (j === i) continue
-                ;[permuted[i], permuted[j]] = [permuted[j], permuted[i]]
-        }
-
-        // Create result time grid
-        const h = grid.length
-        const w = grid[0].length
-        const result: number[][] = Array.from({ length: h }, () =>
-            Array(w).fill(0)
-        )
-
-        // Monotonic time assignment (guarantees completion at t = 1)
-        for (let i = 0; i < n; i++) {
-            const t = n === 1 ? 1 : i / (n - 1)
-            const { x, y } = permuted[i]
-            result[y][x] = t
-        }
-
-        return [result, times]
-
+            return [newGrid, times];
     }
 
 }

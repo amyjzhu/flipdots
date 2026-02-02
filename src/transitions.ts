@@ -527,8 +527,8 @@ export class StochasticTransition implements Transition {
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
         let unitsToFlap = diffIndices(o1, o2, h);
 
-        
-        let [timeGrid, times] = StutterOrder(this.order)(generateMaskFromCoords(unitsToFlap, h), (i: [number, number]) => h.coordToIndex(i)!);
+        let [grid, x, y] = generateMaskFromCoords(unitsToFlap, h);
+        let [timeGrid, times] = StutterOrder(this.order)(grid as boolean[][], (i: [number, number]) => h.coordToIndex(i)!);
 
         console.log(timeGrid, times)
         let actions: GroupAction[] = []
@@ -537,11 +537,13 @@ export class StochasticTransition implements Transition {
             let units = timeGrid.map((r, ri) => r.reduce((acc: number[], c: number, ci: number) => {
                 if (c == t) {
                     acc.push(h.coordToIndex([ci, ri]));
+                    // acc.push(h.coordToIndex([ci + (x as number), ri + (y as number)]));
                 }
 
                 return acc;
             }, [] as number[])).flat();
 
+            console.log(units)
             actions.push(new GroupAction(t, [[Action.FLIP, units]]));
         }
 
@@ -572,7 +574,7 @@ export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
             grid[y][x] = true;
         })
 
-        return grid;
+        return [grid, minX, minY];
 }
 
 export class WaveTransition implements Transition {
@@ -588,9 +590,10 @@ export class WaveTransition implements Transition {
 
         let unitsToFlap = new Set(diffIndices(o1, o2, h));
 
-        let grid = generateMaskFromCoords([...unitsToFlap], h);
+        let [grid, x, y] = generateMaskFromCoords([...unitsToFlap], h);
 
-        let [timeGrid, times] = this.order.applyMask(grid);
+        let [timeGrid, times] = this.order.applyMask(grid as boolean[][]);
+        // I need to remember that the SHAPE INDEX != global index! 
         console.log(timeGrid, times);
         let timeFunction = this.order.getTimeFunction(timeGrid, i => h.coordToIndex(i));
 
@@ -607,7 +610,9 @@ export class WaveTransition implements Transition {
 
             let update = draw.difference(unitsSoFar);
             unitsSoFar = unitsSoFar.union(update);
-            let action = new GroupAction(time, [[Action.FLIP, [...update]]]);
+            console.log(update)
+            let updateList = [...update].map(c => h.coordToIndex([h.indexToCoord.get(c)![0] + (x as number), h.indexToCoord.get(c)![1] + (y as number)]));
+            let action = new GroupAction(time, [[Action.FLIP, updateList]]);
 
             actions.push(action);
         }
@@ -725,8 +730,8 @@ export class OverrotateRevealTransition implements Transition {
         let flip = diffIndices(o1, o2, h);
 
         // hmm... annoying
-        let mask = generateMaskFromCoords(flip, h);
-        let [maskTime, times] = this.order.applyMask(mask);
+        let [mask, x, y] = generateMaskFromCoords(flip, h);
+        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
         // I need to actually generate enough of these that this flips 180 in the specified target duration
         // or put another way.... it's 180 at the time.
         console.log(o1.draw(), o2.draw())
@@ -814,8 +819,8 @@ export class RotateRevealTransition implements Transition {
         console.log(o1.draw(), o2.draw())
         console.log(flip)
         
-        let mask = generateMaskFromCoords(flip, h);
-        let [maskTime, times] = this.order.applyMask(mask);
+        let [mask , x, y] = generateMaskFromCoords(flip, h);
+        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
         let getTime = (i: UnitId) => {
             let coord = h.indexToCoord.get(i)!;
             return maskTime[coord[1]][coord[0]]
