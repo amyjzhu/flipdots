@@ -1008,6 +1008,7 @@ class Sparkle implements Effect {
             
             // return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
             // return new WaveTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            // TODO: this point needs to consider that this is th global max and we work with a mask later 
             return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
         }
     }

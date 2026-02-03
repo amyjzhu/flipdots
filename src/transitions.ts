@@ -528,6 +528,8 @@ export class StochasticTransition implements Transition {
         let unitsToFlap = diffIndices(o1, o2, h);
 
         let [grid, x, y] = generateMaskFromCoords(unitsToFlap, h);
+        console.log("generated circle grid is", grid);
+        // does it have something to do with offsetting here? 
         let [timeGrid, times] = StutterOrder(this.order)(grid as boolean[][], (i: [number, number]) => h.coordToIndex(i)!);
 
         console.log(timeGrid, times)

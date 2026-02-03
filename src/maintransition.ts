@@ -17,7 +17,7 @@ if (typeof window != 'undefined') {
     teapot 0 ->* sparkle ->* teapot 9"
     // parser(teapotExample);
 
-    // parseToGroupAction(teapot2Example);
+    parseToGroupAction(teapot2Example);
 
 
     let wipeExample = "timing: [15,15]\n\
@@ -33,7 +33,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 1 -> sparkle -> rectangle 0";
     // there's an element of randomness here, which cannot be good. maybe one of assumptions violated 
-    parseToGroupAction(sparkleExample);
+    // parseToGroupAction(sparkleExample);
 
 
     let logoExample = "timing: [15,15]\n\
@@ -154,11 +154,11 @@ if (typeof window != 'undefined') {
     // row 7 from 12 to 20
 */
 
-    let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
-    threed.finalize3D().then(_ => {
-        console.log("got it")
-        console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
-    });
+    // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
+    // threed.finalize3D().then(_ => {
+    //     console.log("got it")
+    //     console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
+    // });
 
 }
 

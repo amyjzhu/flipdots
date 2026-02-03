@@ -90,6 +90,7 @@ export class GrowFromPoint extends GridOrder {
         let grid = [...new Array(height)].map(_ => [... new Array(width)]);
         let counter = 0;
         let stepTimingIdx = 0;
+        console.log("why fail?", grid.length, grid[0].length, this.startAt)
         grid[this.startAt[1]][this.startAt[0]] = 0;
 
 
