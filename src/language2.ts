@@ -1644,7 +1644,7 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
             console.log(o.frameId, frameNum)
             
             // timing issue - subtract the duration
-            let prev = frameNum == 0 ? 0 : transitionTiming[frameNum-1]
+            let prev = frameNum == 0 ? 1 : transitionTiming[frameNum-1]
             console.log(prev)
             let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, 1)
             // console.log(fullObjects.map(o => o.draw()))

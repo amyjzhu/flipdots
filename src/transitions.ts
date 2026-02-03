@@ -536,8 +536,8 @@ export class StochasticTransition implements Transition {
         for (let t of times) {
             let units = timeGrid.map((r, ri) => r.reduce((acc: number[], c: number, ci: number) => {
                 if (c == t) {
-                    acc.push(h.coordToIndex([ci, ri]));
-                    // acc.push(h.coordToIndex([ci + (x as number), ri + (y as number)]));
+                    // acc.push(h.coordToIndex([ci, ri]));
+                    acc.push(h.coordToIndex([ci + (x as number), ri + (y as number)]));
                 }
 
                 return acc;

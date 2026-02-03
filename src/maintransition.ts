@@ -41,7 +41,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 0 -> sparkle -> rectangle 1";
 
-    // parseToGroupAction(logoExample);
+    // parseToGroupAction(logoExample) ;
 
     let logoBasicExample = "timing: [15,15]\n\
     filepath: /animations/text-logo${i}.png \n\
