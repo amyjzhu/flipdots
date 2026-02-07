@@ -120,7 +120,8 @@ export class CircleTarget implements DrawableTarget {
     }
 }
 
-class PixelArtTarget implements DrawableTarget {
+
+export class PixelArtTarget implements DrawableTarget {
     position: [number, number];
     // this specification of shape should be the full size
     // ah, but colour can't be colourless though... 
@@ -1009,7 +1010,9 @@ class Sparkle implements Effect {
             // return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
             // return new WaveTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
             // TODO: this point needs to consider that this is th global max and we work with a mask later 
-            return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            // TODO: this would be a cool way to do the density of the shape, but...
+            // return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            return new StochasticTransition(new GrowFromCentre((w,h) => [Math.round(w/2), Math.round(h/2)] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
         }
     }
 

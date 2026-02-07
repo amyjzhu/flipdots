@@ -71,11 +71,11 @@ export class BottomLeftWildfire extends GridOrder {
 
 // we actually want the time to represent something though 
 export class GrowFromPoint extends GridOrder {
-    startAt: [number, number];
+    startAt: (width: number, height: number) => [number, number];
     growBy: (x: number, y: number) => [number, number][];
     stepTiming: number[]; // need to figure out what type to make this.. maybe just a list that cycles?
 
-    constructor(startAt: [number, number], growBy: (x: number, y: number) => [number, number][], stepTiming: number[] = [1]) {
+    constructor(startAt: (width: number, height: number) => [number, number], growBy: (x: number, y: number) => [number, number][], stepTiming: number[] = [1]) {
         super();
         this.startAt = startAt;
         this.growBy = growBy;
@@ -84,14 +84,15 @@ export class GrowFromPoint extends GridOrder {
 
     generateGrid(width: number, height: number): OrderedGrid {
         let frontier: Set<string> = new Set();
+        let startAt = this.startAt(width, height);
         console.log(this.startAt);
-        frontier.add(`${this.startAt[0]}|${this.startAt[1]}`);
+        frontier.add(`${startAt[0]}|${startAt[1]}`);
 
         let grid = [...new Array(height)].map(_ => [... new Array(width)]);
         let counter = 0;
         let stepTimingIdx = 0;
         console.log("why fail?", grid.length, grid[0].length, this.startAt)
-        grid[this.startAt[1]][this.startAt[0]] = 0;
+        grid[startAt[1]][startAt[0]] = 0;
 
 
         while (grid.some(x => x == undefined) || counter <= width * height) {
@@ -148,7 +149,7 @@ export class GrowFromPoint extends GridOrder {
 
 
 export class GrowFromCentre extends GrowFromPoint {
-    constructor(startAt: [number, number], stepTiming: number[] = [1]) {
+    constructor(startAt: (width: number, height: number) => [number, number], stepTiming: number[] = [1]) {
         super(startAt, (x: number, y: number) => [[x+1,y+1],[x+1,y],[x,y+1],[x-1,y],[x-1,y+1],[x-1,y-1],[x,y-1],[x+1,y-1]], stepTiming);
     }
 }
@@ -159,6 +160,9 @@ export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], proj
     // 
     return (shape: boolean[][], projection: Projection) => {
         console.log(shape)
+        // why should I apply mask to shape here? 
+        // how come order... hmmm 
+
         let [grid, times] = originalOrder.applyMask(shape);
 
         let newGrid = grid.map(r => r.map(c => c));
@@ -170,17 +174,18 @@ export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], proj
 
         /// this effect isn't really the same as the "expanding" effect since there's no radius falloff likelihood 
             let coords = grid.map((row, j) => row.map((c, i) => [i, j])).flat();
+            let maxIdx = coords.length-1;
             let numSwaps = Math.ceil(swapProbability * coords.length);
             let swappedAlready: number[] = []
             for (let n = 0; n < numSwaps; n++) {
-                let s1 = Math.round(Math.random() * coords.length);
+                let s1 = Math.round(Math.random() * maxIdx);
                 while (swappedAlready.includes(s1)) {
-                    s1 = Math.round(Math.random() * coords.length);
+                    s1 = Math.round(Math.random() * maxIdx);
                 }
                 swappedAlready.push(s1);
-                let s2 = Math.round(Math.random() * coords.length);
+                let s2 = Math.round(Math.random() * maxIdx);
                 while (swappedAlready.includes(s2)) {
-                    s2 = Math.round(Math.random() * coords.length);
+                    s2 = Math.round(Math.random() * maxIdx);
                 }
                 swappedAlready.push(s2);
                 
@@ -188,7 +193,9 @@ export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], proj
                 let coord1 = coords[s1];
                 let coord2 = coords[s2];
                 let intermediate = newGrid[coord1[1]][coord1[0]];
-                newGrid[coord1[1]][coord1[0]] = newGrid[coord2[1]][coord2[0]];
+                // console.log("coords are ", coord1, coord2, "newgrid dims are ", newGrid.length, newGrid[0].length)
+                let intermediate2 = newGrid[coord2[1]][coord2[0]];
+                newGrid[coord1[1]][coord1[0]] = intermediate2;
                 newGrid[coord2[1]][coord2[0]] = intermediate;
             }
 

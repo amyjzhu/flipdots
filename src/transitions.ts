@@ -1,4 +1,5 @@
-import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId } from "./hardware";
+import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit } from "./hardware";
+import { Colour } from "./language";
 import { Target } from "./language2";
 import { AllAtOnce, GridOrder, StutterOrder } from "./order";
 
@@ -558,25 +559,25 @@ export class StochasticTransition implements Transition {
 export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
     let coords = [...units].map(u => h.indexToCoord.get(u)!);
 
-        let minX = Math.min(...coords.map(u => u[0]))
-        let maxX = Math.max(...coords.map(u => u[0]))
-        let minY = Math.min(...coords.map(u => u[1]))
-        let maxY = Math.max(...coords.map(u => u[1]))
+    let minX = Math.min(...coords.map(u => u[0]))
+    let maxX = Math.max(...coords.map(u => u[0]))
+    let minY = Math.min(...coords.map(u => u[1]))
+    let maxY = Math.max(...coords.map(u => u[1]))
 
-        let spanX = maxX - minX;
-        let spanY = maxY - minY;
+    let spanX = maxX - minX;
+    let spanY = maxY - minY;
 
-        let grid = [...new Array(spanY + 1)].map(_ => new Array(spanX + 1).map(_ => false));
-        console.log(spanX, spanY, minX, minY)
-        console.log(coords)
-        coords.forEach(c => {
-            let x = c[0] - minX;
-            let y = c[1] - minY;
-            // console.log(x, y)
-            grid[y][x] = true;
-        })
+    let grid = [...new Array(spanY + 1)].map(_ => new Array(spanX + 1).map(_ => false));
+    console.log(spanX, spanY, minX, minY)
+    console.log(coords)
+    coords.forEach(c => {
+        let x = c[0] - minX;
+        let y = c[1] - minY;
+        // console.log(x, y)
+        grid[y][x] = true;
+    })
 
-        return [grid, minX, minY];
+    return [grid, minX, minY];
 }
 
 export class WaveTransition implements Transition {
@@ -728,7 +729,7 @@ export class OverrotateRevealTransition implements Transition {
 
     // wavefront target -> it's a pixel path
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
-        
+
         let flip = diffIndices(o1, o2, h);
 
         // hmm... annoying
@@ -750,7 +751,8 @@ export class OverrotateRevealTransition implements Transition {
 
             // all of these should be offset by the starting time according to the order
             let coord = h.indexToCoord.get(id)!;
-            let startAtTime = maskTime[coord[1]][coord[0]];
+            console.log(coord, maskTime)
+            let startAtTime = maskTime[coord[1] - (x as number)][coord[0] - (y as number)];
             let reachBy = t * ora;
             let overrotateDuration = t * (1 - ora) / 2;
             let startToReturn = reachBy + overrotateDuration;
@@ -806,6 +808,9 @@ export class OverrotateRevealTransition implements Transition {
     }
 }
 
+// TODO: make thinking systematic
+// improve way to specify brixel positions 
+
 export class RotateRevealTransition implements Transition {
     order: GridOrder;
 
@@ -820,17 +825,107 @@ export class RotateRevealTransition implements Transition {
         // or put another way.... it's 180 at the time.
         console.log(o1.draw(), o2.draw())
         console.log(flip)
-        
-        let [mask , x, y] = generateMaskFromCoords(flip, h);
+
+        let [mask, x, y] = generateMaskFromCoords(flip, h);
         let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
         let getTime = (i: UnitId) => {
+            // when does this unit flip? given any unit.
             let coord = h.indexToCoord.get(i)!;
+            if (coord[0] >= maskTime[0].length || coord[1] >= maskTime.length) return 0
+            console.log(coord)
+            console.log(maskTime)
             return maskTime[coord[1]][coord[0]]
         }
 
         // but I can't generate the state.... 
+        // I need to generate a movement for each of the ones that will flip.
+        // total duration plus.... order...?
         return [...new Array(180).keys()].map(i => new GroupAction(t / 180 * i + getTime(i), [[Action.INCREMENT, flip]]));
 
 
     }
+}
+
+
+
+export function buildTimeline(
+    flipSchedule: Map<UnitId, Time[]>,
+    startAt: Time = 0
+): GroupAction[] {
+    const timeMap = new Map<Time, UnitId[]>();
+
+    for (const [id, times] of flipSchedule) {
+        for (const t of times) {
+            if (!timeMap.has(t)) timeMap.set(t, []);
+            timeMap.get(t)!.push(id);
+        }
+    }
+
+    return [...timeMap.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(
+            ([t, ids]) =>
+                new GroupAction(t + startAt, [[Action.FLIP, ids]])
+        );
+}
+
+export class FlipConstantSpeed implements Transition {
+    flipsPerSecond: number = 1;
+    maxSimultaneousFinishes: number = Infinity;
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // what is the target made of here?
+        if (!isSplitflapHardware(h)) {
+            throw new Error("Cannot flip with this hardware type")
+        }
+
+        // this is going to be the target set, but I need to order it in terms of my units. 
+        let d2: Colour[][] = o2.draw();
+
+        let units = h.units;
+        
+        let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+        let unitOrder: number[] = units.map(u => u.id);
+        d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
+        let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
+        
+
+        const schedule = new Map<UnitId, Time[]>();
+        const finishBuckets = new Map<Time, UnitId[]>();
+        const dt = 1 / this.flipsPerSecond;
+
+        for (let i = 0; i < units.length; i++) {
+            let unit = units[i];
+            console.log(unit, targets[i])
+            const flips = h.computeFlipDistance(unit as SplitflapUnit, targets[i]);
+            const times: Time[] = [];
+
+            for (let i = 0; i < flips; i++) {
+                times.push(i * dt);
+            }
+
+            schedule.set(unit.id, times);
+
+            if (times.length === 0) continue;
+
+            const finishTime = times[times.length - 1];
+
+            if (!finishBuckets.has(finishTime)) {
+                finishBuckets.set(finishTime, []);
+            }
+            finishBuckets.get(finishTime)!.push(unit.id);
+        }
+
+        // Offset collisions
+        for (const [time, ids] of finishBuckets) {
+            if (ids.length <= this.maxSimultaneousFinishes) continue;
+
+            ids.slice(this.maxSimultaneousFinishes).forEach((id, i) => {
+                schedule.get(id)!.push(time + (i + 1) * dt);
+            });
+        }
+
+        return buildTimeline(schedule);
+    }
+
 }

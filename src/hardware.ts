@@ -129,6 +129,14 @@ export class SplitflapUnit implements Unit {
     }
 }
 
+export let delayGroupActions = (input: GroupAction[], delay: number) => {
+    return input.map(ga => new GroupAction(ga.tPlus + delay, ga.actions));
+}
+
+export let isSplitflapHardware = (x: HardwareInterface): x is SplitflapHardware => {
+    return (<SplitflapHardware>x).computeFlipDistance != undefined;
+}
+
 export class SplitflapHardware implements HardwareInterface {
     units: Unit[];
     actionDurations: Map<Action, number>;
@@ -192,6 +200,22 @@ export class SplitflapHardware implements HardwareInterface {
 
     }
 
+
+    computeFlipDistance(unit: SplitflapUnit, target: SplitflapState): number {
+        const states = unit.states[0][1];
+        const start = unit.currentIndex;
+        const end = states.findIndex(s => s.id == target.id);
+
+        // console.log(target, states)
+        if (start === -1 || end === -1) {
+            throw new Error(`Invalid state for unit ${unit.id}`);
+        }
+
+        console.log((end - start + states.length) % states.length)
+
+        return (end - start + states.length) % states.length;
+    }
+
     static Rectangular(width: number, height: number, reelConfig: (x: number, y: number) => SplitflapState[]) {
 
         let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => {
@@ -201,7 +225,7 @@ export class SplitflapHardware implements HardwareInterface {
 
         let indexToCoord = new Map<number, [number, number]>();
 
-        unitList.forEach(u => indexToCoord.set(u.id, [Math.floor(u.id / width), u.id % width]))
+        unitList.forEach(u => indexToCoord.set(u.id, [u.id % width, Math.floor(u.id / width)]))
         console.log(indexToCoord)
         let adjacency = (i: UnitId) => {
             let neighbours: UnitId[] = [];
@@ -1229,23 +1253,23 @@ let convertSyncedSequence = (frames: number[][], pauses: number[][], cycles: num
 // let's set up some test cases...
 
 
-
 function computeFlipDistance(unit: SplitflapUnit, target: SplitflapState): number {
-    const states = unit.states[0][1];
-    const start = unit.currentIndex;
-    const end = states.findIndex(s => s.id == target.id);
+        const states = unit.states[0][1];
+        const start = unit.currentIndex;
+        const end = states.findIndex(s => s.id == target.id);
 
-    // console.log(target, states)
-    if (start === -1 || end === -1) {
-        throw new Error(`Invalid state for unit ${unit.id}`);
+        // console.log(target, states)
+        if (start === -1 || end === -1) {
+            throw new Error(`Invalid state for unit ${unit.id}`);
+        }
+
+        console.log((end - start + states.length) % states.length)
+
+        return (end - start + states.length) % states.length;
     }
 
-    console.log((end - start + states.length) % states.length)
 
-    return (end - start + states.length) % states.length;
-}
-
-function buildTimeline(
+export function buildTimeline(
     flipSchedule: Map<UnitId, Time[]>,
     startAt: Time = 0
 ): GroupAction[] {
@@ -1266,7 +1290,7 @@ function buildTimeline(
         );
 }
 
-function scheduleConstantSpeed(
+export function scheduleConstantSpeed(
     units: SplitflapUnit[],
     targets: SplitflapState[],
     flipsPerSecond: number,
@@ -1310,7 +1334,7 @@ function scheduleConstantSpeed(
     return schedule;
 }
 
-function scheduleSyncEnd(
+export function scheduleSyncEnd(
     units: SplitflapUnit[],
     targets: SplitflapState[],
     flipsPerSecond: number,
@@ -1342,7 +1366,7 @@ function scheduleSyncEnd(
     return schedule;
 }
 
-function scheduleDirectional(
+export function scheduleDirectional(
     units: SplitflapUnit[],
     targets: SplitflapState[],
     flipsPerSecond: number,

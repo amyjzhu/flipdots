@@ -430,7 +430,7 @@ export class SplitFlapDisplay {
             let [falling, rising, stepping] = this.flaps[idx];
             let rad2deg = (r: number) => r *  180 / Math.PI;
             
-            console.log(rad2deg(stepping.rotation.x))
+            // console.log(rad2deg(stepping.rotation.x))
             if (perPixelPause + this.numFramesRotating > perPixelCycleLength) {
                 throw new Error("pause is too long")
             }
@@ -445,9 +445,9 @@ export class SplitFlapDisplay {
                 // this doesn't seem super consistent?
                 // todo?
                 // why does this move it doubly up?
-                console.log("inside offset ", this.animationFrameCounters[idx], rad2deg(rotFlapBack * -1 / perPixelPause), rad2deg(stepping.rotation.x));
+                // console.log("inside offset ", this.animationFrameCounters[idx], rad2deg(rotFlapBack * -1 / perPixelPause), rad2deg(stepping.rotation.x));
                 // countOffset += 1;
-                console.log("completing (offset): ", this.animationFrameCounters[idx], perPixelPause, rad2deg(rotFlapBack * -1 / perPixelPause),rad2deg(stepping.rotation.x))
+                // console.log("completing (offset): ", this.animationFrameCounters[idx], perPixelPause, rad2deg(rotFlapBack * -1 / perPixelPause),rad2deg(stepping.rotation.x))
 
                 stepping.rotation.x += rotFlapBack * -1 / perPixelPause;
             } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < perPixelCycleLength) {
@@ -457,7 +457,7 @@ export class SplitFlapDisplay {
                 rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating);
                 falling.rotation.x += Math.PI / (this.numFramesRotating)
             } else if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
-                console.log("completing: ",  this.flaps[idx].map(f => rad2deg(f.rotation.x)))
+                // console.log("completing: ",  this.flaps[idx].map(f => rad2deg(f.rotation.x)))
                 let nextIdx = this.flapPos[idx] + 1 >= this.flipCycle[idx].length ? 0 : this.flapPos[idx] + 1;
                 
                 let front = this.canvases[this.flipCycle[idx][this.flapPos[idx]]];
@@ -497,8 +497,8 @@ export class SplitFlapDisplay {
             }
 
             if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
-                console.log("all done ", this.animationFrameCounters[idx])
-                console.log(rad2deg(rotFlapBack), rad2deg((Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating)), rad2deg(Math.PI / (this.numFramesRotating)), rad2deg( rotFlapBack * -1 / perPixelPause / 2), rad2deg( rotFlapBack * -1 / perPixelPause), this.flaps[idx].map(f => rad2deg(f.rotation.x)))
+                // console.log("all done ", this.animationFrameCounters[idx])
+                // console.log(rad2deg(rotFlapBack), rad2deg((Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating)), rad2deg(Math.PI / (this.numFramesRotating)), rad2deg( rotFlapBack * -1 / perPixelPause / 2), rad2deg( rotFlapBack * -1 / perPixelPause), this.flaps[idx].map(f => rad2deg(f.rotation.x)))
                 this.animationFrameCounters[idx] = 0;
                 
             } else {

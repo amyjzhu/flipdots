@@ -1,5 +1,8 @@
-import { GroupAction, Time, FlipdotSimHardware } from "./hardware";
-import { parseToGroupAction } from "./language2";
+import { ALPHABET_WITH_EXCLAMATION } from "./constants";
+import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
+import { CircleTarget, parseToGroupAction, PixelArtTarget } from "./language2";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed } from "./transitions";
+import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
     // semantics of timing have changed 
@@ -17,7 +20,7 @@ if (typeof window != 'undefined') {
     teapot 0 ->* sparkle ->* teapot 9"
     // parser(teapotExample);
 
-    parseToGroupAction(teapot2Example);
+    // parseToGroupAction(teapot2Example);
 
 
     let wipeExample = "timing: [15,15]\n\
@@ -72,28 +75,30 @@ if (typeof window != 'undefined') {
     }
 
 
-    /*
-    // let brixels = new BrixelDisplay(10, 20);
-    // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
-    let brixelHw = BrixelSimHardware.Rectangular(10, 20);
+    
+    // // let brixels = new BrixelDisplay(10, 20);
+    // // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
+    // let brixelHw = BrixelSimHardware.Rectangular(10, 20);
 
-    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
+    // let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
 
-    let orrt = new OverrotateRevealTransition();
-    orrt.overrotateAt = id => {
-        let row = brixelHw.indexToCoord.get(id)![0];
-        console.log(row)
-        return row == 2 ? 0.6 : row == 3 ? 0.7 : row == 4 ? 0.8 : row == 5 ? 0.9 : 1;
-        // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
-        // return 0.7
-    }
-    let actions1 = orrt.generateGroupActions(new CircleTarget(0, [4, 4], [10, 20]), new CircleTarget(1, [4, 4], [10, 20]), 300, brixelHw);
-    let actions2 = orrt.generateGroupActions(new CircleTarget(1, [4, 4], [10, 20]), new CircleTarget(3, [3, 3], [10, 20]), 300, brixelHw);
-    let actions3 = orrt.generateGroupActions(new CircleTarget(3, [3, 3], [10, 20]), new CircleTarget(5, [2, 2], [10, 20]), 300, brixelHw);
-    // console.log(actions)
-    // now, how do I do it so that it takes more time depending on its location?
-    let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
-    brixelHw.compile(actionsTogether);
+    // let orrt = new OverrotateRevealTransition();
+    // orrt.overrotateAt = id => {
+    //     let row = brixelHw.indexToCoord.get(id)![0];
+    //     console.log(row)
+    //     return row == 2 ? 0.6 : row == 3 ? 0.7 : row == 4 ? 0.8 : row == 5 ? 0.9 : 1;
+    //     // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
+    //     // return 0.7
+    // }
+    // let actions1 = orrt.generateGroupActions(new CircleTarget(0, [4, 4], [10, 20]), new CircleTarget(1, [4, 4], [10, 20]), 300, brixelHw);
+    // let actions2 = orrt.generateGroupActions(new CircleTarget(1, [4, 4], [10, 20]), new CircleTarget(3, [3, 3], [10, 20]), 300, brixelHw);
+    // let actions3 = orrt.generateGroupActions(new CircleTarget(3, [3, 3], [10, 20]), new CircleTarget(5, [2, 2], [10, 20]), 300, brixelHw);
+    // // console.log(actions)
+    // // now, how do I do it so that it takes more time depending on its location?
+    // let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
+    // brixelHw.compile(actionsTogether);
+
+    // how can I write programs for brixel hardware?
 
     // let's try to make a splash outwards..
     // I think this is like a 
@@ -132,6 +137,20 @@ if (typeof window != 'undefined') {
     let finalState = [...new Array(h * w)].map(j => new SplitflapState(" "));
     [...new Array(msgString.length).keys()].forEach(i => finalState[6 * w + i + 13] = finalMessage[i]);
 
+    // I basically need it to be...
+    // an array with that deployed in the middle
+    let msgArray = [...new Array(h).keys()].map(r => [...new Array(w).keys()].map(c => {
+        if (r == 6 && c > 12 && c <= 12 + msgString.length) {
+            return msgString.split("")[c - 13];
+        }
+        return " ";
+    }))
+
+    console.log(msgArray)
+    let msgTarget = new PixelArtTarget(msgArray, " ");
+    console.log(msgTarget.draw())
+
+
     // let schedule = scheduleDirectional(
     //     sfhw.units as SplitflapUnit[],
     //     finalState,
@@ -148,11 +167,18 @@ if (typeof window != 'undefined') {
     let restGA = buildTimeline(schedule3, 4);
     console.log("frame 1 is ", frame1);
     console.log("other schedule is ", restGA);
+
+
+
+    let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
     // sfhw.compile([frame1]);
-    sfhw.compile([frame1, frame2, ...restGA]);
+    console.log(groupActionsFromTransition)
+    groupActionsFromTransition
+    sfhw.compile([frame1, frame2, ...delayGroupActions(groupActionsFromTransition, 4)]);
+    // sfhw.compile([frame1, frame2, ...restGA]);
     // now I want the position of the text.
     // row 7 from 12 to 20
-*/
+
 
     // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
     // threed.finalize3D().then(_ => {
