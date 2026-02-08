@@ -148,7 +148,8 @@ export class SplitFlapDisplay {
                 const ctx = canvas.getContext("2d")!;
                 // ctx.font = "100px Arial";
                 ctx.font = "250px Arial";
-                ctx.fillStyle = "red";
+                let textColour = "white"; // "red"
+                ctx.fillStyle = textColour;
                 let texture;
                 if (top) {
                     ctx.fillText(letter, 70, 250);
@@ -211,18 +212,21 @@ export class SplitFlapDisplay {
 
     }
 
-    generateCanvasTexture(colour: string, top: boolean): [THREE.Texture, HTMLCanvasElement] {
+    generateCanvasTexture(colour: string): [THREE.Texture, HTMLCanvasElement] {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d")!;
         ctx.font = "250px Arial";
         ctx.fillStyle = colour;
-        if (top) {
-            ctx.fillStyle = "blue";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        } else {
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // if (top) {
+        //     ctx.fillStyle = "blue";
+        //     ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // } else {
+        //     ctx.fillStyle = "white";
+        //     ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // }
+        
         // document.body.appendChild(canvas);
 
         let texture = new THREE.CanvasTexture(canvas);
@@ -301,9 +305,9 @@ export class SplitFlapDisplay {
     makePiece = (top: boolean): [THREE.Mesh, HTMLCanvasElement, HTMLCanvasElement] => {
         let geometry = new THREE.BoxGeometry(this.WIDTH, this.HEIGHT, 0.5);
 
-        let [frontTexture, c] = this.generateCanvasTexture("white", top);
+        let [frontTexture, c] = this.generateCanvasTexture("white");
 
-        let [backTexture, c2] = this.generateCanvasTexture("green", top);
+        let [backTexture, c2] = this.generateCanvasTexture("black");
 
         let basicMaterial = this.basicMaterial;
         var material = new THREE.MeshBasicMaterial({

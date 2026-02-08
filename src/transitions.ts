@@ -883,12 +883,12 @@ export class FlipConstantSpeed implements Transition {
         let d2: Colour[][] = o2.draw();
 
         let units = h.units;
-        
+
         let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
         let unitOrder: number[] = units.map(u => u.id);
         d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
         let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
-        
+
 
         const schedule = new Map<UnitId, Time[]>();
         const finishBuckets = new Map<Time, UnitId[]>();
@@ -926,6 +926,275 @@ export class FlipConstantSpeed implements Transition {
         }
 
         return buildTimeline(schedule);
+    }
+
+}
+
+export class FlipDirectional implements Transition {
+    flipsPerSecond: number = 1;
+    order: GridOrder;
+    synchronizedStart = true;
+
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
+
+    startAnytime = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("Cannot flip with this hardware type")
+        }
+
+        // this is going to be the target set, but I need to order it in terms of my units. 
+        let d2: Colour[][] = o2.draw();
+
+        let units = h.units;
+
+        let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+
+        let relevantUnits = d2AsUnits.filter(a => a[1] != " ");
+
+        console.log("order", d2AsUnits.map(a => a[0]))
+        // console.log("order", unitOrder)
+        let targets = relevantUnits.map(c => new SplitflapState(`${c[1]}`));
+        console.log("order", targets)
+
+        // todo: this looks at all the units, but it's okay because it's relative spacing 
+        let [mask, x, y] = generateMaskFromCoords(relevantUnits.map(a => a[0]), h);
+        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
+
+        const dt = 1 / this.flipsPerSecond;
+        console.log(dt)
+
+        relevantUnits.sort((a, b) => {
+            let ca = h.indexToCoord.get(a[0])!;
+            let cb = h.indexToCoord.get(b[0])!;
+
+            console.log(maskTime)
+            return maskTime[ca[1] - (y as number)][ca[0] - (x as number)] - maskTime[cb[1] - (y as number)][cb[0] - (x as number)];
+        })
+
+        const schedule = new Map<UnitId, Time[]>();
+        let currentEnd = 0;
+
+        // TODO this doesn't 100% follow the order specification :\ because it's not specifying pauses 
+        for (let i = 0; i < relevantUnits.length; i++) {
+            let unit = units[relevantUnits[i][0]];
+            const flips = h.computeFlipDistance(unit as SplitflapUnit, targets[i]);
+            const times: Time[] = [];
+
+            for (let i = 0; i < flips; i++) {
+                times.push(currentEnd + i * dt);
+                console.log(currentEnd, i, dt, currentEnd + i * dt)
+            }
+
+            console.log(times)
+            if (times.length > 0) {
+                currentEnd = times[times.length - 1] + dt;
+            }
+            schedule.set(unit.id, times);
+        }
+
+        console.log("order", schedule)
+
+
+        return buildTimeline(schedule);
+    }
+
+    startTogether = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("Cannot flip with this hardware type")
+        }
+
+        // this is going to be the target set, but I need to order it in terms of my units. 
+        let d2: Colour[][] = o2.draw();
+
+        let units = h.units;
+
+        let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+
+        let relevantUnits = d2AsUnits.filter(a => a[1] != " ");
+
+        console.log("order", d2AsUnits.map(a => a[0]))
+        // console.log("order", unitOrder)
+        let targets = relevantUnits.map(c => new SplitflapState(`${c[1]}`));
+        console.log("order", targets)
+
+        // todo: this looks at all the units, but it's okay because it's relative spacing 
+        let [mask, x, y] = generateMaskFromCoords(relevantUnits.map(a => a[0]), h);
+        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
+
+        const dt = 1 / this.flipsPerSecond;
+
+        // const required = ordered.map(u => h.computeFlipDistance(u as SplitflapUnit));
+        
+
+        const schedule = new Map<UnitId, Time[]>();
+        let minFinishFlips = 0;
+
+        // this needs to be given in order.
+        relevantUnits.sort((a, b) => {
+            let ca = h.indexToCoord.get(a[0])!;
+            let cb = h.indexToCoord.get(b[0])!;
+
+            console.log(maskTime)
+            return maskTime[ca[1] - (y as number)][ca[0] - (x as number)] - maskTime[cb[1] - (y as number)][cb[0] - (x as number)];
+        })
+
+
+        for (const toSpin of relevantUnits) {
+            let target = new SplitflapState(`${toSpin[1]}`);
+            let unit = units.find(u => toSpin[0] == u.id)!;
+            const need = h.computeFlipDistance(unit as SplitflapUnit, target);
+
+            // must:
+            // - reach target
+            // - finish no earlier than previous
+            // if we go with minFinishFlips though, that implies we need to go farther than needed
+            // let's slow down then 
+            // alternative: if it's really close, we should probably consider also adding a full set of flips
+            let delay = 3; // could be elongated
+            const flips = Math.max(need, minFinishFlips);
+
+            // I do this the +1 is a bit slow...
+            minFinishFlips = flips + delay; // enforce strict ordering
+            schedule.set(
+                unit.id,
+                flipsFromCount(need, flips, dt)
+            );
+        }
+
+        console.log(schedule)
+        return buildTimeline(schedule);
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+
+        if (this.synchronizedStart) {
+            return this.startTogether(o1, o2, t, h);
+        } else {
+            return this.startAnytime(o1, o2, t, h);
+        }
+    }
+
+}
+
+
+function flipsFromCount(flips: number, maxFlips: number, dt: number): Time[] {
+    // let's ignore how long it takes to flip
+    let div = maxFlips / flips * dt;
+    const times: Time[] = [];
+    for (let i = 0; i < flips; i++) {
+        times.push(i * div);
+    }
+    return times;
+
+}
+
+export class FlipSyncEnd implements Transition {
+    flipsPerSecond: number = 1;
+    initializationDelay: number = 0;
+    synchronizedStart = true;
+
+    startAnytime = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("Cannot flip with this hardware type")
+        }
+
+        // this is going to be the target set, but I need to order it in terms of my units. 
+        let d2: Colour[][] = o2.draw();
+
+        let units = h.units;
+
+        let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+        let unitOrder: number[] = units.map(u => u.id);
+        d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
+        let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
+
+
+        const schedule = new Map<UnitId, Time[]>();
+        const dt = 1 / this.flipsPerSecond;
+        console.log(dt)
+
+        const maxFlips = Math.max(
+            ...units.map((u, i) => h.computeFlipDistance(u as SplitflapUnit, targets[i]))
+        );
+
+        const endTime = this.initializationDelay + maxFlips * dt;
+
+        for (let i = 0; i < units.length; i++) {
+            let unit = units[i]
+            const flips = h.computeFlipDistance(unit as SplitflapUnit, targets[i]);
+            const startTime = endTime - flips * dt;
+            const times: Time[] = [];
+
+            for (let i = 0; i < flips; i++) {
+                times.push(startTime + i * dt);
+            }
+
+            schedule.set(unit.id, times);
+        }
+
+        return buildTimeline(schedule);
+
+    }
+
+    startTogether = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("Cannot flip with this hardware type")
+        }
+
+        // this is going to be the target set, but I need to order it in terms of my units. 
+        let d2: Colour[][] = o2.draw();
+
+        let units = h.units;
+
+        let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+        let unitOrder: number[] = units.map(u => u.id);
+        d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
+
+        let relevantUnits = d2AsUnits.filter(a => a[1] != " ");
+        let targets = relevantUnits.map(c => new SplitflapState(`${c[1]}`));
+
+        // each target is going to start spinning right away.
+
+        const required = new Map<UnitId, number>();
+        let maxRequired = 0;
+
+        for (const toSpin of relevantUnits) {
+            let target = new SplitflapState(`${toSpin[1]}`);
+            let unit = units.find(u => toSpin[0] == u.id)!;
+            const flips = h.computeFlipDistance(unit as SplitflapUnit, target);
+            required.set(unit.id, flips);
+            maxRequired = Math.max(maxRequired, flips);
+        }
+
+        const schedule = new Map<UnitId, Time[]>();
+        // now I need to calculate
+        // every unit needs to flip at least as many as MAX
+        // I can employ one of two strategies: flip more, or slow down flipping 
+        // let's slow down flipping
+        for (const toSpin of relevantUnits) {
+            let unit = units.find(u => toSpin[0] == u.id)!;
+
+            const actualFlips = flipsFromCount(required.get(unit.id)!, maxRequired, 1 / this.flipsPerSecond)
+            schedule.set(
+                unit.id, actualFlips
+            );
+        }
+
+
+        return buildTimeline(schedule);
+
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+
+        if (this.synchronizedStart) {
+            return this.startTogether(o1, o2, t, h);
+        } else {
+            return this.startAnytime(o1, o2, t, h);
+        }
     }
 
 }

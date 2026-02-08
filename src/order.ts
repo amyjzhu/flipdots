@@ -54,6 +54,22 @@ export class BottomUp extends GridOrder {
     }
 }
 
+export class LeftToRight extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+
+        // TODO: direction is flipped here, need to look into the whole flipping 
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                grid[i][j] = j;
+            }
+        }
+
+        console.log("left to right grid is", grid)
+        return grid;
+    }
+}
+
 
 export class BottomLeftWildfire extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {

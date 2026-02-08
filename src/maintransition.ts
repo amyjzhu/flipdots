@@ -1,7 +1,8 @@
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, parseToGroupAction, PixelArtTarget } from "./language2";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed } from "./transitions";
+import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight } from "./order";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -171,6 +172,9 @@ if (typeof window != 'undefined') {
 
 
     let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    groupActionsFromTransition = new FlipDirectional(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    // groupActionsFromTransition = new FlipSyncEnd().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
     // sfhw.compile([frame1]);
     console.log(groupActionsFromTransition)
     groupActionsFromTransition

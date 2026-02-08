@@ -217,15 +217,17 @@ export class SplitflapHardware implements HardwareInterface {
     }
 
     static Rectangular(width: number, height: number, reelConfig: (x: number, y: number) => SplitflapState[]) {
+        let indexToCoord = new Map<number, [number, number]>();
 
         let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => {
             let reel = reelConfig(j, i);
-            return new SplitflapUnit(i * width + j, reel)
+            let newUnit = new SplitflapUnit(i * width + j, reel);
+            indexToCoord.set(i * width + j, [j, i])
+            return newUnit;
         }).flat()).flat();
 
-        let indexToCoord = new Map<number, [number, number]>();
 
-        unitList.forEach(u => indexToCoord.set(u.id, [u.id % width, Math.floor(u.id / width)]))
+        // unitList.forEach(u => indexToCoord.set(u.id, [u.id % width, Math.floor(u.id / width)]))
         console.log(indexToCoord)
         let adjacency = (i: UnitId) => {
             let neighbours: UnitId[] = [];
@@ -283,7 +285,7 @@ export class SplitflapHardware implements HardwareInterface {
         for (let ga of groupActions) {
             let time = this.getRealTiming(ga.tPlus);
             const frame = Math.round(ga.tPlus);
-            console.log(time, frame)
+            // console.log(time, frame)
 
             // cumulativeTime += time;
             // console.log("updating time!", cumulativeTime, time)
@@ -298,7 +300,7 @@ export class SplitflapHardware implements HardwareInterface {
                 // first, make sure we can do everything simultaneously
 
 
-                console.log(unitAvailableAt)
+                // console.log(unitAvailableAt)
                 let violations = false;
                 for (let unit of units) {
                     // do we actually know what the action is?
@@ -342,8 +344,8 @@ export class SplitflapHardware implements HardwareInterface {
                 // remember, if we didn't set it, it must not be possible to use!!
                 unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));
 
-                console.log(nextAvailable)
-                console.log("updating to ", nextAvailable);
+                // console.log(nextAvailable)
+                // console.log("updating to ", nextAvailable);
                 for (let [ids, interval] of nextAvailable) {
                     // console.log(cumulativeTime + this.getRealTiming(interval))
 
