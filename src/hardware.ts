@@ -544,7 +544,11 @@ export class BrixelSimHardware implements HardwareInterface {
             let otherIds = [...new Set(this.units.map(r => r.id).flat()).difference(new Set(ids))];
             console.log("time, otherTime, incDuration", time, time, incrementTime(time, this.actionDurations.get(Action.INCREMENT)!));
 
-            return [[otherIds, time],
+            
+            // I think I see the problem... each increment is forcing action to change.
+            console.log("new time for otherids is ", time, otherIds)
+            return [[otherIds, 0],
+            // return [[otherIds, time],
             // return [[otherIds, incrementTime(time, 1)],
             [ids, incrementTime(time, this.actionDurations.get(Action.INCREMENT)!)]] as [UnitId[], Time][];
         }
@@ -675,6 +679,7 @@ export class BrixelSimHardware implements HardwareInterface {
 
                 // should this actually be like, when are each of the next available elements available?
                 // some thigns won't be available until another move is made.
+                console.log("otherids ", units.map(u => u.id), time)
                 let nextAvailable = this.allowedNextActive(actionType, action[1], time);
                 // remember, if we didn't set it, it must not be possible to use!!
                 unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));

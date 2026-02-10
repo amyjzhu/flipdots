@@ -720,7 +720,7 @@ function computeFlips(frames: number[][]): number[][] {
 // let golf_opts = [GOLF_ANIM, GOLF_STRETCH, GOLF_CAMERA, GOLF_PATH, GOLF_IMPACT];
 // let golf_captions = ["default", "stretch", "zoom", "path", "impact"]
 // let buttons = document.createElement("div");
-// for (let i = 0; i < gol/f_opts.length; i++) {
+// for (let i = 0; i < golf_opts.length; i++) {
 //     let btn = document.createElement("button");
 //     btn.textContent = golf_captions[i];
 //     btn.addEventListener('click', () => {

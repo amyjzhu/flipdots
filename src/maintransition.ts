@@ -1,6 +1,6 @@
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
-import { CircleTarget, parseToGroupAction, PixelArtTarget } from "./language2";
+import { CircleTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
 import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight } from "./order";
 import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd } from "./transitions";
 import { getImages } from "./util";
@@ -77,36 +77,70 @@ if (typeof window != 'undefined') {
 
 
     
-    // // let brixels = new BrixelDisplay(10, 20);
-    // // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
-    // let brixelHw = BrixelSimHardware.Rectangular(10, 20);
+    // let brixels = new BrixelDisplay(10, 20);
+    // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
+    let brixelHw = BrixelSimHardware.Rectangular(10, 20);
 
-    // let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
+    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
 
-    // let orrt = new OverrotateRevealTransition();
-    // orrt.overrotateAt = id => {
-    //     let row = brixelHw.indexToCoord.get(id)![0];
-    //     console.log(row)
-    //     return row == 2 ? 0.6 : row == 3 ? 0.7 : row == 4 ? 0.8 : row == 5 ? 0.9 : 1;
-    //     // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
-    //     // return 0.7
-    // }
+    let orrt = new OverrotateRevealTransition();
+    orrt.overrotateAt = id => {
+        let row = brixelHw.indexToCoord.get(id)![0];
+        console.log(row)
+        return row == 2 ? 0.6 : row == 3 ? 0.7 : row == 4 ? 0.8 : row == 5 ? 0.9 : 1;
+        // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
+        // return 0.7
+    }
 
-    // //
+    //
+/*
+    let s = new CircleTarget(0, [4, 4], [10, 20]);
+    let t1 = new CircleTarget(1, [4, 4], [10, 20]);
+    let t2 = new CircleTarget(3, [3, 3], [10, 20]);
+    let t3 = new CircleTarget(5, [2, 2], [10, 20])
 
-    // let s = new CircleTarget(0, [4, 4], [10, 20]);
-    // let t1 = new CircleTarget(1, [4, 4], [10, 20]);
-    // let t2 = new CircleTarget(3, [3, 3], [10, 20]);
-    // let t3 = new CircleTarget(5, [2, 2], [10, 20])
+    let actions1 = orrt.generateGroupActions(s, t1, 300, brixelHw)
+    let actions2 = orrt.generateGroupActions(t1, t2, 300, brixelHw);
+    let actions3 = orrt.generateGroupActions(t2, t3, 300, brixelHw);
+    // console.log(actions)
+    // now, how do I do it so that it takes more time depending on its location?
 
-    // let actions1 = orrt.generateGroupActions(s, t1, 300, brixelHw)
-    // let actions2 = orrt.generateGroupActions(t1, t2, 300, brixelHw);
-    // let actions3 = orrt.generateGroupActions(t2, t3, 300, brixelHw);
-    // // console.log(actions)
-    // // now, how do I do it so that it takes more time depending on its location?
-
+    let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
     // let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
-    // brixelHw.compile(actionsTogether);
+    brixelHw.compile(actionsTogether);
+*/
+
+    // // what about a wave vs a set of rows flipping.
+    // let w1 = new RectangleTarget(10, 0, [0,0], [10,20]);
+    // let w2 = new RectangleTarget(10, 2, [0,0], [10,20]);
+    // let w3 = new RectangleTarget(10, 4, [0,0], [10,20]);
+    // let w4 = new RectangleTarget(10, 6, [0,0], [10,20]);
+    // let w5 = new RectangleTarget(10, 8, [0,0], [10,20]);
+    // let w6 = new RectangleTarget(10, 10, [0,0], [10,20]);
+    // let w7 = new RectangleTarget(10, 12, [0,0], [10,20]);
+    // let w8 = new RectangleTarget(10, 14, [0,0], [10,20]);
+    // let w9 = new RectangleTarget(10, 16, [0,0], [10,20]);
+    // let w10 = new RectangleTarget(10, 18, [0,0], [10,20]);
+    // let w11 = new RectangleTarget(10, 20, [0,0], [10,20]);
+
+    let rectTargets = [...new Array(11).keys()].map(i => new RectangleTarget(10, i * 2, [0,0], [10,20]));
+    let incrementalActions = [];
+    for (let i = 0; i < 10; i++) {
+        incrementalActions.push(new OverrotateRevealTransition().generateGroupActions(rectTargets[i], rectTargets[i+1], 300, brixelHw));
+        // incrementalActions.push(new RotateRevealTransition().generateGroupActions(rectTargets[i], rectTargets[i+1], 300, brixelHw));
+    }
+    let compiledActions: GroupAction[] = [];
+    let count = 0;
+    for (let i = 0; i < 10; i++) {
+        compiledActions = compiledActions.concat(offsetGroupActions(incrementalActions[i], count));
+        
+        count += 150;
+        console.log("count is", count)
+    }
+    console.log("compiled actions ", compiledActions)
+
+    brixelHw.compile(compiledActions)
+
 
     // how can I write programs for brixel hardware?
 
@@ -194,11 +228,11 @@ if (typeof window != 'undefined') {
     // row 7 from 12 to 20
 */
 
-    let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
-    threed.finalize3D().then(_ => {
-        console.log("got it")
-        console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
-    });
+    // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
+    // threed.finalize3D().then(_ => {
+    //     console.log("got it")
+    //     console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
+    // });
 
 }
 

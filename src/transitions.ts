@@ -752,7 +752,7 @@ export class OverrotateRevealTransition implements Transition {
             // all of these should be offset by the starting time according to the order
             let coord = h.indexToCoord.get(id)!;
             console.log(coord, maskTime)
-            let startAtTime = maskTime[coord[1] - (x as number)][coord[0] - (y as number)];
+            let startAtTime = maskTime[coord[1] - (y as number)][coord[0] - (x as number)];
             let reachBy = t * ora;
             let overrotateDuration = t * (1 - ora) / 2;
             let startToReturn = reachBy + overrotateDuration;

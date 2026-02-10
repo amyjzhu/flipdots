@@ -72,6 +72,42 @@ interface TemporalTarget extends Target {
     parentEffects: Effect[]
 }
 
+export class RectangleTarget implements DrawableTarget {
+    shape: Colour[][];
+    position: [number, number];
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    effect: Effect | undefined;
+    debugTag: string | undefined;
+
+    extractedShape: Colour[][];
+    defaultColour: Colour = false;
+
+
+    constructor(width: number, height: number, position: [number, number], canvasSize: [number, number]) {
+        this.position = position;
+
+        this.shape = [...Array(canvasSize[1])].map(_ => [...Array(canvasSize[0])].map(_ => this.defaultColour));
+
+        for (let i = 0; i < width; i++) {
+            for (let j = 0; j < height; j++) {
+                this.shape[j + this.position[1]][i + this.position[0]] = true;
+            }
+        }
+
+        this.extractedShape = [...Array(height)].map(_ => [...Array(width)].map(_ => true));
+    }
+
+
+    draw(): Colour[][] {
+        if (this.shape.length == 0) {
+            return [];
+        }
+        return this.shape;
+    }
+}
 
 export class CircleTarget implements DrawableTarget {
     shape: Colour[][];
@@ -86,10 +122,10 @@ export class CircleTarget implements DrawableTarget {
     extractedShape: Colour[][];
     defaultColour: Colour = false;
 
-    
+
     constructor(radius: number, position: [number, number], canvasSize: [number, number]) {
         this.position = position;
-        
+
         let centre = [this.position[0] + radius, this.position[1] + radius];
 
         this.shape = [...Array(canvasSize[1])].map(_ => [...Array(canvasSize[0])].map(_ => this.defaultColour));
@@ -102,7 +138,7 @@ export class CircleTarget implements DrawableTarget {
                 shapeRow.push(Math.sqrt(((centre[0] - j) ** 2) + ((centre[1] - i) ** 2)) <= radius)
 
                 if (inBounds([i + this.position[0], j + this.position[1]], canvasSize)) {
-                    this.shape[i+ this.position[0]][j+ this.position[1]] = true;
+                    this.shape[i + this.position[0]][j + this.position[1]] = true;
                 }
             }
             extractedShape.push(shapeRow);
@@ -111,7 +147,7 @@ export class CircleTarget implements DrawableTarget {
         this.extractedShape = extractedShape;
     }
 
-    
+
     draw(): Colour[][] {
         if (this.shape.length == 0) {
             return [];
@@ -863,7 +899,7 @@ class MotionFlipTo implements Effect {
         // // first is actually empty...
         // let emptyFrame: Target = new PixelArtTarget([], false);
         // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
-        
+
         // console.log(frames.map(f => f.position))
         let allFrames: Target[] = [this.from!, ...frames];
 
@@ -871,10 +907,10 @@ class MotionFlipTo implements Effect {
         console.log(frames)
         let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
         // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
- 
+
         console.log("time is (groupaction) ", time)
-        
-         
+
+
         return h => {
             // the duration should be consistent.
             // but I actually want to change the time 
@@ -906,7 +942,7 @@ class Instantaneous implements Effect {
         // // first is actually empty...
         // let emptyFrame: Target = new PixelArtTarget([], false);
         // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
-        
+
         // console.log(frames.map(f => f.position))
         let allFrames: Target[] = [this.from!, ...frames];
 
@@ -914,7 +950,7 @@ class Instantaneous implements Effect {
         console.log(frames)
         let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
         // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-        
+
         return h => windowFrames.map(w => new SnapTransition().generateGroupActions(w[0], w[1], time, h)).flat();
 
     }
@@ -985,41 +1021,41 @@ class Sparkle implements Effect {
         // find the centre of the to
         let centre = this.to?.draw();
         let idxes = centre?.map((r, i) => r.map((c, j) => {
-            if (c) { 
+            if (c) {
                 return [i, j]
             } else {
                 return undefined;
             }
-    })).flat().filter(i => i != undefined);
+        })).flat().filter(i => i != undefined);
 
         if (idxes.length == 0) {
             idxes = [this.from.position];
         }
-        
+
         let midPointX = Math.round((idxes.map(x => x[0]).reduce((acc, x) => acc + x, 0)) / idxes.length);
         let midPointY = Math.round((idxes.map(x => x[1]).reduce((acc, x) => acc + x, 0)) / idxes.length);
 
-        
+
 
         return h => {
             // it's okay since I know what kind of thing this is for...
             let dists = idxes.map(idx => Math.sqrt((midPointX - idx[0]) ** 2 + (midPointY - idx[1]) ** 2));
             let max = dists.reduce((max: [number, number], dist: number, i: number) => dist > max[1] ? [i, dist] as [number, number] : max, [0, dists[0]]);
             let closestUnit = h.coordToIndex(idxes[max[0]] as [number, number]);
-            
+
             // return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
             // return new WaveTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
             // TODO: this point needs to consider that this is th global max and we work with a mask later 
             // TODO: this would be a cool way to do the density of the shape, but...
             // return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
-            return new StochasticTransition(new GrowFromCentre((w,h) => [Math.round(w/2), Math.round(h/2)] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
+            return new StochasticTransition(new GrowFromCentre((w, h) => [Math.round(w / 2), Math.round(h / 2)] as [number, number])).generateGroupActions(frames[0], frames[frames.length - 1], time, h);
         }
     }
 
 }
 
 class RotateReveal implements Effect {
-    
+
 }
 
 class Wipe implements Effect {
@@ -1038,19 +1074,19 @@ class Wipe implements Effect {
         // throw new Error("Method not implemented.");
         console.log(flips)
         let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
-        
+
         let allFrames: Target[] = [this.from!, this.to!];
         // let allFrames: Target[] = [this.from!, ...frames];
         let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
         // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-        
-        
+
+
         return h => {
             // let dir: [number, number] = [1,1];
             // let dir: [number, number] = [1, 0]
             // let direction = h.timeFrontier(0, dir)
             // let direction = (t: number) => []
-            
+
             // return [];
             return windowFrames.map(w => new WaveTransition(new BottomUp()).generateGroupActions(w[0], w[1], time, h)).flat()
         };
@@ -1590,7 +1626,7 @@ let generateAnimationToGroupAction_old = (objects: Target[][], transitionTiming:
     // let allFrames = [emptyFrame, ...frames];
 
     // let windowFrames = toWindows(allFrames, 2);
-    
+
 
     // // each effect might do something different... I should try to hook it up
     // let generateAnimationBetweenFrames = (start: boolean[][], end: boolean[][], time: number): GroupAction[] => {
@@ -1609,7 +1645,7 @@ let generateAnimationToGroupAction_old = (objects: Target[][], transitionTiming:
         console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
         while (o && o.effect != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
-            
+
             let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum], 1)
             // console.log(fullObjects.map(o => o.draw()))
             actions = actions.concat(fullObjects(h))
@@ -1650,9 +1686,9 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
         console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
         while (o && o.effect != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
-            
+
             // timing issue - subtract the duration
-            let prev = frameNum == 0 ? 1 : transitionTiming[frameNum-1]
+            let prev = frameNum == 0 ? 1 : transitionTiming[frameNum - 1]
             console.log(prev)
             let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, 1)
             // console.log(fullObjects.map(o => o.draw()))
@@ -1947,7 +1983,7 @@ export let parseToGroupAction = async (input: string, hardware?: HardwareInterfa
         hardware = new FlipdotSimHardware([], i => [], [height, width]);
         (hardware as FlipdotSimHardware).flipDurationMS = 1;
     }
-    
+
 
     console.log(graph);
     console.log("hejsdh")
@@ -2175,9 +2211,9 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                         effect == "wipe" ? new Wipe(obj, eo, EffectType.Complete, WipeDirection.TTB) :
                             effect == "grow" ? new GrowWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
                                 effect == "move" ? new UniformMove(obj, eo, EffectType.Complete) :
-                                effect == "motion" ? new MotionFlipTo(obj, eo, EffectType.Complete) :
-                                effect == "sparkle" ? new Sparkle(obj, eo, EffectType.Complete) : 
-                                    new DrawingHeadWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
+                                    effect == "motion" ? new MotionFlipTo(obj, eo, EffectType.Complete) :
+                                        effect == "sparkle" ? new Sparkle(obj, eo, EffectType.Complete) :
+                                            new DrawingHeadWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
 
 
 
@@ -2323,9 +2359,9 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                     effect == "wipe" ? new Wipe(startTarget, endTarget, EffectType.Complete, WipeDirection.TTB) :
                         effect == "grow" ? new GrowWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]) :
                             effect == "move" ? new UniformMove(startTarget, endTarget, EffectType.Complete) :
-                            effect == "motion" ? new MotionFlipTo(startTarget, endTarget, EffectType.Complete) :
-                            effect == "sparkle" ? new Sparkle(startTarget, endTarget, EffectType.Complete) : 
-                                new DrawingHeadWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)])
+                                effect == "motion" ? new MotionFlipTo(startTarget, endTarget, EffectType.Complete) :
+                                    effect == "sparkle" ? new Sparkle(startTarget, endTarget, EffectType.Complete) :
+                                        new DrawingHeadWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)])
 
                 // the transition might have arguments.
                 // but don't we actually use the input to find that? 
