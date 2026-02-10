@@ -91,11 +91,20 @@ if (typeof window != 'undefined') {
     //     // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
     //     // return 0.7
     // }
-    // let actions1 = orrt.generateGroupActions(new CircleTarget(0, [4, 4], [10, 20]), new CircleTarget(1, [4, 4], [10, 20]), 300, brixelHw);
-    // let actions2 = orrt.generateGroupActions(new CircleTarget(1, [4, 4], [10, 20]), new CircleTarget(3, [3, 3], [10, 20]), 300, brixelHw);
-    // let actions3 = orrt.generateGroupActions(new CircleTarget(3, [3, 3], [10, 20]), new CircleTarget(5, [2, 2], [10, 20]), 300, brixelHw);
+
+    // //
+
+    // let s = new CircleTarget(0, [4, 4], [10, 20]);
+    // let t1 = new CircleTarget(1, [4, 4], [10, 20]);
+    // let t2 = new CircleTarget(3, [3, 3], [10, 20]);
+    // let t3 = new CircleTarget(5, [2, 2], [10, 20])
+
+    // let actions1 = orrt.generateGroupActions(s, t1, 300, brixelHw)
+    // let actions2 = orrt.generateGroupActions(t1, t2, 300, brixelHw);
+    // let actions3 = orrt.generateGroupActions(t2, t3, 300, brixelHw);
     // // console.log(actions)
     // // now, how do I do it so that it takes more time depending on its location?
+
     // let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
     // brixelHw.compile(actionsTogether);
 
@@ -105,6 +114,7 @@ if (typeof window != 'undefined') {
     // I think this is like a 
     // rotate centre, rotate outer ring, rotate even outer ring
 
+    /*
 
 
     let data = await getImages(["/animations/thinking.png"]);
@@ -160,21 +170,21 @@ if (typeof window != 'undefined') {
     //     "LEFT_TO_RIGHT"
     // );
 
-    let schedule = scheduleConstantSpeed(sfhw.units as SplitflapUnit[], finalState, 1)
-    let schedule2 = scheduleDirectional(sfhw.units as SplitflapUnit[], finalState, 1, sfhw, "LEFT_TO_RIGHT");
-    let schedule3 = scheduleSyncEnd(sfhw.units as SplitflapUnit[], finalState, 1)
-    // console.log(schedule)
+    // let schedule = scheduleConstantSpeed(sfhw.units as SplitflapUnit[], finalState, 1)
+    // let schedule2 = scheduleDirectional(sfhw.units as SplitflapUnit[], finalState, 1, sfhw, "LEFT_TO_RIGHT");
+    // let schedule3 = scheduleSyncEnd(sfhw.units as SplitflapUnit[], finalState, 1)
+    // // console.log(schedule)
 
-    let restGA = buildTimeline(schedule3, 4);
-    console.log("frame 1 is ", frame1);
-    console.log("other schedule is ", restGA);
+    // let restGA = buildTimeline(schedule3, 4);
+    // console.log("frame 1 is ", frame1);
+    // console.log("other schedule is ", restGA);
 
 
 
     let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    // groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
     groupActionsFromTransition = new FlipDirectional(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    // groupActionsFromTransition = new FlipSyncEnd().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    groupActionsFromTransition = new FlipSyncEnd().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
     // sfhw.compile([frame1]);
     console.log(groupActionsFromTransition)
     groupActionsFromTransition
@@ -182,13 +192,13 @@ if (typeof window != 'undefined') {
     // sfhw.compile([frame1, frame2, ...restGA]);
     // now I want the position of the text.
     // row 7 from 12 to 20
+*/
 
-
-    // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
-    // threed.finalize3D().then(_ => {
-    //     console.log("got it")
-    //     console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
-    // });
+    let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
+    threed.finalize3D().then(_ => {
+        console.log("got it")
+        console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
+    });
 
 }
 
