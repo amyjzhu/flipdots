@@ -1018,6 +1018,10 @@ class Sparkle implements Effect {
 
 }
 
+class RotateReveal implements Effect {
+    
+}
+
 class Wipe implements Effect {
     from: Target | undefined;
     to: Target | undefined;
