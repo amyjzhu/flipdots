@@ -1,6 +1,6 @@
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
-import { CircleTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
+import { CircleTarget, LineBoil, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
 import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight } from "./order";
 import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd } from "./transitions";
 import { getImages } from "./util";
@@ -13,7 +13,7 @@ if (typeof window != 'undefined') {
     teapot 0 ->* instantaneous ->* teapot 9"
     // parser(teapotExample);
 
-    // parseToGroupAction(teapotExample);
+    parseToGroupAction(teapotExample);
 
     let teapot2Example = "timing: [3,6,9,12,16,19,22,26,29,32]\n\
     filepath: /animations/teapot${i}.png \n\
@@ -70,45 +70,61 @@ if (typeof window != 'undefined') {
     // TODO: the opposite doesn't work - you can't sparkle OUT 
     // parseToGroupAction(dandelion_basic);
 
+    console.log(new LineBoil(new RectangleTarget(5, 5, [0, 0], [10, 10])).draw());
+
+    let rectLineBoil = "timing: {\"frames\": [2,4], \"additional\":[6]}\n\
+    filepath: /animations/wipe${i}.png \n\
+    objects: [#000000 rectangle] \n\
+    lineboil(rectangle 1) 0 -> instantaneous -> lineboil(rectangle 1) 1 -> instantaneous -> lineboil(rectangle 1) 2";
+
+    // collision: collision(water 5, fish 5) 5 -> instantaneous -> collision(water 5, fish 5) 6";
+    parseToGroupAction(rectLineBoil);
+
+
+    let logoBoilExample = "timing: {\"frames\": [2,4], \"additional\":[6, 8, 10, 12, 14, 16]}\n\
+    filepath: /animations/text-logo${i}.png \n\
+    objects: [#000000 rectangle] \n\
+    lineboil(rectangle 0) 0 -> instantaneous -> lineboil(rectangle 1) 1 -> instantaneous -> lineboil(rectangle 1) 2 -> instantaneous -> lineboil(rectangle 1) 3 -> instantaneous -> lineboil(rectangle 1) 4  -> instantaneous -> lineboil(rectangle 1) 5  -> instantaneous -> lineboil(rectangle 1) 6  -> instantaneous -> lineboil(rectangle 1) 7";
+
+    parseToGroupAction(logoBoilExample);
 
     let offsetGroupActions = (ga: GroupAction[], t: Time): GroupAction[] => {
         return ga.map(g => new GroupAction(g.tPlus + t, g.actions));
     }
 
 
-    
-    // let brixels = new BrixelDisplay(10, 20);
-    // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
-    let brixelHw = BrixelSimHardware.Rectangular(10, 20);
+    // // let brixels = new BrixelDisplay(10, 20);
+    // // brixels.setAnimationSequence([[1, 10, 60], [2, 20, 90], [5, 30,60], [2, 30, 15]])
+    // let brixelHw = BrixelSimHardware.Rectangular(10, 20);
 
-    let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
+    // let actions = new RotateRevealTransition().generateGroupActions(new CircleTarget(1, [5, 5], [10, 20]), new CircleTarget(3, [4, 4], [10, 20]), 200, brixelHw)
 
-    let orrt = new OverrotateRevealTransition();
-    orrt.overrotateAt = id => {
-        let row = brixelHw.indexToCoord.get(id)![0];
-        console.log(row)
-        return row == 2 ? 0.6 : row == 3 ? 0.7 : row == 4 ? 0.8 : row == 5 ? 0.9 : 1;
-        // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
-        // return 0.7
-    }
+    // let orrt = new OverrotateRevealTransition();
+    // orrt.overrotateAt = id => {
+    //     let row = brixelHw.indexToCoord.get(id)![0];
+    //     console.log(row)
+    //     return row == 2 ? 0.6 : row == 3 ? 0.7 : row == 4 ? 0.8 : row == 5 ? 0.9 : 1;
+    //     // return row == 4 ? 0.7 : row == 6 ? 0.9 : 0.8;
+    //     // return 0.7
+    // }
 
     //
-/*
-    let s = new CircleTarget(0, [4, 4], [10, 20]);
-    let t1 = new CircleTarget(1, [4, 4], [10, 20]);
-    let t2 = new CircleTarget(3, [3, 3], [10, 20]);
-    let t3 = new CircleTarget(5, [2, 2], [10, 20])
-
-    let actions1 = orrt.generateGroupActions(s, t1, 300, brixelHw)
-    let actions2 = orrt.generateGroupActions(t1, t2, 300, brixelHw);
-    let actions3 = orrt.generateGroupActions(t2, t3, 300, brixelHw);
-    // console.log(actions)
-    // now, how do I do it so that it takes more time depending on its location?
-
-    let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
-    // let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
-    brixelHw.compile(actionsTogether);
-*/
+    /*
+        let s = new CircleTarget(0, [4, 4], [10, 20]);
+        let t1 = new CircleTarget(1, [4, 4], [10, 20]);
+        let t2 = new CircleTarget(3, [3, 3], [10, 20]);
+        let t3 = new CircleTarget(5, [2, 2], [10, 20])
+    
+        let actions1 = orrt.generateGroupActions(s, t1, 300, brixelHw)
+        let actions2 = orrt.generateGroupActions(t1, t2, 300, brixelHw);
+        let actions3 = orrt.generateGroupActions(t2, t3, 300, brixelHw);
+        // console.log(actions)
+        // now, how do I do it so that it takes more time depending on its location?
+    
+        let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
+        // let actionsTogether = actions1.concat(offsetGroupActions(actions2, actions1[actions1.length-1].tPlus).concat(offsetGroupActions(actions3, actions2[actions2.length-1].tPlus + actions1[actions1.length-1].tPlus)));
+        brixelHw.compile(actionsTogether);
+    */
 
     // // what about a wave vs a set of rows flipping.
     // let w1 = new RectangleTarget(10, 0, [0,0], [10,20]);
@@ -123,23 +139,23 @@ if (typeof window != 'undefined') {
     // let w10 = new RectangleTarget(10, 18, [0,0], [10,20]);
     // let w11 = new RectangleTarget(10, 20, [0,0], [10,20]);
 
-    let rectTargets = [...new Array(11).keys()].map(i => new RectangleTarget(10, i * 2, [0,0], [10,20]));
-    let incrementalActions = [];
-    for (let i = 0; i < 10; i++) {
-        incrementalActions.push(new OverrotateRevealTransition().generateGroupActions(rectTargets[i], rectTargets[i+1], 300, brixelHw));
-        // incrementalActions.push(new RotateRevealTransition().generateGroupActions(rectTargets[i], rectTargets[i+1], 300, brixelHw));
-    }
-    let compiledActions: GroupAction[] = [];
-    let count = 0;
-    for (let i = 0; i < 10; i++) {
-        compiledActions = compiledActions.concat(offsetGroupActions(incrementalActions[i], count));
-        
-        count += 150;
-        console.log("count is", count)
-    }
-    console.log("compiled actions ", compiledActions)
+    // let rectTargets = [...new Array(11).keys()].map(i => new RectangleTarget(10, i * 2, [0,0], [10,20]));
+    // let incrementalActions = [];
+    // for (let i = 0; i < 10; i++) {
+    //     incrementalActions.push(new OverrotateRevealTransition().generateGroupActions(rectTargets[i], rectTargets[i+1], 300, brixelHw));
+    //     // incrementalActions.push(new RotateRevealTransition().generateGroupActions(rectTargets[i], rectTargets[i+1], 300, brixelHw));
+    // }
+    // let compiledActions: GroupAction[] = [];
+    // let count = 0;
+    // for (let i = 0; i < 10; i++) {
+    //     compiledActions = compiledActions.concat(offsetGroupActions(incrementalActions[i], count));
 
-    brixelHw.compile(compiledActions)
+    //     count += 150;
+    //     console.log("count is", count)
+    // }
+    // console.log("compiled actions ", compiledActions)
+
+    // brixelHw.compile(compiledActions)
 
 
     // how can I write programs for brixel hardware?
@@ -245,9 +261,9 @@ if (typeof window != 'undefined') {
 type OrderedGrid = number[][];
 type GridOrder = (width: number, height: number) => OrderedGrid;
 type Mask = boolean[][];
-// what does this mean? get all units UP TO this time? 
+// what does this mean? get all units UP TO this time?
 type TimeFunction = (t: number) => UnitId[];
-// how do I get a projection? 
+// how do I get a projection?
 type Projection = (maskGridIdx: [number, number]) => UnitId;
 
 // untested but w/e
@@ -354,7 +370,7 @@ export let wildfireTemplate: GridOrder = (width: number, height: number) => {
             let prevMaxAtThisY = prevMaxesY.findIndex(a => a[1] == curr[1]);
             if (prevMaxAtThisY == -1 || prevMaxesY[prevMaxAtThisY][0] < curr[0]) {
                 // console.log(prevMaxAtThisY, " existing is ", prevMaxes[prevMaxAtThisY], " curr is ", curr)
-                // only remove if we also have a better 
+                // only remove if we also have a better
                 if (prevMaxAtThisY != -1) {
                     prevMaxesY.splice(prevMaxAtThisY, 1);
                 }
@@ -363,7 +379,7 @@ export let wildfireTemplate: GridOrder = (width: number, height: number) => {
 
             let prevMaxAtThisX = prevMaxesX.findIndex(a => a[0] == curr[0]);
             if (prevMaxAtThisX == -1 || prevMaxesX[prevMaxAtThisX][1] < curr[1]) {
-                // only remove if we also have a better 
+                // only remove if we also have a better
                 if (prevMaxAtThisX != -1) {
                     prevMaxesX.splice(prevMaxAtThisX, 1);
                 }
@@ -398,7 +414,7 @@ export let wildfireTemplate: GridOrder = (width: number, height: number) => {
         // console.log([...newFrontier])
 
         frontier = newFrontier;
-        // now we fill in the grid and also prune the entries that don't belong 
+        // now we fill in the grid and also prune the entries that don't belong
         // also this should be like, an actual frontier
 
 
@@ -420,12 +436,12 @@ export let wildfireTemplate: GridOrder = (width: number, height: number) => {
 
 
 // now I need to compile an example INTO group actions.
-// so... let me pop over to main and try to borrow one of those compilers? 
+// so... let me pop over to main and try to borrow one of those compilers?
 
 
 // how do I program this?
 
-// so, I have an "image" that I will make with black and whtie 
+// so, I have an "image" that I will make with black and whtie
 // first grup action is - flip everything in this image...
 
 

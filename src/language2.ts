@@ -19,7 +19,7 @@
 import { Action, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
 import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions"
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
-import { getImages, rgb2Hex } from "./util";
+import { getImages, Perlin, rgb2Hex } from "./util";
 import { BottomLeftWildfire, BottomUp, GrowFromCentre, StutterOrder } from "./order";
 
 let collisionStats = [4, 2];
@@ -612,6 +612,83 @@ class Noise implements DerivedTarget {
 
 }
 
+export class LineBoil implements DerivedTarget {
+    parentTargets: Target[];
+    position: [number, number];
+    startZero: boolean;
+
+    strength = 1.5;
+    seed = Math.random() * 1000;
+    noiseScale = 0.08;
+
+    constructor(parentTarget: Target, startZero: boolean = false) {
+        this.parentTargets = [parentTarget];
+        this.position = parentTarget.position;
+        this.startZero = startZero;
+    }
+
+    isEdge(img: Colour[][], x: number, y: number): boolean {
+        const h = img.length;
+        const w = img[0].length;
+        const c = img[y][x];
+
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                if (!dx && !dy) continue;
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                if (img[ny][nx] !== c) return true;
+            }
+        }
+        return false;
+    }
+
+    draw(): Colour[][] {
+        // work within the shape given to make it a checkerboard
+        let shape = this.parentTargets[0].draw();
+
+
+        const h = shape.length;
+        const w = shape[0].length;
+
+        const out = shape.map(row => [...row]);
+        const noise = new Perlin(this.seed);
+
+
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+
+                if (!this.isEdge(shape, x, y)) continue;
+
+                const dx = noise.noise(x * this.noiseScale, y * this.noiseScale) * this.strength;
+                const dy = noise.noise(
+                    (x + 100) * this.noiseScale,
+                    (y + 100) * this.noiseScale
+                ) * this.strength;
+
+                const nx = Math.round(x + dx);
+                const ny = Math.round(y + dy);
+
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+
+                out[ny][nx] = shape[y][x];
+            }
+        }
+
+        return out;
+    }
+
+
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    effect: Effect | undefined;
+    debugTag: string | undefined;
+}
+
+
 class Checkerboard implements DerivedTarget {
     parentTargets: Target[];
     position: [number, number];
@@ -986,6 +1063,7 @@ enum WipeDirection {
     TTB,
     BTT,
 }
+
 
 
 class Sparkle implements Effect {
@@ -2299,6 +2377,13 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                     startTarget = new Noise(arg, 1 - (startFrame / (timings.length)));
                     startTarget.debugTag = `noise(${arg.debugTag})`
 
+                } else if (startObj[0] == "lineboil") {
+                    let arg = namesToObjects.get(startObj[1][0][0] as string)![startObj[1][0][1] as number];
+
+                    // should be customizable lol 
+                    startTarget = new LineBoil(arg);
+                    startTarget.debugTag = `lineboil(${arg.debugTag})`
+
                 } else if (startObj[0] == "noop") { // TODO: just a bandaid solution here to not being able to go from derivedobject to baseobject in instr line
                     startTarget = namesToObjects.get(startObj[1][0][0])![startObj[1][0][1]];
                     startTarget.debugTag = `noop(${startTarget.debugTag})`
@@ -2328,6 +2413,13 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                     // let's include the startarg?
                     endTarget = new Noise(arg, 1 - (endFrame / timings.length), startTarget);
                     endTarget.debugTag = `noise(${arg.debugTag})`
+
+                } else if (endObj[0] == "lineboil") {
+                    let arg = namesToObjects.get(endObj[1][0][0] as string)![endObj[1][0][1] as number];
+
+                    // should be customizable lol 
+                    endTarget = new LineBoil(arg);
+                    endTarget.debugTag = `lineboil(${arg.debugTag})`
 
                 } else if (endObj[0] == "noop") {
                     endTarget = namesToObjects.get(startObj[1][0][0])![endObj[1][0][1]];

@@ -384,3 +384,67 @@ export let getImages = async (urls: string[]): Promise<[number, number, [number,
     }
     return [width, height, images];
 }
+
+export class Perlin {
+  private perm: number[] = [];
+
+  constructor(seed = 0) {
+    const p = Array.from({ length: 256 }, (_, i) => i);
+
+    let rand = seed || 1;
+    const random = () => {
+      rand = (rand * 16807) % 2147483647;
+      return rand / 2147483647;
+    };
+
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+
+    this.perm = [...p, ...p];
+  }
+
+  private fade(t: number) {
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  private lerp(a: number, b: number, t: number) {
+    return a + t * (b - a);
+  }
+
+  private grad(hash: number, x: number, y: number) {
+    const h = hash & 3;
+    return (h === 0 ? x : h === 1 ? -x : h === 2 ? y : -y);
+  }
+
+  noise(x: number, y: number): number {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+
+    const u = this.fade(xf);
+    const v = this.fade(yf);
+
+    const aa = this.perm[X + this.perm[Y]];
+    const ab = this.perm[X + this.perm[Y + 1]];
+    const ba = this.perm[X + 1 + this.perm[Y]];
+    const bb = this.perm[X + 1 + this.perm[Y + 1]];
+
+    const x1 = this.lerp(
+      this.grad(aa, xf, yf),
+      this.grad(ba, xf - 1, yf),
+      u
+    );
+
+    const x2 = this.lerp(
+      this.grad(ab, xf, yf - 1),
+      this.grad(bb, xf - 1, yf - 1),
+      u
+    );
+
+    return this.lerp(x1, x2, v); // range ≈ [-1,1]
+  }
+}
