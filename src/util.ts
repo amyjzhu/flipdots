@@ -1,5 +1,6 @@
 // this is just chatgpt
 import * as THREE from "three";
+import { Colour } from "./language";
 export class MinPriorityQueue<T> {
   private heap: { item: T; priority: number }[] = [];
 
@@ -383,6 +384,30 @@ export let getImages = async (urls: string[]): Promise<[number, number, [number,
         // nextFlips.push(this.generateFlipBitmap(resultingImg, [255, 255, 255]));
     }
     return [width, height, images];
+}
+
+
+
+export let frameDisplay = (frame: Colour[][]): string => {
+    let str = "";
+    for (let row of frame) {
+        console.log()
+        let strRow = "";
+        for (let col of row) {
+            // console.log(col)
+            strRow += ` ${col == true ? "O" : "X"}`
+            // strRow + col;
+            // console.log(strRow);
+        }
+        str += strRow + "\n"
+    }
+    // console.log(str);
+    return str;
+}
+
+export let inBounds = (coord: [number, number], bounds: [number, number]): boolean => {
+    let [x, y] = coord;
+    return (x >= 0 && x < bounds[0] && y >= 0 && y < bounds[1]);
 }
 
 export class Perlin {

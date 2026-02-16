@@ -19,8 +19,9 @@
 import { Action, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
 import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions"
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
-import { getImages, Perlin, rgb2Hex } from "./util";
+import { frameDisplay, getImages, inBounds, Perlin, rgb2Hex } from "./util";
 import { BottomLeftWildfire, BottomUp, GrowFromCentre, StutterOrder } from "./order";
+import { DrawingHeadWipe, Effect, EffectType, GrowWipe, Instantaneous, MotionFlipTo, Sparkle, TracePath, UniformMove, Wipe, WipeDirection } from "./effect";
 
 let collisionStats = [4, 2];
 
@@ -157,6 +158,48 @@ export class CircleTarget implements DrawableTarget {
 }
 
 
+
+let extractShapeAndPositionFromFrame = (shape: Colour[][], defaultColour: Colour): [[number, number], Colour[][]] => {
+
+    let allMins = shape.map(x => x.findIndex(c => c != defaultColour))
+    // find the smallest entry
+    let xMin = Math.min(...allMins.filter(x => x != -1));
+    // the first entry that isn't -1
+    let yMin = allMins.findIndex(e => e != -1);
+
+    console.log(shape)
+    let colMax = shape.map(x => Math.max(...x.map((c, i) => c != defaultColour ? i : -1)));
+    let xMax = Math.max(...colMax.filter(x => x != -1));
+    // let yMax = allMax.sort()[allMax.length - 1]; // it should be the index of the highest, and if there are multiple highest, start from the back.
+    // so maybe... reverse the list, find index of max value. then subtract it 
+    // let yMax = (allMax.length - allMax.sort((a, b) => b - a).findIndex(x => x == xMax)) - 1;
+    let rowMax: number[] = shape.map((c, i) => !c.every(x => x == defaultColour) ? i : -1);
+    let yMax = Math.max(...rowMax.filter(x => x != -1));
+    // let yMax = allMax.length - revShape.findIndex(c => !c.every(f => f != defaultColour)) - 1;
+
+
+    console.log(xMin, yMin, xMax, yMax);
+    let extracted = [];
+    // now, I need to move everything backwards... 
+    for (let i = yMin; i < yMax + 1; i++) {
+        let row = [];
+        for (let j = xMin; j < xMax + 1; j++) {
+            // console.log(i, j)
+            row.push(shape[i][j]);
+        }
+        extracted.push(row);
+    }
+
+    if (xMin == Infinity && yMin == -1) {
+        xMin = 0;
+        yMin = 0;
+    }
+
+    console.log(xMin, yMin)
+    return [[xMin, yMin], extracted]
+}
+// I need more transitions and more styles!
+
 export class PixelArtTarget implements DrawableTarget {
     position: [number, number];
     // this specification of shape should be the full size
@@ -225,193 +268,8 @@ export class PixelArtTarget implements DrawableTarget {
     }
 }
 
-let inBounds = (coord: [number, number], bounds: [number, number]): boolean => {
-    let [x, y] = coord;
-    return (x >= 0 && x < bounds[0] && y >= 0 && y < bounds[1]);
-}
 
 
-enum EffectType {
-    Complete,
-    Disappearing,
-    Appearing,
-    Unspecified
-}
-// right, it's not that transitions take time, it;s that keyframes have time between them
-interface Effect {
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-    generateDisappearingFrames(numFrames: number): Target[];
-    generateAppearingFrames(numFrames: number): Target[];
-    generateCompleteFrames(numFrames: number): Target[];
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[];
-}
-
-class UniformMove implements Effect {
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
-        this.from = from;
-        this.to = to;
-        this.type = type;
-    }
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        throw new Error("Method not implemented.");
-    }
-
-    // but you can only generate frames when compiling a transition graph 
-    // also, you can't easily compose effects 
-    // two different goals. one is to move the object and the other is to apply an effect
-    // styles and schedules might interact thogh 
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-
-    generateCompleteFrames(numFrames: number): Target[] {
-        // from and to have different positions.
-        // what if from and to are completely different objects?
-        // oh, why don't I just make a bunch of new objects where the position property is modified?
-        if (!this.to || !this.from) {
-            throw new Error("Cannot generate complete animation because one of to or from is missing");
-        }
-
-        let endAt = this.to.position;
-        let startAt = this.from.position;
-
-        let xInc = (endAt[0] - startAt[0]) / numFrames;
-        let yInc = (endAt[1] - startAt[1]) / numFrames;
-
-        let newObjects = [];
-        for (let i = 0; i < numFrames; i++) {
-
-            // drawFrame(rectSize, [, ], hardware);
-
-
-            let x = Math.round(startAt[0] + xInc * i);
-            let y = Math.round(startAt[1] + yInc * i);
-
-            let obj = this.from.clone();
-            console.log([x, y])
-
-            obj.position = [x, y];
-
-            newObjects.push(obj);
-
-        }
-
-        return newObjects;
-    }
-
-}
-
-
-let extractShapeAndPositionFromFrame = (shape: Colour[][], defaultColour: Colour): [[number, number], Colour[][]] => {
-
-    let allMins = shape.map(x => x.findIndex(c => c != defaultColour))
-    // find the smallest entry
-    let xMin = Math.min(...allMins.filter(x => x != -1));
-    // the first entry that isn't -1
-    let yMin = allMins.findIndex(e => e != -1);
-
-    console.log(shape)
-    let colMax = shape.map(x => Math.max(...x.map((c, i) => c != defaultColour ? i : -1)));
-    let xMax = Math.max(...colMax.filter(x => x != -1));
-    // let yMax = allMax.sort()[allMax.length - 1]; // it should be the index of the highest, and if there are multiple highest, start from the back.
-    // so maybe... reverse the list, find index of max value. then subtract it 
-    // let yMax = (allMax.length - allMax.sort((a, b) => b - a).findIndex(x => x == xMax)) - 1;
-    let rowMax: number[] = shape.map((c, i) => !c.every(x => x == defaultColour) ? i : -1);
-    let yMax = Math.max(...rowMax.filter(x => x != -1));
-    // let yMax = allMax.length - revShape.findIndex(c => !c.every(f => f != defaultColour)) - 1;
-
-
-    console.log(xMin, yMin, xMax, yMax);
-    let extracted = [];
-    // now, I need to move everything backwards... 
-    for (let i = yMin; i < yMax + 1; i++) {
-        let row = [];
-        for (let j = xMin; j < xMax + 1; j++) {
-            // console.log(i, j)
-            row.push(shape[i][j]);
-        }
-        extracted.push(row);
-    }
-
-    if (xMin == Infinity && yMin == -1) {
-        xMin = 0;
-        yMin = 0;
-    }
-
-    console.log(xMin, yMin)
-    return [[xMin, yMin], extracted]
-}
-// I need more transitions and more styles!
-
-interface DerivedEffect extends Effect {
-
-}
-
-class TracePath implements DerivedEffect {
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-    effect: Effect;
-
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, otherEffect: Effect) {
-        this.from = from;
-        this.to = to;
-        this.type = type;
-        // is it possible to get other transitions when making this?
-        this.effect = otherEffect;
-    }
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        throw new Error("Method not implemented.");
-    }
-
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateCompleteFrames(numFrames: number): Target[] {
-        // how do I use the other transition? well, I just generate the frames first
-        let referenceFrames = this.effect.generateCompleteFrames(numFrames);
-
-        // for path, I actually just need to build up all the frames I've seen so far...
-        // but at some point we should also interpolate 
-        // also right now I don't think transitions are named
-
-        let latestFrame = referenceFrames[0].draw();
-        let allFrames: Target[] = [];
-
-        for (let i = 0; i < numFrames; i++) {
-            let currentFrame = referenceFrames[i].draw();
-            let frame = latestFrame.map(r => r.map(c => c));
-            for (let r = 0; r < frame.length; r++) {
-                for (let c = 0; c < frame[r].length; c++) {
-                    if (currentFrame[r][c]) {
-                        frame[r][c] = true;
-                    }
-                }
-            }
-            // 
-            // might need to change this behaviour
-            let newTarget = new PixelArtTarget(frame, false);
-            latestFrame = frame;
-            allFrames.push(newTarget);
-        }
-
-        return allFrames;
-    }
-
-}
 
 
 // ugh, linear path is weird because it 
@@ -726,20 +584,20 @@ class Checkerboard implements DerivedTarget {
 
 }
 
-class Inverted implements DerivedTarget {
-    parentTargets: Target[];
-    position: [number, number];
-    draw(): Colour[][] {
-        throw new Error("Method not implemented.");
-    }
-    clone(): Target {
-        throw new Error("Method not implemented.");
-    }
-    frameId: number | undefined;
-    effect: Effect | undefined;
-    debugTag: string | undefined;
+// class Inverted implements DerivedTarget {
+//     parentTargets: Target[];
+//     position: [number, number];
+//     draw(): Colour[][] {
+//         throw new Error("Method not implemented.");
+//     }
+//     clone(): Target {
+//         throw new Error("Method not implemented.");
+//     }
+//     frameId: number | undefined;
+//     effect: Effect | undefined;
+//     debugTag: string | undefined;
 
-}
+// }
 
 class Collision implements DerivedTarget {
     parentTargets: Target[];
@@ -936,558 +794,6 @@ function allCollisionPoints(targets: Colour[][][], defaultColour: Colour): [numb
 }
 
 
-class MotionFlipTo implements Effect {
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
-        this.from = from;
-        this.to = to;
-        this.type = type;
-    }
-
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateCompleteFrames(numFrames: number): Target[] {
-        if (!this.from || !this.to) {
-            throw new Error("Effect isn't actually complete")
-        }
-
-        let transitionPoint = Math.floor(numFrames / 2);
-        // if it's zero, then I don't actually have enough frames.
-        // just flip to the second one
-        if (transitionPoint == 0) {
-            return [this.to];
-        } else {
-            // console.log(numFrames - transitionPoint)
-            // console.log(this.to!)
-            return [...Array(transitionPoint)].map(_ => this.from!).concat([...Array(numFrames - transitionPoint)].map(_ => this.to!));
-        }
-    }
-
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        // throw new Error("Method not implemented.");
-        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
-        // // first is actually empty...
-        // let emptyFrame: Target = new PixelArtTarget([], false);
-        // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
-
-        // console.log(frames.map(f => f.position))
-        let allFrames: Target[] = [this.from!, ...frames];
-
-        // console.log(allFrames)
-        console.log(frames)
-        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-
-        console.log("time is (groupaction) ", time)
-
-
-        return h => {
-            // the duration should be consistent.
-            // but I actually want to change the time 
-            console.log("time is...logging!")
-            let actions = windowFrames.map(w => new FlipTransition().generateGroupActions(w[0], w[1], 3, h)).flat();
-            console.log("time is (before adding) ", actions.map(a => a.tPlus))
-
-            for (let action of actions) {
-                action.tPlus = action.tPlus + time + 1;
-            }
-            console.log("time is (after adding) ", actions.map(a => a.tPlus))
-            return actions;
-        };
-    }
-
-}
-
-class Instantaneous implements Effect {
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
-        this.from = from;
-        this.to = to;
-        this.type = type;
-    }
-    generateGroupActions(time: number, flips: number): ((h: HardwareInterface) => GroupAction[]) {
-        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
-        // // first is actually empty...
-        // let emptyFrame: Target = new PixelArtTarget([], false);
-        // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
-
-        // console.log(frames.map(f => f.position))
-        let allFrames: Target[] = [this.from!, ...frames];
-
-        // console.log(allFrames)
-        console.log(frames)
-        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-
-        return h => windowFrames.map(w => new SnapTransition().generateGroupActions(w[0], w[1], time, h)).flat();
-
-    }
-
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateCompleteFrames(numFrames: number): Target[] {
-        if (!this.from || !this.to) {
-            throw new Error("Effect isn't actually complete")
-        }
-
-        let transitionPoint = Math.floor(numFrames / 2);
-        // if it's zero, then I don't actually have enough frames.
-        // just flip to the second one
-        if (transitionPoint == 0) {
-            return [this.to];
-        } else {
-            // console.log(numFrames - transitionPoint)
-            // console.log(this.to!)
-            return [...Array(transitionPoint)].map(_ => this.from!).concat([...Array(numFrames - transitionPoint)].map(_ => this.to!));
-        }
-    }
-
-}
-
-enum WipeDirection {
-    LTR,
-    RTL,
-    TTB,
-    BTT,
-}
-
-
-
-class Sparkle implements Effect {
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
-        this.to = to;
-        this.from = from;
-        this.type = type;
-    }
-
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateCompleteFrames(numFrames: number): Target[] {
-        if (!this.to || !this.from) {
-            throw new Error("Cannot generate complete animation because one of to or from is missing");
-        }
-
-        return [this.from, this.to];
-    }
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        let frames = this.generateCompleteFrames(flips);
-        if (!this.to || !this.from) {
-            throw new Error("Cannot generate complete animation because one of to or from is missing");
-        }
-
-        // find the centre of the to
-        let centre = this.to?.draw();
-        let idxes = centre?.map((r, i) => r.map((c, j) => {
-            if (c) {
-                return [i, j]
-            } else {
-                return undefined;
-            }
-        })).flat().filter(i => i != undefined);
-
-        if (idxes.length == 0) {
-            idxes = [this.from.position];
-        }
-
-        let midPointX = Math.round((idxes.map(x => x[0]).reduce((acc, x) => acc + x, 0)) / idxes.length);
-        let midPointY = Math.round((idxes.map(x => x[1]).reduce((acc, x) => acc + x, 0)) / idxes.length);
-
-
-
-        return h => {
-            // it's okay since I know what kind of thing this is for...
-            let dists = idxes.map(idx => Math.sqrt((midPointX - idx[0]) ** 2 + (midPointY - idx[1]) ** 2));
-            let max = dists.reduce((max: [number, number], dist: number, i: number) => dist > max[1] ? [i, dist] as [number, number] : max, [0, dists[0]]);
-            let closestUnit = h.coordToIndex(idxes[max[0]] as [number, number]);
-
-            // return new StochasticTransition(closestUnit).generateGroupActions(frames[0], frames[frames.length-1], time, h);
-            // return new WaveTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
-            // TODO: this point needs to consider that this is th global max and we work with a mask later 
-            // TODO: this would be a cool way to do the density of the shape, but...
-            // return new StochasticTransition(new GrowFromCentre(idxes[max[0]] as [number, number])).generateGroupActions(frames[0], frames[frames.length-1], time, h);
-            return new StochasticTransition(new GrowFromCentre((w, h) => [Math.round(w / 2), Math.round(h / 2)] as [number, number])).generateGroupActions(frames[0], frames[frames.length - 1], time, h);
-        }
-    }
-
-}
-
-class RotateReveal implements Effect {
-
-}
-
-class Wipe implements Effect {
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-    direction: WipeDirection;
-
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, direction: WipeDirection) {
-        this.to = to;
-        this.from = from;
-        this.type = type;
-        this.direction = direction;
-    }
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        // throw new Error("Method not implemented.");
-        console.log(flips)
-        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
-
-        let allFrames: Target[] = [this.from!, this.to!];
-        // let allFrames: Target[] = [this.from!, ...frames];
-        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-
-
-        return h => {
-            // let dir: [number, number] = [1,1];
-            // let dir: [number, number] = [1, 0]
-            // let direction = h.timeFrontier(0, dir)
-            // let direction = (t: number) => []
-
-            // return [];
-            return windowFrames.map(w => new WaveTransition(new BottomUp()).generateGroupActions(w[0], w[1], time, h)).flat()
-        };
-    }
-
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateCompleteFrames(numFrames: number): Target[] {
-        // start with the top and go to the bottom.
-
-        if (!this.to || !this.from) {
-            throw new Error("Cannot generate complete animation because one of to or from is missing");
-        }
-
-        let interpPositions = 1 / numFrames;
-        console.log(numFrames)
-        let newObjects = [];
-
-        for (let i = 0; i < numFrames; i++) {
-
-            // drawFrame(rectSize, [, ], hardware);
-
-            let shape = this.to.draw();
-            let point = Math.round(interpPositions * i * shape.length);
-
-            let oldShape = this.from.draw();
-            console.log(oldShape);
-            console.log(shape)
-            // now, I'll just take everything at interpPoint
-            console.log(point)
-            for (let j = point; j < shape.length; j++) {
-                console.log(j)
-                shape[j] = oldShape[j];
-            }
-            console.log(shape)
-
-            let obj = new PixelArtTarget(shape, false); // lol.......
-
-            newObjects.push(obj);
-        }
-
-        return newObjects;
-
-    }
-
-}
-
-class DrawingHeadWipe implements Effect {
-    // this should be a bit different! I need to set a frontier that I grow from rather than growing unilaterally. TODO 
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-    startingPoint: [number, number] | undefined
-    timeVectorField: number[][] | undefined;
-
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, startingPoint: [number, number]) {
-        this.to = to;
-        this.from = from;
-        this.type = type;
-        this.startingPoint = startingPoint;
-
-    }
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        throw new Error("Method not implemented.");
-    }
-
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateCompleteFrames(numFrames: number): Target[] {
-        // start with the top and go to the bottom.
-
-        if (!this.to || !this.from || !this.startingPoint) {
-            throw new Error("Cannot generate complete animation because one of to or from is missing");
-        }
-
-        let shape = this.to.draw();
-
-
-        this.timeVectorField = [];
-        let x = this.startingPoint[0];
-        let y = this.startingPoint[1];
-        console.log(x, y, "AH")
-
-
-        for (let i = 0; i < shape.length; i++) {
-            let row = [];
-            for (let j = 0; j < shape[i].length; j++) {
-                row.push(Math.max(Math.abs(i - y), Math.abs(j - x)));
-            }
-            this.timeVectorField.push(row);
-        }
-
-        console.log(this.timeVectorField)
-        let maxDistance = Math.max(...this.timeVectorField.flat().flat());
-
-        let interpInterval = 1 / numFrames;
-        console.log(numFrames)
-        let newObjects = [];
-        let newShape = this.from.draw();
-
-
-        for (let i = 0; i < numFrames; i++) {
-
-            // drawFrame(rectSize, [, ], hardware);
-
-            // let shape = this.to.draw();
-            let increaseBy = Math.round(interpInterval * maxDistance);
-
-            // how do I know how much to grow by??? 
-            console.log(increaseBy)
-
-
-            // go through the time vector field. if the current time is lower, take new.
-            for (let a = 0; a < shape.length; a++) {
-                for (let b = 0; b < shape[a].length; b++) {
-                    let timeValue = this.timeVectorField[a][b];
-                    // console.log(timeValue, currentTime)
-                    if (timeValue <= increaseBy) {
-                        newShape[a][b] = shape[a][b]
-                    }
-                }
-            }
-
-            console.log(newShape)
-
-            let obj = new PixelArtTarget(newShape, false); // lol.......
-
-            newObjects.push(obj);
-
-
-
-            /// reset the situation
-            // I want to make a new starting point each time.
-            // also, I don't want to override the progress I previously made.
-
-            // let's start by finding the next frontier point. 
-            // I'll take a 2x2 survey and find the average direction.
-            // maybe this is better expressed as a derivative 
-
-            let sumX = 0, sumY = 0;
-            let moveRadius = 2;
-            let modesX: Map<number, number> = new Map();
-            let modesY: Map<number, number> = new Map();
-            let getOrZero = (i: number | undefined) => i != undefined ? i : 0;
-            // the number of POTENTIAL squares is the floor(perimeter/2) -- 
-            let potentialSquares = Math.floor(Math.pow(2, moveRadius + 1) / 2);
-            // what if it's completely centered? hmmmm....
-            for (let i = -moveRadius; i < moveRadius; i++) {
-                for (let j = -moveRadius; j < moveRadius; j++) {
-                    let testCoordX = x + i;
-                    let testCoordY = y + j;
-                    if (inBounds([testCoordX, testCoordY], [shape.length, shape[0].length]) && shape[testCoordY][testCoordX]) {
-                        // I also need to make sure this isn't already covered.
-                        sumX += i;
-                        sumY += j;
-                        modesX.set(i, getOrZero(modesX.get(i)) + 1);
-                        modesY.set(i, getOrZero(modesY.get(i)) + 1);
-                    }
-                }
-            }
-            // if it's a circle around, that's 3. but another is 4. so 7 total
-
-            // wait, I don't think this is right. If I move -2, -2, -2 three times I only want -2 in total.
-            // maybe I just want the mode? 
-            sumX = Math.round(sumX / potentialSquares);
-            sumY = Math.round(sumY / potentialSquares);
-
-
-            // try using modes?
-            sumX = [...modesX.entries()].reduce((a, e) => e[1] > a[1] ? e : a, [-Infinity, -Infinity])[0];
-            sumY = [...modesY.entries()].reduce((a, e) => e[1] > a[1] ? e : a, [-Infinity, -Infinity])[0];
-
-            console.log(modesX);
-            console.log(modesY)
-            // x = x + sumX / 7;
-            // y = y + sumY / 7;
-            // the problem is, that amount of steps works if we have enough to move like 1 step at a time.
-            // how do I actually figure out how many steps I am allowed...?
-            // do I need to do it once first? 
-            // also on average we might not make that much progress/
-            // what about like a winding number approach? 
-            // ahh, well this is just the direction right?
-
-
-            // hmmm... this strategy doesn't work if I get trapped in a well basically 
-            // I need to go back into the shape
-            // I should ask Adriana for help with this one 
-            if (sumX == 0 && sumY == 0 || (sumX == -Infinity && sumY == -Infinity)) {
-                // I guess pick a random point?
-                sumX = Math.round(Math.random() + 1);
-                sumY = Math.round(Math.random() + 1);
-            }
-            console.log(x, y, sumX, sumY, potentialSquares)
-
-            x = x + sumX;
-            y = y = sumY;
-            console.log(x, y)
-
-            this.timeVectorField = [];
-            for (let i = 0; i < shape.length; i++) {
-                let row = [];
-                for (let j = 0; j < shape[i].length; j++) {
-                    row.push(Math.max(Math.abs(i - y), Math.abs(j - x)));
-                }
-                this.timeVectorField.push(row);
-            }
-
-        }
-
-        return newObjects;
-
-    }
-}
-
-
-class GrowWipe implements Effect {
-    // basically, find the next n parts of the image.
-    // let's take the image and a starting point 
-
-    from: Target | undefined;
-    to: Target | undefined;
-    type: EffectType;
-    startingPoint: [number, number] | undefined
-    timeVectorField: number[][] | undefined;
-
-    constructor(from: Target | undefined, to: Target | undefined, type: EffectType, startingPoint: [number, number]) {
-        this.to = to;
-        this.from = from;
-        this.type = type;
-        this.startingPoint = startingPoint;
-
-        // here's what I want to do
-        // I need to make a time field.
-        // the time field could be derived from one of two things
-        // 1) the design of the to frame 
-        // 2) the difference between the to and from frame
-        // is there a difference...?
-        // let's just go with 1) for now.        
-    }
-    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        throw new Error("Method not implemented.");
-    }
-
-    generateDisappearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateAppearingFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
-    }
-    generateCompleteFrames(numFrames: number): Target[] {
-        // start with the top and go to the bottom.
-
-        if (!this.to || !this.from || !this.startingPoint) {
-            throw new Error("Cannot generate complete animation because one of to or from is missing");
-        }
-
-
-        this.timeVectorField = [];
-        let x = this.startingPoint[0];
-        let y = this.startingPoint[1];
-        // I should be able to compute this in a straight pass right? just by calculating the distance max(vdist, hdist) from the starting point 
-        // ah, I could also solve a heat equation...
-        let shape = this.to.draw();
-        for (let i = 0; i < shape.length; i++) {
-            let row = [];
-            for (let j = 0; j < shape[i].length; j++) {
-                row.push(Math.max(Math.abs(i - y), Math.abs(j - x)));
-            }
-            this.timeVectorField.push(row);
-        }
-
-        console.log(this.timeVectorField)
-        let maxDistance = Math.max(...this.timeVectorField.flat().flat());
-
-        let interpInterval = 1 / numFrames;
-        console.log(numFrames)
-        let newObjects = [];
-
-        for (let i = 0; i < numFrames; i++) {
-
-            // drawFrame(rectSize, [, ], hardware);
-
-            // let shape = this.to.draw();
-            let currentTime = Math.round(interpInterval * i * maxDistance);
-            let newShape = this.to.draw();
-            let oldShape = this.from.draw();
-            console.log(currentTime)
-
-
-            // go through the time vector field. if the current time is lower, take new.
-            for (let a = 0; a < shape.length; a++) {
-                for (let b = 0; b < shape[a].length; b++) {
-                    let timeValue = this.timeVectorField[a][b];
-                    // console.log(timeValue, currentTime)
-                    if (timeValue > currentTime) {
-                        newShape[a][b] = oldShape[a][b]
-                    }
-                }
-            }
-
-            console.log(newShape)
-
-            let obj = new PixelArtTarget(newShape, false); // lol.......
-
-            newObjects.push(obj);
-        }
-
-        return newObjects;
-
-    }
-
-
-}
-
-
 
 function hex2Rgb(hex: string): [number, number, number] | undefined {
     var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -1590,23 +896,6 @@ export function toWindows<T>(inputArray: T[], size: number) {
     )
 }
 
-
-let frameDisplay = (frame: Colour[][]): string => {
-    let str = "";
-    for (let row of frame) {
-        console.log()
-        let strRow = "";
-        for (let col of row) {
-            // console.log(col)
-            strRow += ` ${col == true ? "O" : "X"}`
-            // strRow + col;
-            // console.log(strRow);
-        }
-        str += strRow + "\n"
-    }
-    // console.log(str);
-    return str;
-}
 
 function indicesDisplay(indices: [number, Colour][], width: number, height: number) {
     let str = [...Array(height)].map(_ => [...Array(width)].map(_ => "X"));

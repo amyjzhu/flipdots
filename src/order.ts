@@ -1,4 +1,5 @@
 import { UnitId } from "./hardware";
+import { frameDisplay } from "./util";
 
 
 type OrderedGrid = number[][];
@@ -17,6 +18,7 @@ export abstract class GridOrder {
 
     // return times that change
     applyMask(shape: boolean[][]): [OrderedGrid, number[]] {
+        // I generate the grid from the mask anyway... 
         let ordered = this.generateGrid(shape[0].length, shape.length);
         console.log(shape);
         console.log(ordered);
@@ -135,12 +137,12 @@ export class GrowFromPoint extends GridOrder {
                         if (grid[v][u] == undefined) {
                             let ptStr = `${u}|${v}`;
                             try {
-                            newFrontier.add(ptStr);
+                                newFrontier.add(ptStr);
                             } catch (e) {
                                 console.log(pt);
                                 console.log(newFrontier.size);
                                 console.log(newPts.length);
-                                
+
                             }
                         }
                         // console.log(newFrontier)
@@ -166,7 +168,136 @@ export class GrowFromPoint extends GridOrder {
 
 export class GrowFromCentre extends GrowFromPoint {
     constructor(startAt: (width: number, height: number) => [number, number], stepTiming: number[] = [1]) {
-        super(startAt, (x: number, y: number) => [[x+1,y+1],[x+1,y],[x,y+1],[x-1,y],[x-1,y+1],[x-1,y-1],[x,y-1],[x+1,y-1]], stepTiming);
+        super(startAt, (x: number, y: number) => [[x + 1, y + 1], [x + 1, y], [x, y + 1], [x - 1, y], [x - 1, y + 1], [x - 1, y - 1], [x, y - 1], [x + 1, y - 1]], stepTiming);
+    }
+}
+
+export class GrowAlongContour extends GridOrder {
+    startAt: [number, number];
+
+    constructor(startAt: [number, number]) {
+        super();
+        this.startAt = startAt;
+    }
+
+    applyMask(shape: boolean[][]): [OrderedGrid, number[]] {
+        // hmm... I should just do this?
+        let activationSequence = this.activationOrder(shape);
+        console.log(activationSequence)
+        let grid = this.generateGrid(shape[0].length, shape[1].length);
+
+        for (let i = 0; i < activationSequence.length; i++) {
+            let units = activationSequence[i];
+            for (let unit of units) {
+                let x: number = unit[0];
+                let y: number = unit[1];
+                grid[y][x] = i;
+            }
+        }
+
+        let times: number[] = grid.flat().filter(t => t != -1);
+        times.sort((a, b) => a - b);
+        times = [... new Set(times)];
+
+        console.log(times);
+        console.log(frameDisplay(shape))
+        return [grid, times];
+    }
+
+    // this returns nothing because we need the shape itself.
+    generateGrid(width: number, height: number): OrderedGrid {
+        return [...new Array(height)].map(_ => [... new Array(width)].map(x => -1));
+
+    }
+
+
+    activationOrder(shape: boolean[][]): [number, number][][] {
+        let grid = shape;
+        let startRow = this.startAt[1];
+        let startCol = this.startAt[0];
+
+        const rows = grid.length;
+        if (rows === 0) return [];
+        const cols = grid[0].length;
+
+        // 8-direction neighbors (better for smooth shapes)
+        const dirs: [number, number][] = [
+            [-1, 0], [1, 0], [0, -1], [0, 1],
+            [-1, -1], [-1, 1], [1, -1], [1, 1],
+        ];
+
+        const inBounds = (r: number, c: number) =>
+            r >= 0 && r < rows && c >= 0 && c < cols;
+
+        // ---------------------------
+        // 1. Find closest filled cell
+        // ---------------------------
+        let start: [number, number] | null = null;
+        let bestDist = Infinity;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (!grid[r][c]) continue;
+                const d = (r - startRow) ** 2 + (c - startCol) ** 2;
+                if (d < bestDist) {
+                    bestDist = d;
+                    start = [r, c];
+                }
+            }
+        }
+
+        if (!start) return []; // no filled cells
+
+        // ---------------------------
+        // 2. BFS along shape
+        // ---------------------------
+        const visited: boolean[][] = Array.from({ length: rows }, () =>
+            Array(cols).fill(false)
+        );
+
+        const result: [number, number][][] = [];
+        const queue: [number, number][] = [];
+
+        queue.push(start);
+        visited[start[0]][start[1]] = true;
+
+        while (queue.length > 0) {
+            console.log(queue);
+            console.log(queue.length);
+            const layerSize = queue.length;
+            const layer: [number, number][] = [];
+
+            for (let i = 0; i < layerSize; i++) {
+                const [r, c] = queue.shift()!;
+                layer.push([r, c]);
+
+                for (const [dr, dc] of dirs) {
+                    const nr = r + dr;
+                    const nc = c + dc;
+
+                    if (inBounds(nr, nc) && grid[nr][nc] && !visited[nr][nc]) {
+                        visited[nr][nc] = true;
+                        queue.push([nr, nc]);
+                    }
+                }
+            }
+
+            result.push(layer);
+        }
+
+        console.log(
+            "DB Total O:",
+            grid.flat().filter(v => v).length
+        );
+
+        console.log(
+            "DB Visited:",
+            result.flat().length
+        );
+
+        // need to shuffle nr and nc
+        return result.map(time => time.map(unit => [unit[1], unit[0]]))
+        // return result;
     }
 }
 
@@ -189,33 +320,33 @@ export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], proj
             biasFn = (i: number, n: number) => Math.sin(Math.PI * i / n);
 
         /// this effect isn't really the same as the "expanding" effect since there's no radius falloff likelihood 
-            let coords = grid.map((row, j) => row.map((c, i) => [i, j])).flat();
-            let maxIdx = coords.length-1;
-            let numSwaps = Math.ceil(swapProbability * coords.length);
-            let swappedAlready: number[] = []
-            for (let n = 0; n < numSwaps; n++) {
-                let s1 = Math.round(Math.random() * maxIdx);
-                while (swappedAlready.includes(s1)) {
-                    s1 = Math.round(Math.random() * maxIdx);
-                }
-                swappedAlready.push(s1);
-                let s2 = Math.round(Math.random() * maxIdx);
-                while (swappedAlready.includes(s2)) {
-                    s2 = Math.round(Math.random() * maxIdx);
-                }
-                swappedAlready.push(s2);
-                
-                
-                let coord1 = coords[s1];
-                let coord2 = coords[s2];
-                let intermediate = newGrid[coord1[1]][coord1[0]];
-                // console.log("coords are ", coord1, coord2, "newgrid dims are ", newGrid.length, newGrid[0].length)
-                let intermediate2 = newGrid[coord2[1]][coord2[0]];
-                newGrid[coord1[1]][coord1[0]] = intermediate2;
-                newGrid[coord2[1]][coord2[0]] = intermediate;
+        let coords = grid.map((row, j) => row.map((c, i) => [i, j])).flat();
+        let maxIdx = coords.length - 1;
+        let numSwaps = Math.ceil(swapProbability * coords.length);
+        let swappedAlready: number[] = []
+        for (let n = 0; n < numSwaps; n++) {
+            let s1 = Math.round(Math.random() * maxIdx);
+            while (swappedAlready.includes(s1)) {
+                s1 = Math.round(Math.random() * maxIdx);
             }
+            swappedAlready.push(s1);
+            let s2 = Math.round(Math.random() * maxIdx);
+            while (swappedAlready.includes(s2)) {
+                s2 = Math.round(Math.random() * maxIdx);
+            }
+            swappedAlready.push(s2);
 
-            return [newGrid, times];
+
+            let coord1 = coords[s1];
+            let coord2 = coords[s2];
+            let intermediate = newGrid[coord1[1]][coord1[0]];
+            // console.log("coords are ", coord1, coord2, "newgrid dims are ", newGrid.length, newGrid[0].length)
+            let intermediate2 = newGrid[coord2[1]][coord2[0]];
+            newGrid[coord1[1]][coord1[0]] = intermediate2;
+            newGrid[coord2[1]][coord2[0]] = intermediate;
+        }
+
+        return [newGrid, times];
     }
 
 }

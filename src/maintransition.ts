@@ -70,7 +70,7 @@ if (typeof window != 'undefined') {
     // TODO: the opposite doesn't work - you can't sparkle OUT 
     // parseToGroupAction(dandelion_basic);
 
-    console.log(new LineBoil(new RectangleTarget(5, 5, [0, 0], [10, 10])).draw());
+    // console.log(new LineBoil(new RectangleTarget(5, 5, [0, 0], [10, 10])).draw());
 
     let rectLineBoil = "timing: {\"frames\": [2,4], \"additional\":[6]}\n\
     filepath: /animations/wipe${i}.png \n\
@@ -78,7 +78,7 @@ if (typeof window != 'undefined') {
     lineboil(rectangle 1) 0 -> instantaneous -> lineboil(rectangle 1) 1 -> instantaneous -> lineboil(rectangle 1) 2";
 
     // collision: collision(water 5, fish 5) 5 -> instantaneous -> collision(water 5, fish 5) 6";
-    parseToGroupAction(rectLineBoil);
+    // parseToGroupAction(rectLineBoil);
 
 
     let logoBoilExample = "timing: {\"frames\": [2,4], \"additional\":[6, 8, 10, 12, 14, 16]}\n\
@@ -87,6 +87,13 @@ if (typeof window != 'undefined') {
     lineboil(rectangle 0) 0 -> instantaneous -> lineboil(rectangle 1) 1 -> instantaneous -> lineboil(rectangle 1) 2 -> instantaneous -> lineboil(rectangle 1) 3 -> instantaneous -> lineboil(rectangle 1) 4  -> instantaneous -> lineboil(rectangle 1) 5  -> instantaneous -> lineboil(rectangle 1) 6  -> instantaneous -> lineboil(rectangle 1) 7";
 
     parseToGroupAction(logoBoilExample);
+
+    
+    let headExample = "timing: [60,2]\n\
+    filepath: /animations/e${i}.png \n\
+    objects: [#000000 rectangle] \n\
+    rectangle 0 -> drawingHead -> rectangle 1";
+    parseToGroupAction(headExample);
 
     let offsetGroupActions = (ga: GroupAction[], t: Time): GroupAction[] => {
         return ga.map(g => new GroupAction(g.tPlus + t, g.actions));
