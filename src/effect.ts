@@ -1,5 +1,5 @@
 import { HardwareInterface, GroupAction } from "./hardware";
-import { PixelArtTarget, Target, toWindows } from "./language2";
+import { Merged, Moved, PixelArtTarget, Target, toWindows } from "./language2";
 import { GrowFromCentre, BottomUp, GrowAlongContour } from "./order";
 import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions";
 import { inBounds } from "./util";
@@ -31,8 +31,24 @@ export class UniformMove implements Effect {
         this.to = to;
         this.type = type;
     }
+
     generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        throw new Error("Method not implemented.");
+        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
+        
+        console.log(frames, flips)
+        let allFrames: Target[] = [this.from!, ...frames];
+
+        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+
+        return h => {
+            // why was this 3?
+            let perStep = 2;
+            let actions = windowFrames.map(w => new FlipTransition().generateGroupActions(w[0], w[1], perStep, h)).flat();
+            for (let action of actions) {
+                action.tPlus = action.tPlus + perStep;
+            }
+            return actions;
+        };
     }
 
     // but you can only generate frames when compiling a transition graph 
@@ -55,6 +71,8 @@ export class UniformMove implements Effect {
             throw new Error("Cannot generate complete animation because one of to or from is missing");
         }
 
+        console.log(numFrames)
+
         let endAt = this.to.position;
         let startAt = this.from.position;
 
@@ -70,11 +88,12 @@ export class UniformMove implements Effect {
             let x = Math.round(startAt[0] + xInc * i);
             let y = Math.round(startAt[1] + yInc * i);
 
-            let obj = this.from.clone();
-            console.log([x, y])
+            // let obj = this.from.clone();
+            // console.log([x, y])
 
-            obj.position = [x, y];
+            // obj.position = [x, y];
 
+            let obj = new Moved(this.from, [Math.round(xInc * i), Math.round(yInc * i)])
             newObjects.push(obj);
 
         }
@@ -103,7 +122,19 @@ export class TracePath implements DerivedEffect {
         this.effect = otherEffect;
     }
     generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        throw new Error("Method not implemented.");
+        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
+        
+        let allFrames: Target[] = [this.from!, ...frames];
+
+        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+
+        return h => {
+            let actions = windowFrames.map(w => new FlipTransition().generateGroupActions(w[0], w[1], time / (flips-1), h)).flat();
+            for (let action of actions) {
+                action.tPlus = action.tPlus + time + 1;
+            }
+            return actions;
+        };
     }
 
     generateDisappearingFrames(numFrames: number): Target[] {
@@ -114,12 +145,15 @@ export class TracePath implements DerivedEffect {
     }
     generateCompleteFrames(numFrames: number): Target[] {
         // how do I use the other transition? well, I just generate the frames first
+        // WHY only one frame?
+        console.log(this.effect)
         let referenceFrames = this.effect.generateCompleteFrames(numFrames);
 
         // for path, I actually just need to build up all the frames I've seen so far...
         // but at some point we should also interpolate 
         // also right now I don't think transitions are named
 
+        /*
         let latestFrame = referenceFrames[0].draw();
         let allFrames: Target[] = [];
 
@@ -138,8 +172,15 @@ export class TracePath implements DerivedEffect {
             let newTarget = new PixelArtTarget(frame, false);
             latestFrame = frame;
             allFrames.push(newTarget);
-        }
+        }*/
 
+        
+        let allFrames: Target[] = [];
+
+        console.log(referenceFrames)
+        for (let i = 0; i < numFrames; i++) {
+            allFrames.push(new Merged(referenceFrames.slice(0, i)))
+        }
         return allFrames;
     }
 

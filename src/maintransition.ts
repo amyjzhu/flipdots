@@ -13,7 +13,7 @@ if (typeof window != 'undefined') {
     teapot 0 ->* instantaneous ->* teapot 9"
     // parser(teapotExample);
 
-    parseToGroupAction(teapotExample);
+    // parseToGroupAction(teapotExample);
 
     let teapot2Example = "timing: [3,6,9,12,16,19,22,26,29,32]\n\
     filepath: /animations/teapot${i}.png \n\
@@ -29,7 +29,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 1 -> wipe -> rectangle 0";
 
-    // parseToGroupAction(wipeExample);
+    parseToGroupAction(wipeExample);
 
 
     let sparkleExample = "timing: [15,15]\n\
@@ -60,7 +60,7 @@ if (typeof window != 'undefined') {
     head 0 -> sparkle -> head 1";
     // TODO: error with multiple objcts?
     // TODO: the opposite doesn't work - you can't sparkle OUT 
-    // parseToGroupAction(dandelion);
+    parseToGroupAction(dandelion);
 
     let dandelion_basic = "timing: [15,15]\n\
     filepath: /animations/dandelion${i}.png \n\
@@ -89,11 +89,25 @@ if (typeof window != 'undefined') {
     parseToGroupAction(logoBoilExample);
 
     
-    let headExample = "timing: [60,2]\n\
-    filepath: /animations/e${i}.png \n\
+    let headExample = "timing: [60,62]\n\
+    filepath: /animations/squiggle${i}.png \n\
     objects: [#000000 rectangle] \n\
     rectangle 0 -> drawingHead -> rectangle 1";
     parseToGroupAction(headExample);
+
+
+
+    
+let golfPathExample = "timing: [2,4,6,8,10,12,14,16,18]\n\
+filepath: /animations/golf-collide${i}.png \n\
+objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
+golfstick 0 ->* instantaneous ->* golfstick 8\n\
+golfer 0 ->* instantaneous ->* golfer 8\n\
+ball 3 ->* move ->* ball 8"
+// ball 4 ->* path -> ball 8"
+// path1: ball 5 -> path -> ball 6\n\
+// path2: path1 6 -> path -> ball 7\n\"
+parseToGroupAction(golfPathExample);
 
     let offsetGroupActions = (ga: GroupAction[], t: Time): GroupAction[] => {
         return ga.map(g => new GroupAction(g.tPlus + t, g.actions));

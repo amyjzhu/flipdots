@@ -16,7 +16,7 @@
 // or we have something called Universe which takes the whole universe...? at each time point? 
 // animation...
 
-import { Action, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
+import { Action, delayGroupActions, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
 import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions"
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 import { frameDisplay, getImages, inBounds, Perlin, rgb2Hex } from "./util";
@@ -388,6 +388,61 @@ let stroke = (target: Colour[][], size: number): Colour[][] => {
 
 function newArrayMatchingShapeOf<T, R>(arrayWithShape: R[][], defaultValue: T): T[][] {
     return [...Array(arrayWithShape.length)].map(_ => [...Array(arrayWithShape[0].length)].map(_ => defaultValue));
+}
+
+
+export class Merged implements DerivedTarget {
+    parentTargets: Target[];
+    position: [number, number];
+    constructor(parentTargets: Target[]) {
+        let minPosX = Math.min(...parentTargets.map(t => t.position[0]));
+        let minPosY = Math.min(...parentTargets.map(t => t.position[1]));
+        this.position = [minPosX, minPosY];
+        this.parentTargets = parentTargets;
+    }
+    draw(): Colour[][] {
+        let allTargets = this.parentTargets.map(p => p.draw());
+        
+        let result = allTargets[0].map(row => row.map(c => c));
+        for (let i = 0; i < allTargets[0].length; i++) {
+            for (let j = 0; j < allTargets[0][0].length; j++) {
+                result[i][j] = allTargets.every(target => target[i][j])
+            }
+        }
+        return result;
+        
+    }
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    effect: Effect | undefined;
+    debugTag: string | undefined;
+
+}
+
+export class Moved implements DerivedTarget {
+    parentTargets: Target[];
+    newShape: Target;
+    position: [number, number];
+
+    constructor(parentTarget: Target, offset: [number, number]) {
+        this.parentTargets = [parentTarget];
+        this.position = parentTarget.position;
+        this.newShape = parentTarget.clone();
+        this.newShape.position = [parentTarget.position[0] + offset[0], parentTarget.position[1] + offset[1]];
+    }
+
+    draw(): Colour[][] {
+        return this.newShape.draw();
+    }
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    effect: Effect | undefined;
+    debugTag: string | undefined;
+
 }
 
 class Stroke implements DerivedTarget {
@@ -1042,11 +1097,18 @@ let generateAnimationToGroupAction_old = (objects: Target[][], transitionTiming:
 let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: number[], h: HardwareInterface): GroupAction[] => {
     let actions: GroupAction[] = [];
     for (let object of objects) {
-        let frameNum = 0;
+        // let frameNum = 0;
+        // can I just start at the first frame?
+        let frameNum = object[0].frameId!;
 
         // I need to start with a start object to initialize it
         let emptyFrame: Target = new PixelArtTarget(object[0].draw().map(r => r.map(c => false)), false);
-        actions = actions.concat(new SnapTransition().generateGroupActions(emptyFrame, object[0], 0, h));
+        // TODO: this is not right, it should start at the first frame
+        let initialAppearance = new SnapTransition().generateGroupActions(emptyFrame, object[0], 0, h);
+        // hmmm... 
+        // console.log("delaying initial appearance by ", transitionTiming[frameNum])
+        actions = actions.concat(delayGroupActions(initialAppearance, frameNum == 0 ? 1 : transitionTiming[frameNum -1]));
+
         console.log(actions)
 
         let o: Target | undefined = object[0];
@@ -1057,7 +1119,10 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
             // timing issue - subtract the duration
             let prev = frameNum == 0 ? 1 : transitionTiming[frameNum - 1]
             console.log(prev)
-            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, 1)
+            // oh, we're only allowed to have one flip... 
+            // when should I have flip? 
+            let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, transitionTiming[frameNum] - prev)
+            // let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, 1)
             // console.log(fullObjects.map(o => o.draw()))
             // console.log(fullObjects(h))
             let objs = fullObjects(h);
@@ -1076,20 +1141,44 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
 
     }
 
+    console.log(actions)
+
+
     console.log("times are ", actions.map(t => t.tPlus))
 
     // there's another thing that I must do. if a space isn't covered by any object, then I need to reset it.
     // TODO: figure out if it is or not 
-    let timesToUnits: Map<number, number[]> = new Map();
+    let timesToUnits: Map<number, [Action, number[]][]> = new Map();
     for (let action of actions) {
         let current = timesToUnits.get(action.tPlus);
         current = current ? current : [];
-        timesToUnits.set(action.tPlus, current.concat(action.actions[0] as number[]))
+        // this should be specific to each action
+        if (!current) {
+            current = action.actions;
+        } else {
+            for (let actionsOfType of action.actions) {
+                // 
+                let actionType = actionsOfType[0];
+                let units = actionsOfType[1];
+                let existingEntry = current.findIndex(e => e[0] == actionType);
+                if (existingEntry == -1) {
+                    current.push(actionsOfType);
+                } else {
+                    let newUnits = current[existingEntry][1].concat(units);
+                    current[existingEntry] = [actionsOfType[0], newUnits];
+                }
+                
+            }
+        }
+
+        timesToUnits.set(action.tPlus, current);
     }
 
+    console.log(timesToUnits)
+    //  need to make this action-specific
+    return [...timesToUnits.keys().map(k => new GroupAction(k, timesToUnits.get(k)!))]
 
-
-    return actions;
+    // return actions;
 }
 
 
