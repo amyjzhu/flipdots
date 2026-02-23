@@ -311,6 +311,7 @@ export class SplitflapHardware implements HardwareInterface {
                         console.log("unit can perform action: ", unit.actions.includes(action[0]))
                         console.log("unit is available at ", unitAvailableAt.get(unit.id))
                         console.log("and this is less than current time? ", unitAvailableAt.get(unit.id)! <= time)
+                        // console.log(unitAvailableAt.get(unit.id), time)
                         console.log("id, time, availableAt, action", unit.id, time, unitAvailableAt.get(unit.id), getActionStr(actionType));
                         throw new Error("could not compile");
 
@@ -1112,7 +1113,9 @@ export class FlipdotSimHardware implements HardwareInterface {
                         // and is current time at least later than next available time?
                         (unitAvailableAt.get(unit.id) != undefined && unitAvailableAt.get(unit.id)! <= time))) {
 
-                        console.log("issue!")
+                        console.log("issue!", time, ga.tPlus)
+                        console.log(unitsInUse)
+                        console.log(unit)
                         console.log(groupActions)
                         console.log(action)
                         console.log("Actions is part of the unit's action set?", unit.actions.includes(action[0]));

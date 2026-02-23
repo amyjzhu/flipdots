@@ -21,7 +21,7 @@ import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } 
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 import { frameDisplay, getImages, inBounds, Perlin, rgb2Hex } from "./util";
 import { BottomLeftWildfire, BottomUp, GrowFromCentre, StutterOrder } from "./order";
-import { DrawingHeadWipe, Effect, EffectType, GrowWipe, Instantaneous, MotionFlipTo, Sparkle, TracePath, UniformMove, Wipe, WipeDirection } from "./effect";
+import { DrawingHeadWipe, Effect, EffectType, FlipEffect, GrowWipe, Instantaneous, MotionFlipTo, Sparkle, TracePath, UniformMove, Wipe, WipeDirection } from "./effect";
 
 let collisionStats = [4, 2];
 
@@ -1669,6 +1669,7 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                                 effect == "move" ? new UniformMove(obj, eo, EffectType.Complete) :
                                     effect == "motion" ? new MotionFlipTo(obj, eo, EffectType.Complete) :
                                         effect == "sparkle" ? new Sparkle(obj, eo, EffectType.Complete) :
+                                            effect == "flip" ? new FlipEffect(obj, eo, EffectType.Complete) :
                                             new DrawingHeadWipe(obj, eo, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)]);
 
 
@@ -1831,6 +1832,7 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                             effect == "move" ? new UniformMove(startTarget, endTarget, EffectType.Complete) :
                                 effect == "motion" ? new MotionFlipTo(startTarget, endTarget, EffectType.Complete) :
                                     effect == "sparkle" ? new Sparkle(startTarget, endTarget, EffectType.Complete) :
+                                    effect == "flip" ? new FlipEffect(startTarget, endTarget, EffectType.Complete) :
                                         new DrawingHeadWipe(startTarget, endTarget, EffectType.Complete, [Math.round(width / 2), Math.round(height / 2)])
 
                 // the transition might have arguments.

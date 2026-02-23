@@ -1,7 +1,7 @@
 import { HardwareInterface, GroupAction } from "./hardware";
 import { Merged, Moved, PixelArtTarget, Target, toWindows } from "./language2";
 import { GrowFromCentre, BottomUp, GrowAlongContour } from "./order";
-import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions";
+import { FlipTransition, OffsetFlipImage, SnapTransition, StochasticTransition, WaveTransition } from "./transitions";
 import { inBounds } from "./util";
 
 export enum EffectType {
@@ -99,6 +99,46 @@ export class UniformMove implements Effect {
         }
 
         return newObjects;
+    }
+
+}
+
+export class FlipEffect implements Effect {
+    from: Target | undefined;
+    to: Target | undefined;
+    type: EffectType;
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
+        this.from = from;
+        this.to = to;
+        this.type = type;
+    }
+    generateGroupActions(time: number, flips: number): ((h: HardwareInterface) => GroupAction[]) {
+        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
+        // // first is actually empty...
+        // let emptyFrame: Target = new PixelArtTarget([], false);
+        // let emptyFrame: Target = new PixelArtTarget(frames[0].draw().map(r => r.map(c => false)), false);
+
+        // console.log(frames.map(f => f.position))
+        let allFrames: Target[] = [this.from!, ...frames];
+
+        // console.log(allFrames)
+        console.log(frames)
+        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+
+        return h => windowFrames.map(w => new OffsetFlipImage().generateGroupActions(w[0], w[1], time, h)).flat();
+        // return h => windowFrames.map(w => new FlipTransition().generateGroupActions(w[0], w[1], time, h)).flat();
+
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        return [this.from!, this.to!]
     }
 
 }

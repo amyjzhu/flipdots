@@ -473,7 +473,7 @@ export class SnapTransition implements Transition {
 export class FlipTransition implements Transition {
     // this probably needs an order as well
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
-
+        console.log("generating flips... ", t);
         // o1 and o2 - for things not 
         // the difference is things that must get flipped.
         // everything else must stay the same
@@ -514,6 +514,56 @@ export class FlipTransition implements Transition {
     // just keep flipping
 }
 
+
+export class OffsetFlipImage implements Transition {
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        // okay:
+        // I'm going to flip everything, but I'm going to flip the off ones at a slight offset 
+        let oddFlips = new Set(diffIndices(o1, o2, h));
+        // the first flips are this, but the subsequent flips should just be the same as o1.
+        let subsequent = [];
+        let others = [];
+        let o2Flips = o2.draw();
+        for (let i = 0; i < o2Flips.length; i++) {
+            for (let j = 0; j < o2Flips[0].length; j++) {
+                if (o2Flips[i][j]) {
+                    subsequent.push(h.coordToIndex([i, j]));
+                } else {
+                    others.push(h.coordToIndex([i, j]));
+                }
+            }
+        }
+
+        console.log(others)
+
+        // how many flips should I do?
+        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        let maxFlips = Math.floor(t / flipTiming);
+        let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;
+        let evenCount = maxFlips % 2 == 1 ? maxFlips : maxFlips - 1;
+        let delta = flipTiming / 2;
+        let groupActions: GroupAction[] = [];
+
+        for (let i = 0; i < oddCount; i++) {
+            let time = i * flipTiming;
+            console.log("time is ", time)
+            let idxes = [...oddFlips];
+            if (i != 0) {
+                idxes = subsequent;
+            }
+            let action = new GroupAction(time, [[Action.FLIP, idxes]])
+            groupActions.push(action);
+            // let's push another one that's slightly offset!
+            if (i != 0) {
+                groupActions.push(new GroupAction(time + delta, [[Action.FLIP, [...others]]]));
+            }
+        }
+
+        return groupActions;
+        // one extra at the end 
+    }
+    // just keep flipping
+}
 
 
 export class StochasticTransition implements Transition {
@@ -715,6 +765,64 @@ export class WaveTransition implements Transition {
 //     // what's the difference between effect and transition?
 //     // transiton can perform 
 // }
+
+
+export class MotionImage implements Transition {
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // okay:
+        // I'm going to flip everything, but I'm going to flip the off ones at a slight offset 
+        let oddFlips = new Set(diffIndices(o1, o2, h));
+        // the first flips are this, but the subsequent flips should just be the same as o1.
+        let subsequent = [];
+        let others = [];
+        let o2Flips = o2.draw();
+        for (let i = 0; i < o2Flips.length; i++) {
+            for (let j = 0; j < o2Flips[0].length; j++) {
+                if (o2Flips[i][j]) {
+                    subsequent.push(h.coordToIndex([i, j]));
+                } else {
+                    // console.log(i, j)
+                    others.push(h.coordToIndex([i, j]));
+                }
+            }
+        }
+
+        console.log(subsequent)
+        console.log(others)
+
+        // how many flips should I do?
+        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        console.log(flipTiming)
+        let maxFlips = Math.floor(t / flipTiming);
+        let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;
+        let evenCount = maxFlips % 2 == 1 ? maxFlips : maxFlips - 1;
+        let delta = flipTiming / 2;
+        let groupActions: GroupAction[] = [];
+
+        console.log(oddCount)
+        for (let i = 0; i < oddCount; i++) {
+            let time = i * flipTiming;
+            console.log("time is ", time)
+            let idxes = [...oddFlips];
+            if (i != 0) {
+                idxes = subsequent;
+            }
+            let action = new GroupAction(time, [[Action.FLIP, idxes]])
+            groupActions.push(action);
+            // let's push another one that's slightly offset!
+            if (i != 0) {
+                // groupActions = groupActions.concat([...new Array(180).keys()].map(i => new GroupAction(t / 180 * i + time + delta, [[Action.INCREMENT, [...others]]])));
+
+                groupActions.push(new GroupAction(time + delta, [[Action.FLIP, [...others]]]));
+            }
+        }
+
+        console.log(groupActions)
+        return groupActions;
+        // one extra at the end 
+    
+    }
+}
 
 
 export class OverrotateRevealTransition implements Transition {

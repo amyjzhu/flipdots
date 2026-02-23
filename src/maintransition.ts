@@ -2,7 +2,7 @@ import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
 import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd } from "./transitions";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -29,7 +29,14 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 1 -> wipe -> rectangle 0";
 
-    parseToGroupAction(wipeExample);
+    // parseToGroupAction(wipeExample);
+
+    let flipExample = "timing: [1,30]\n\
+    filepath: /animations/wipe${i}.png \n\
+    objects: [#000000 rectangle] \n\
+    rectangle 1 -> flip -> rectangle 1";
+
+    parseToGroupAction(flipExample);
 
 
     let sparkleExample = "timing: [15,15]\n\
@@ -60,7 +67,7 @@ if (typeof window != 'undefined') {
     head 0 -> sparkle -> head 1";
     // TODO: error with multiple objcts?
     // TODO: the opposite doesn't work - you can't sparkle OUT 
-    parseToGroupAction(dandelion);
+    // parseToGroupAction(dandelion);
 
     let dandelion_basic = "timing: [15,15]\n\
     filepath: /animations/dandelion${i}.png \n\
@@ -86,14 +93,14 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     lineboil(rectangle 0) 0 -> instantaneous -> lineboil(rectangle 1) 1 -> instantaneous -> lineboil(rectangle 1) 2 -> instantaneous -> lineboil(rectangle 1) 3 -> instantaneous -> lineboil(rectangle 1) 4  -> instantaneous -> lineboil(rectangle 1) 5  -> instantaneous -> lineboil(rectangle 1) 6  -> instantaneous -> lineboil(rectangle 1) 7";
 
-    parseToGroupAction(logoBoilExample);
+    // parseToGroupAction(logoBoilExample);
 
     
     let headExample = "timing: [60,62]\n\
     filepath: /animations/squiggle${i}.png \n\
     objects: [#000000 rectangle] \n\
     rectangle 0 -> drawingHead -> rectangle 1";
-    parseToGroupAction(headExample);
+    // parseToGroupAction(headExample);
 
 
 
@@ -107,7 +114,7 @@ ball 3 ->* move ->* ball 8"
 // ball 4 ->* path -> ball 8"
 // path1: ball 5 -> path -> ball 6\n\
 // path2: path1 6 -> path -> ball 7\n\"
-parseToGroupAction(golfPathExample);
+// parseToGroupAction(golfPathExample);
 
     let offsetGroupActions = (ga: GroupAction[], t: Time): GroupAction[] => {
         return ga.map(g => new GroupAction(g.tPlus + t, g.actions));
@@ -185,7 +192,7 @@ parseToGroupAction(golfPathExample);
     // I think this is like a 
     // rotate centre, rotate outer ring, rotate even outer ring
 
-    /*
+    
 
 
     let data = await getImages(["/animations/thinking.png"]);
@@ -251,7 +258,7 @@ parseToGroupAction(golfPathExample);
     // console.log("other schedule is ", restGA);
 
 
-
+/*
     let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
     // groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
     groupActionsFromTransition = new FlipDirectional(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
@@ -263,9 +270,14 @@ parseToGroupAction(golfPathExample);
     // sfhw.compile([frame1, frame2, ...restGA]);
     // now I want the position of the text.
     // row 7 from 12 to 20
+
 */
 
-    // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
+    let rectangle = new RectangleTarget(4,4,[5,5,], [h,w]);
+    let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
+    console.log(flipAnimation)
+    sfhw.compile(flipAnimation);
+    // let threed = new FlipdotSimHard ware([], i => [], undefined, "public/lowpolybunny.stl");
     // threed.finalize3D().then(_ => {
     //     console.log("got it")
     //     console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
