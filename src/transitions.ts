@@ -767,6 +767,80 @@ export class WaveTransition implements Transition {
 // }
 
 
+export class CascadeImage implements Transition {
+
+    order: GridOrder;
+
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // What I should do is: 
+        // establish frames that units are going to start flipping FASTER/SLOWER (let's say slower.)
+        let flip = diffIndices(o1, o2, h);
+        let [mask, x, y] = generateMaskFromCoords(flip, h);
+        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
+
+        console.log(maskTime)
+        let result = [];
+        const rows = maskTime.length;
+        const cols = maskTime[0].length;
+
+        // Flatten grid → unit IDs
+        const unitIds: UnitId[] = h.units.map(i => i.id);
+        const frameMap = new Map<number, UnitId[]>();
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const frame = maskTime[r][c];
+
+                let id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                
+
+                if (!frameMap.has(frame)) {
+                    frameMap.set(frame, []);
+                }
+                
+                frameMap.get(frame)!.push(id);
+            }
+        }
+
+        const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
+
+        let flipTime = h.actionDurations.get(Action.FLIP)! * 3;
+        let currentTime: Time = 0;
+
+        for (const frame of allFrames) {
+            const activeUnits = new Set(frameMap.get(frame)!);
+
+            const backgroundUnits = unitIds.filter(u => !activeUnits.has(u));
+
+            // 4 ticks per frame
+            for (let tick = 0; tick < 4; tick++) {
+                const actions: [Action, UnitId[]][] = [];
+
+                // Background always flips
+                if (backgroundUnits.length > 0) {
+                    actions.push([Action.FLIP, backgroundUnits]);
+                }
+
+                // Active flips only on ticks 0 and 2 (half speed)
+                if ((tick === 0 || tick === 2) && activeUnits.size > 0) {
+                    actions.push([Action.FLIP, Array.from(activeUnits)]);
+                }
+
+                result.push(new GroupAction(currentTime, actions));
+                currentTime += flipTime;
+            }
+        }
+
+        return result;
+
+
+    }
+}
+
 export class MotionImage implements Transition {
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
         // okay:
@@ -820,7 +894,7 @@ export class MotionImage implements Transition {
         console.log(groupActions)
         return groupActions;
         // one extra at the end 
-    
+
     }
 }
 
@@ -1135,7 +1209,7 @@ export class FlipDirectional implements Transition {
         const dt = 1 / this.flipsPerSecond;
 
         // const required = ordered.map(u => h.computeFlipDistance(u as SplitflapUnit));
-        
+
 
         const schedule = new Map<UnitId, Time[]>();
         let minFinishFlips = 0;

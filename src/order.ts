@@ -165,6 +165,139 @@ export class GrowFromPoint extends GridOrder {
     }
 }
 
+export class SpiralOrder extends GridOrder {
+    applyMask(shape: boolean[][]): [OrderedGrid, number[]] {
+        // hmm... I should just do this?
+        let activationSequence = this.spiralGridOrder(shape);
+        console.log(activationSequence)
+        let grid = this.generateGrid(shape[0].length, shape[1].length);
+
+        for (let i = 0; i < activationSequence.length; i++) {
+            let units = activationSequence[i];
+            for (let unit of units) {
+                let x: number = unit[0];
+                let y: number = unit[1];
+                grid[y][x] = i;
+            }
+        }
+
+        let times: number[] = grid.flat().filter(t => t != -1);
+        times.sort((a, b) => a - b);
+        times = [... new Set(times)];
+
+        console.log(times);
+        console.log(frameDisplay(shape))
+        return [grid, times];
+    }
+
+    // this returns nothing because we need the shape itself.
+    generateGrid(width: number, height: number): OrderedGrid {
+        return [...new Array(height)].map(_ => [... new Array(width)].map(x => -1));
+
+    }
+
+    spiralGridOrder = (grid: boolean[][]): [number, number][][] => {
+        const rows = grid.length;
+        if (rows === 0) return [];
+        const cols = grid[0].length;
+
+        // -------------------------
+        // 1. Find bounding box of shape
+        // -------------------------
+        let minR = rows, maxR = -1, minC = cols, maxC = -1;
+        let totalTrue = 0;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (!grid[r][c]) continue;
+                totalTrue++;
+                minR = Math.min(minR, r);
+                maxR = Math.max(maxR, r);
+                minC = Math.min(minC, c);
+                maxC = Math.max(maxC, c);
+            }
+        }
+
+        if (totalTrue === 0) return [];
+
+        // -------------------------
+        // 2. Compute center of shape
+        // -------------------------
+        const centerR = Math.floor((minR + maxR) / 2);
+        const centerC = Math.floor((minC + maxC) / 2);
+
+        // -------------------------
+        // 3. Spiral walk
+        // -------------------------
+        const visited = new Set<string>();
+        const result: [number, number][][] = [];
+
+        const key = (r: number, c: number) => `${r},${c}`;
+
+        // Spiral directions: right, down, left, up
+        const dirs: [number, number][] = [
+            [0, 1],
+            [1, 0],
+            [0, -1],
+            [-1, 0],
+        ];
+
+        let r = centerR;
+        let c = centerC;
+
+        let stepSize = 1;
+        let dirIndex = 0;
+        let visitedCount = 0;
+
+        const tryAdd = (rr: number, cc: number, layer: [number, number][]) => {
+            if (
+                rr >= 0 && rr < rows &&
+                cc >= 0 && cc < cols &&
+                grid[rr][cc]
+            ) {
+                const k = key(rr, cc);
+                if (!visited.has(k)) {
+                    visited.add(k);
+                    layer.push([rr, cc]);
+                    visitedCount++;
+                }
+            }
+        };
+
+        // First center cell
+        if (grid[r][c]) {
+            visited.add(key(r, c));
+            result.push([[r, c]]);
+            visitedCount = 1;
+        }
+
+        while (visitedCount < totalTrue) {
+            // Each loop adds one spiral "ring"
+            const layer: [number, number][] = [];
+
+            for (let turn = 0; turn < 2; turn++) {
+                const [dr, dc] = dirs[dirIndex % 4];
+
+                for (let i = 0; i < stepSize; i++) {
+                    r += dr;
+                    c += dc;
+                    tryAdd(r, c, layer);
+                }
+
+                dirIndex++;
+            }
+
+            stepSize++;
+
+            if (layer.length > 0) {
+                result.push(layer);
+            }
+        }
+
+        return result;
+    }
+}
+
 
 export class GrowFromCentre extends GrowFromPoint {
     constructor(startAt: (width: number, height: number) => [number, number], stepTiming: number[] = [1]) {

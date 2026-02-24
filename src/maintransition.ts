@@ -1,8 +1,8 @@
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
-import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage } from "./transitions";
+import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight, SpiralOrder } from "./order";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -273,10 +273,14 @@ ball 3 ->* move ->* ball 8"
 
 */
 
-    let rectangle = new RectangleTarget(4,4,[5,5,], [h,w]);
-    let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
+    let rectangle = new RectangleTarget(8,6,[3, 7,], [h,w]);
+    // let rectangle = new RectangleTarget(4,4,[5,5,], [h,w]);
+    let flipAnimation = new CascadeImage(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
+    // let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
     console.log(flipAnimation)
     sfhw.compile(flipAnimation);
+
+
     // let threed = new FlipdotSimHard ware([], i => [], undefined, "public/lowpolybunny.stl");
     // threed.finalize3D().then(_ => {
     //     console.log("got it")
