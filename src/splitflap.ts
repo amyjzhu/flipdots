@@ -206,6 +206,7 @@ export class SplitFlapDisplay {
         // console.log(this.idxToUpdate)
         this.animationFrameCounters = this.flaps.map(_ => 0);
         this.setNextFlips = newFlip;
+        console.log("I'm setting perPixelPauses")
         this.perPixelPauses = this.flaps.map((f, i) => newFlip(0)(i)[0]);
         // I assume I should reset this?
         this.flipCycles = this.flaps.map(_ => 0);
@@ -338,78 +339,6 @@ export class SplitFlapDisplay {
         return [basicMaterial, basicMaterial, basicMaterial, basicMaterial, material, backMaterial]
     }
 
-    // makeSplitFlapPiece = (top: boolean): [THREE.Mesh, HTMLCanvasElement, HTMLCanvasElement] => {
-    //     let geometry = new THREE.BoxGeometry(this.WIDTH, this.HEIGHT, 0.5);
-
-    //     let [frontTexture, c] = this.generateCanvasTexture("white", top);
-
-    //     let [backTexture, c2] = this.generateCanvasTexture("green", top);
-
-    //     let basicMaterial = new THREE.MeshBasicMaterial({ color: "black" });
-    //     var material = new THREE.MeshBasicMaterial({
-    //         map: frontTexture
-    //     });
-
-    //     // the back texture should actually be flipped and reversed... 
-    //     let backMaterial = new THREE.MeshBasicMaterial({
-    //         map: backTexture
-    //     });
-
-    //     let obj = new THREE.Mesh(geometry, [basicMaterial, basicMaterial, basicMaterial, basicMaterial, material, backMaterial]);
-    //     return [obj, c, c2];
-
-    // }
-
-    // makeSplitFlap() {
-    //     let geometry = new THREE.BoxGeometry(this.WIDTH, this.HEIGHT, 1);
-    //     // it should be skinny and long
-    //     // now, I need to apply the correct texture on all sides/.. 
-
-    //     let makePiece = (top: boolean): [THREE.Mesh, CanvasRenderingContext2D, CanvasRenderingContext2D] => {
-
-    //         let [frontTexture, c] = this.generateCanvasTexture("white", top);
-
-    //         let [backTexture, c2] = this.generateCanvasTexture("green", top);
-
-    //         let basicMaterial = new THREE.MeshBasicMaterial();
-    //         var material = new THREE.MeshBasicMaterial({
-    //             map: frontTexture
-    //         });
-
-    //         // the back texture should actually be flipped and reversed... 
-    //         let backMaterial = new THREE.MeshBasicMaterial({
-    //             map: backTexture
-    //         });
-
-    //         let obj = new THREE.Mesh(geometry, [basicMaterial, basicMaterial, basicMaterial, basicMaterial, material, backMaterial]);
-    //         return [obj, c, c2];
-
-    //     }
-
-    //     let [obj1, c1, c2] = makePiece(true);
-    //     let pivot = new THREE.Object3D();
-    //     obj1.position.set(0,3.5,0)
-    //     pivot.add(obj1);
-    //     pivot.position.set(0, -3.5, 0)
-    //     this.scene.add(pivot)
-
-    //     let [obj2, c3, c4] = makePiece(false);
-    //     let pivot2 = new THREE.Object3D();
-    //     obj2.position.set(0, -3.5, 0);
-    //     pivot2.add(obj2);
-    //     pivot2.position.set(0, -3.5, 0);
-    //     this.scene.add(pivot2)
-
-    //     // let obj3 = makePiece(false)
-    //     // obj3.position.set(0, 0, 0)
-    //     // this.scene.add(obj3)
-
-    //     this.flaps.push([pivot, pivot2]);
-    //     this.canvases.push([c1, c2, c3, c4]);
-    //     this.updateIdxs = [0];
-    // }
-
-
     runningCount = 0;
     animate = () => {
         // let OFFSET = this.numFramesRotating / 3;
@@ -503,7 +432,14 @@ export class SplitFlapDisplay {
             if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
                 // console.log("all done ", this.animationFrameCounters[idx])
                 // console.log(rad2deg(rotFlapBack), rad2deg((Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating)), rad2deg(Math.PI / (this.numFramesRotating)), rad2deg( rotFlapBack * -1 / perPixelPause / 2), rad2deg( rotFlapBack * -1 / perPixelPause), this.flaps[idx].map(f => rad2deg(f.rotation.x)))
+                console.log(this.flaps[idx].map(x => x.rotation.x / Math.PI))
                 this.animationFrameCounters[idx] = 0;
+                // rising, falling, stepping
+                this.flaps[idx][0].rotation.x = Math.PI
+                this.flaps[idx][1].rotation.x = 0;
+                this.flaps[idx][2].rotation.x = -1 * rotFlapBack;
+                console.log("perpixelcyclelength is", perPixelCycleLength, this.animationFrameCounters[idx], perPixelPause, this.numFramesRotating);
+
                 
             } else {
 
