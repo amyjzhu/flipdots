@@ -210,6 +210,7 @@ export class SplitFlapDisplay {
         this.perPixelPauses = this.flaps.map((f, i) => newFlip(0)(i)[0]);
         // I assume I should reset this?
         this.flipCycles = this.flaps.map(_ => 0);
+        console.log(this.perPixelPauses)
 
     }
 
@@ -345,13 +346,8 @@ export class SplitFlapDisplay {
 
         let PAUSE_DEFAULT = Math.floor(this.numFramesRotating / 3);
 
-        // what's going on? why is this like 100?
-        // if (this.animationFrameCounters.filter(a => a != 0).length != 0) console.log("inside animate", this.animationFrameCounters.filter(a => a != 0))
         for (let idx = 0; idx < this.flaps.length; idx++) {
-            
             let perPixelPause = this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT;
-           // let perPixelCycleLength = this.perPixelCycleLength.length > idx ? this.perPixelCycleLength[idx] : this.splitFlapCycleLength;
-
             if (perPixelPause == undefined) {
                 // skip this one
                 // console.log("undefined")
@@ -361,35 +357,18 @@ export class SplitFlapDisplay {
             let perPixelCycleLength = perPixelPause + this.numFramesRotating;
             
             let [falling, rising, stepping] = this.flaps[idx];
-            let rad2deg = (r: number) => r *  180 / Math.PI;
             
-            // console.log(rad2deg(stepping.rotation.x))
-            if (perPixelPause + this.numFramesRotating > perPixelCycleLength) {
-                throw new Error("pause is too long")
-            }
-
-            // during each flip, I want to do three things.
-            // the step flap will move forward. (during OFFSET) - angle / num frames for offset -> bcames stepping
-            // the flap that is falling will fall to the bottom (after OFFSET) - angle change / num frames minus offset -> becomes falling
-            // the flap that is at the bottom will move to step position (after OFFSET) -> becomes rising 
-            
-
             if (this.animationFrameCounters[idx] < perPixelPause) {
-                // this doesn't seem super consistent?
-                // todo?
-                // why does this move it doubly up?
-                // console.log("inside offset ", this.animationFrameCounters[idx], rad2deg(rotFlapBack * -1 / perPixelPause), rad2deg(stepping.rotation.x));
-                // countOffset += 1;
-                // console.log("completing (offset): ", this.animationFrameCounters[idx], perPixelPause, rad2deg(rotFlapBack * -1 / perPixelPause),rad2deg(stepping.rotation.x))
-
                 stepping.rotation.x += rotFlapBack * -1 / perPixelPause;
             } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < perPixelCycleLength) {
-                // console.log("inside rotate", this.animationFrameCounters[idx])
-                // countRotate += 1;
-            // } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < this.numFramesRotating + perPixelPause) {
                 rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating);
                 falling.rotation.x += Math.PI / (this.numFramesRotating)
-            } else if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
+                
+            } 
+            
+
+            if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
+                
                 // console.log("completing: ",  this.flaps[idx].map(f => rad2deg(f.rotation.x)))
                 let nextIdx = this.flapPos[idx] + 1 >= this.flipCycle[idx].length ? 0 : this.flapPos[idx] + 1;
                 
@@ -425,20 +404,22 @@ export class SplitFlapDisplay {
                 // start with the first next flips... 
                 this.flaps[idx] = [stepping, falling, rising];
 
+                // console.log(stepping.rotation.x/Math.PI*180, falling.rotation.x/Math.PI/2*180, rising.rotation.x/Math.PI*180)
                 let [newPause, newCycle] = this.setNextFlips(this.flapPos[idx])(idx);
                 this.perPixelPauses[idx] = newPause;
-            }
+                if (newPause!=24)console.log("new perpixel pause is", this.perPixelPauses[idx], idx)
 
-            if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
                 // console.log("all done ", this.animationFrameCounters[idx])
                 // console.log(rad2deg(rotFlapBack), rad2deg((Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating)), rad2deg(Math.PI / (this.numFramesRotating)), rad2deg( rotFlapBack * -1 / perPixelPause / 2), rad2deg( rotFlapBack * -1 / perPixelPause), this.flaps[idx].map(f => rad2deg(f.rotation.x)))
-                console.log(this.flaps[idx].map(x => x.rotation.x / Math.PI))
+                // console.log(this.flaps[idx].map(x => x.rotation.x / Math.PI))
                 this.animationFrameCounters[idx] = 0;
                 // rising, falling, stepping
-                this.flaps[idx][0].rotation.x = Math.PI
-                this.flaps[idx][1].rotation.x = 0;
-                this.flaps[idx][2].rotation.x = -1 * rotFlapBack;
-                console.log("perpixelcyclelength is", perPixelCycleLength, this.animationFrameCounters[idx], perPixelPause, this.numFramesRotating);
+                
+                // 
+                // this.flaps[idx][0].rotation.x = 0;
+                // this.flaps[idx][1].rotation.x = 0;
+                // this.flaps[idx][2].rotation.x = rotFlapBack;
+                // console.log("perpixelcyclelength is", perPixelCycleLength, this.animationFrameCounters[idx], perPixelPause, this.numFramesRotating);
 
                 
             } else {

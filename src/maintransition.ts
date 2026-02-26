@@ -2,7 +2,7 @@ import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
 import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight, SpiralOrder } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage } from "./transitions";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -36,7 +36,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 1 -> flip -> rectangle 1";
 
-    parseToGroupAction(flipExample);
+    // parseToGroupAction(flipExample);
 
 
     let sparkleExample = "timing: [15,15]\n\
@@ -258,20 +258,20 @@ ball 3 ->* move ->* ball 8"
     // console.log("other schedule is ", restGA);
 
 
-/*
-    let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    // groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    groupActionsFromTransition = new FlipDirectional(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    groupActionsFromTransition = new FlipSyncEnd().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    // sfhw.compile([frame1]);
-    console.log(groupActionsFromTransition)
-    groupActionsFromTransition
-    sfhw.compile([frame1, frame2, ...delayGroupActions(groupActionsFromTransition, 4)]);
-    // sfhw.compile([frame1, frame2, ...restGA]);
-    // now I want the position of the text.
-    // row 7 from 12 to 20
 
-*/
+    // let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    // // groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    // groupActionsFromTransition = new FlipDirectional(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    // groupActionsFromTransition = new FlipSyncEnd().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+    // // sfhw.compile([frame1]);
+    // console.log(groupActionsFromTransition)
+    // groupActionsFromTransition
+    // sfhw.compile([frame1, frame2, ...delayGroupActions(groupActionsFromTransition, 4)]);
+    // // sfhw.compile([frame1, frame2, ...restGA]);
+    // // now I want the position of the text.
+    // // row 7 from 12 to 20
+
+
 
     let rectangle = new RectangleTarget(8,6,[3, 7,], [h,w]);
     // let rectangle = new RectangleTarget(4,4,[5,5,], [h,w]);
@@ -280,6 +280,15 @@ ball 3 ->* move ->* ball 8"
     console.log(flipAnimation)
     sfhw.compile(flipAnimation);
 
+    
+    // let fdshw2 = new FlipdotSimHardware([], i => [], [height, width]);
+    // let flipAnimation3 = new OneByOne(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), new RectangleTarget(2,2,[3, 7,], [h,w]), 30, sfhw)
+    // fdshw2.compile([...flipAnimation3, ...delayGroupActions(flipAnimation3, 4), ...delayGroupActions(flipAnimation3, 8)]);
+
+    
+    // let fdshw = new FlipdotSimHardware([], i => [], [height, width]);
+    // let flipAnimation2 = new OneByOne(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw)
+    // fdshw.compile(flipAnimation2);
 
     // let threed = new FlipdotSimHard ware([], i => [], undefined, "public/lowpolybunny.stl");
     // threed.finalize3D().then(_ => {

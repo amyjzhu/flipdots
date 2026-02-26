@@ -630,6 +630,66 @@ export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
     return [grid, minX, minY];
 }
 
+export class OneByOne implements Transition {
+    order: GridOrder;
+
+    // use the order and highlight only the elements at this time
+    
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // What I should do is: 
+        // establish frames that units are going to start flipping FASTER/SLOWER (let's say slower.)
+        let flip = diffIndices(o1, o2, h);
+        let [mask, x, y] = generateMaskFromCoords(flip, h);
+        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
+
+        console.log(maskTime)
+        let result = [];
+        const rows = maskTime.length;
+        const cols = maskTime[0].length;
+
+        const frameMap = new Map<number, UnitId[]>();
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const frame = maskTime[r][c];
+
+                let id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                
+
+                if (!frameMap.has(frame)) {
+                    frameMap.set(frame, []);
+                }
+                
+                frameMap.get(frame)!.push(id);
+            }
+        }
+
+        const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
+
+        let flipTime = h.actionDurations.get(Action.FLIP)!;
+        let currentTime: Time = 0;
+        let prevFlips = [];
+
+        for (const frame of allFrames) {
+            const activeUnits = new Set(frameMap.get(frame)!);
+            prevFlips = [...activeUnits];
+
+                currentTime += flipTime;
+
+            result.push(new GroupAction(currentTime, [[Action.FLIP, [...activeUnits, ...prevFlips]]]))
+            
+        }
+
+        return result;
+
+
+    }
+}
+
 export class WaveTransition implements Transition {
     order: GridOrder;
 
@@ -808,12 +868,14 @@ export class CascadeImage implements Transition {
 
         const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
 
-        let flipTime = h.actionDurations.get(Action.FLIP)! * 3;
+        let flipTime = h.actionDurations.get(Action.FLIP)! * 20;
+        console.log("flip time is", flipTime)
         let currentTime: Time = 0;
 
         for (const frame of allFrames) {
             const activeUnits = new Set(frameMap.get(frame)!);
 
+            console.log("active units are", activeUnits)
             const backgroundUnits = unitIds.filter(u => !activeUnits.has(u));
 
             // 4 ticks per frame
@@ -865,7 +927,7 @@ export class MotionImage implements Transition {
         console.log(others)
 
         // how many flips should I do?
-        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        let flipTiming = h.actionDurations.get(Action.FLIP)! * 3;
         console.log(flipTiming)
         let maxFlips = Math.floor(t / flipTiming);
         let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;

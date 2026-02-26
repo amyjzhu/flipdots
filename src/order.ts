@@ -221,7 +221,7 @@ export class SpiralOrder extends GridOrder {
         if (totalTrue === 0) return [];
 
         // -------------------------
-        // 2. Compute center of shape
+        // 2. Compute center
         // -------------------------
         const centerR = Math.floor((minR + maxR) / 2);
         const centerC = Math.floor((minC + maxC) / 2);
@@ -234,22 +234,20 @@ export class SpiralOrder extends GridOrder {
 
         const key = (r: number, c: number) => `${r},${c}`;
 
-        // Spiral directions: right, down, left, up
         const dirs: [number, number][] = [
-            [0, 1],
-            [1, 0],
-            [0, -1],
-            [-1, 0],
+            [0, 1],  // right
+            [1, 0],  // down
+            [0, -1], // left
+            [-1, 0], // up
         ];
 
         let r = centerR;
         let c = centerC;
-
         let stepSize = 1;
         let dirIndex = 0;
         let visitedCount = 0;
 
-        const tryAdd = (rr: number, cc: number, layer: [number, number][]) => {
+        const tryAdd = (rr: number, cc: number) => {
             if (
                 rr >= 0 && rr < rows &&
                 cc >= 0 && cc < cols &&
@@ -258,40 +256,29 @@ export class SpiralOrder extends GridOrder {
                 const k = key(rr, cc);
                 if (!visited.has(k)) {
                     visited.add(k);
-                    layer.push([rr, cc]);
+                    result.push([[rr, cc]]); // 👈 ONE CELL PER FRAME
                     visitedCount++;
                 }
             }
         };
 
-        // First center cell
-        if (grid[r][c]) {
-            visited.add(key(r, c));
-            result.push([[r, c]]);
-            visitedCount = 1;
-        }
+        // Add center if valid
+        tryAdd(r, c);
 
         while (visitedCount < totalTrue) {
-            // Each loop adds one spiral "ring"
-            const layer: [number, number][] = [];
-
             for (let turn = 0; turn < 2; turn++) {
                 const [dr, dc] = dirs[dirIndex % 4];
 
                 for (let i = 0; i < stepSize; i++) {
                     r += dr;
                     c += dc;
-                    tryAdd(r, c, layer);
+                    tryAdd(r, c);
                 }
 
                 dirIndex++;
             }
 
             stepSize++;
-
-            if (layer.length > 0) {
-                result.push(layer);
-            }
         }
 
         return result;
