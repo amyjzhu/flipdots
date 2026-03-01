@@ -1,8 +1,8 @@
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
-import { CircleTarget, LineBoil, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
-import { BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight, SpiralOrder } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne } from "./transitions";
+import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
+import { BackAndForth, BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight, SpiralOrder } from "./order";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -273,10 +273,19 @@ ball 3 ->* move ->* ball 8"
 
 
 
-    let rectangle = new RectangleTarget(8,6,[3, 7,], [h,w]);
+    // let rectangle = new RectangleTarget(8,6,[3, 7,], [h,w]);
     // let rectangle = new RectangleTarget(4,4,[5,5,], [h,w]);
-    let flipAnimation = new CascadeImage(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
-    // let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
+    let rectangle = new RectangleTarget(w-1,h-1,[0,0], [w,h]);
+    console.log(rectangle.draw())
+    // some kind of 0,10 problerm 
+    // let flipAnimation = new CascadeImage(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
+    // let cross = new LineTarget([0,0,],[3,7], [h,w]);
+    // let cross2 = new LineTarget([7,0],[0,7],[h,w]);
+    // console.log(cross.draw())
+    // let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), cross, 60, sfhw);
+    // let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), rectangle, 60, sfhw);
+    console.log(sfhw.indexToCoord);
+    let flipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 2000, sfhw);
     console.log(flipAnimation)
     sfhw.compile(flipAnimation);
 

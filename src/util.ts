@@ -386,7 +386,34 @@ export let getImages = async (urls: string[]): Promise<[number, number, [number,
     return [width, height, images];
 }
 
+export function bresenhamLine(x0: number, y0: number, x1: number, y1: number): { x: number, y: number }[] {
+    const points: { x: number, y: number }[] = [];
+    
+    // Calculate differences and absolute differences
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = (x0 < x1) ? 1 : -1; // Step direction in x
+    const sy = (y0 < y1) ? 1 : -1; // Step direction in y
+    
+    let err = dx - dy; // Initial error decision parameter
 
+    while (true) {
+        points.push({ x: x0, y: y0 });
+
+        if (x0 === x1 && y0 === y1) break;
+
+        const e2 = 2 * err;
+        if (e2 > -dy) { // Check if error is significant enough to step in Y
+            err -= dy;
+            x0 += sx;
+        }
+        if (e2 < dx) { // Check if error is significant enough to step in X
+            err += dx;
+            y0 += sy;
+        }
+    }
+    return points;
+}
 
 export let frameDisplay = (frame: Colour[][]): string => {
     let str = "";

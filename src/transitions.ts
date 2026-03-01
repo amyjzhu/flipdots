@@ -75,7 +75,7 @@ function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
                 (inA && !inB && aVal) ||
                 (!inA && inB && bVal)
             ) {
-                result.push([r, c]);
+                result.push([c, r]);
             }
         }
     }
@@ -690,6 +690,69 @@ export class OneByOne implements Transition {
     }
 }
 
+
+
+
+export class OneByOneKeepFlipping implements Transition {
+    order: GridOrder;
+
+    // use the order and highlight only the elements at this time
+    
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // What I should do is: 
+        // establish frames that units are going to start flipping FASTER/SLOWER (let's say slower.)
+        let flip = diffIndices(o1, o2, h);
+        let [mask, x, y] = generateMaskFromCoords(flip, h);
+        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
+
+        console.log(maskTime)
+        let result = [];
+        const rows = maskTime.length;
+        const cols = maskTime[0].length;
+
+        const frameMap = new Map<number, UnitId[]>();
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const frame = maskTime[r][c];
+
+                let id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                
+
+                if (!frameMap.has(frame)) {
+                    frameMap.set(frame, []);
+                }
+                
+                frameMap.get(frame)!.push(id);
+            }
+        }
+
+        const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
+
+        let flipTime = h.actionDurations.get(Action.FLIP)!;
+        let currentTime: Time = 0;
+        let prevFlips: UnitId[] = [];
+
+        for (const frame of allFrames) {
+            const activeUnits = new Set(frameMap.get(frame)!);
+           
+                currentTime += flipTime;
+
+            result.push(new GroupAction(currentTime, [[Action.FLIP, [...activeUnits, ...prevFlips]]]))
+            prevFlips = prevFlips.concat([...activeUnits]);
+ 
+        }
+
+        return result;
+
+
+    }
+}
+
 export class WaveTransition implements Transition {
     order: GridOrder;
 
@@ -838,6 +901,7 @@ export class CascadeImage implements Transition {
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
         // What I should do is: 
         // establish frames that units are going to start flipping FASTER/SLOWER (let's say slower.)
+        
         let flip = diffIndices(o1, o2, h);
         let [mask, x, y] = generateMaskFromCoords(flip, h);
         let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
@@ -868,7 +932,7 @@ export class CascadeImage implements Transition {
 
         const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
 
-        let flipTime = h.actionDurations.get(Action.FLIP)! * 20;
+        let flipTime = h.actionDurations.get(Action.FLIP)! * 3;
         console.log("flip time is", flipTime)
         let currentTime: Time = 0;
 

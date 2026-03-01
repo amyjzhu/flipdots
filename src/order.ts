@@ -165,6 +165,27 @@ export class GrowFromPoint extends GridOrder {
     }
 }
 
+export class BackAndForth extends GridOrder { 
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+
+        let forwards = true;
+        let count = 0;
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                if (forwards) {
+                    grid[i][j] = count++;
+                } else {
+                    grid[i][width-1-j] = count++;
+                }
+            }
+            forwards = !forwards;
+        }
+
+        return grid;
+    }
+}
+
 export class SpiralOrder extends GridOrder {
     applyMask(shape: boolean[][]): [OrderedGrid, number[]] {
         // hmm... I should just do this?

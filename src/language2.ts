@@ -19,7 +19,7 @@
 import { Action, delayGroupActions, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
 import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions"
 import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
-import { frameDisplay, getImages, inBounds, Perlin, rgb2Hex } from "./util";
+import { bresenhamLine, frameDisplay, getImages, inBounds, Perlin, rgb2Hex } from "./util";
 import { BottomLeftWildfire, BottomUp, GrowFromCentre, StutterOrder } from "./order";
 import { DrawingHeadWipe, Effect, EffectType, FlipEffect, GrowWipe, Instantaneous, MotionFlipTo, Sparkle, TracePath, UniformMove, Wipe, WipeDirection } from "./effect";
 
@@ -99,6 +99,48 @@ export class RectangleTarget implements DrawableTarget {
         }
 
         this.extractedShape = [...Array(height)].map(_ => [...Array(width)].map(_ => true));
+    }
+
+
+    draw(): Colour[][] {
+        if (this.shape.length == 0) {
+            return [];
+        }
+        return this.shape;
+    }
+}
+
+
+export class LineTarget implements DrawableTarget {
+    shape: Colour[][];
+    position: [number, number];
+    clone(): Target {
+        throw new Error("Method not implemented.");
+    }
+    frameId: number | undefined;
+    effect: Effect | undefined;
+    debugTag: string | undefined;
+
+    extractedShape: Colour[][];
+    defaultColour: Colour = false;
+
+
+    constructor(start: [number, number], end: [number, number], canvasSize: [number, number]) {
+        this.position = start;
+
+        this.shape = [...Array(canvasSize[1])].map(_ => [...Array(canvasSize[0])].map(_ => this.defaultColour));
+
+        let linePoints = bresenhamLine(start[0], start[1], end[0], end[1]);
+
+        for (let i = 0; i < canvasSize[0]; i++) {
+            for (let j = 0; j < canvasSize[1]; j++) {
+                if (linePoints.filter(a => a.x == i && a.y == j).length != 0) {
+                    this.shape[j][i] = true;
+                }
+            }
+        }
+
+        this.extractedShape = [...Array(canvasSize[1])].map(_ => [...Array(canvasSize[0])].map(_ => true));
     }
 
 
