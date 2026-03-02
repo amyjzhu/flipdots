@@ -414,6 +414,8 @@ export class SplitFlapDisplay {
             if (this.animationFrameCounters[idx] < perPixelPause) {
                 stepping.rotation.x += rotFlapBack * -1 / perPixelPause;
             } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < perPixelCycleLength) {
+                // This is NOT stepping down the correct amount each time
+                // maybe related to e.g. 24 and 54. If I only flip down 24 the first time... then 6 from there... then 30... the six from there... 
                 rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating);
                 falling.rotation.x += Math.PI / (this.numFramesRotating)
 
