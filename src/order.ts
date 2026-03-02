@@ -165,7 +165,7 @@ export class GrowFromPoint extends GridOrder {
     }
 }
 
-export class BackAndForth extends GridOrder { 
+export class BackAndForth extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {
         let grid = [...new Array(height)].map(_ => [... new Array(width)]);
 
@@ -176,10 +176,38 @@ export class BackAndForth extends GridOrder {
                 if (forwards) {
                     grid[i][j] = count++;
                 } else {
-                    grid[i][width-1-j] = count++;
+                    grid[i][width - 1 - j] = count++;
                 }
             }
             forwards = !forwards;
+        }
+
+        return grid;
+    }
+}
+
+
+export class MatrixDown extends GridOrder {
+    // maybe we need more fine-grained operators to help make order generation easier? 
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = [...new Array(height)].map(_ => [... new Array(width)]);
+
+        // let's just randomly assign each column a start time. first, randomly order 
+        let colStartTimes = [...new Array(width).keys()].map((a) => ({ sort: Math.random(), value: a }))
+            .sort((a, b) => a.sort - b.sort)
+            .map((a) => a.value);
+        
+        // extrapolate orders from smaller grids
+        // also, need to combine orders and transitions to make building blocks - like matrix PLUS text reveal 
+        let count = 0;
+        for (let j of colStartTimes) {
+            for (let i = 0; i < height; i++) {
+                grid[i][j] = count + i;
+            }
+            count++;
+            if (Math.random() < 0.3) {
+                count++;
+            }
         }
 
         return grid;

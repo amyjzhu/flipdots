@@ -1,8 +1,9 @@
+import { STLLoader } from "three/addons/loaders/STLLoader";
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
-import { BackAndForth, BottomLeftWildfire, GrowFromCentre, GrowFromPoint, LeftToRight, SpiralOrder } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping } from "./transitions";
+import { BackAndForth, BottomLeftWildfire, BottomUp, GrowFromCentre, GrowFromPoint, LeftToRight, MatrixDown, SpiralOrder } from "./order";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -95,7 +96,7 @@ if (typeof window != 'undefined') {
 
     // parseToGroupAction(logoBoilExample);
 
-    
+
     let headExample = "timing: [60,62]\n\
     filepath: /animations/squiggle${i}.png \n\
     objects: [#000000 rectangle] \n\
@@ -104,17 +105,17 @@ if (typeof window != 'undefined') {
 
 
 
-    
-let golfPathExample = "timing: [2,4,6,8,10,12,14,16,18]\n\
+
+    let golfPathExample = "timing: [2,4,6,8,10,12,14,16,18]\n\
 filepath: /animations/golf-collide${i}.png \n\
 objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball] \n\
 golfstick 0 ->* instantaneous ->* golfstick 8\n\
 golfer 0 ->* instantaneous ->* golfer 8\n\
 ball 3 ->* move ->* ball 8"
-// ball 4 ->* path -> ball 8"
-// path1: ball 5 -> path -> ball 6\n\
-// path2: path1 6 -> path -> ball 7\n\"
-// parseToGroupAction(golfPathExample);
+    // ball 4 ->* path -> ball 8"
+    // path1: ball 5 -> path -> ball 6\n\
+    // path2: path1 6 -> path -> ball 7\n\"
+    // parseToGroupAction(golfPathExample);
 
     let offsetGroupActions = (ga: GroupAction[], t: Time): GroupAction[] => {
         return ga.map(g => new GroupAction(g.tPlus + t, g.actions));
@@ -192,7 +193,7 @@ ball 3 ->* move ->* ball 8"
     // I think this is like a 
     // rotate centre, rotate outer ring, rotate even outer ring
 
-    
+
 
 
     let data = await getImages(["/animations/thinking.png"]);
@@ -208,104 +209,174 @@ ball 3 ->* move ->* ball 8"
     }, [] as number[])).flat();
 
 
-    let sfhw = SplitflapHardware.Rectangular(w, h, (x: number, y: number) => (ALPHABET_WITH_EXCLAMATION).split("").map(s => new SplitflapState(s)));
-    console.log(frameUnitId)
+    if (false) {
+        let sfhw = SplitflapHardware.Rectangular(w, h, (x: number, y: number) => (ALPHABET_WITH_EXCLAMATION).split("").map(s => new SplitflapState(s)));
+        console.log(frameUnitId)
 
-    // start by taking this and converting the image to flips.
-    let frame1 = new GroupAction(1, [[Action.FLIP, frameUnitId]]);
-    let frame2 = new GroupAction(2, [[Action.FLIP, frameUnitId]]);
-    // keeping it at zero breaks first frame
-    // let frame1 = new GroupAction(0, [[Action.FLIP, frameUnitId]]);
-    console.log(frame1);
-
-
-    let msgString = "cheese";
-    msgString = "ejggug"
-    let finalMessage = msgString.split("").map(c => new SplitflapState(c));
-    // the message should be from like 12 to 20 in row 7
-    let finalState = [...new Array(h * w)].map(j => new SplitflapState(" "));
-    [...new Array(msgString.length).keys()].forEach(i => finalState[6 * w + i + 13] = finalMessage[i]);
-
-    // I basically need it to be...
-    // an array with that deployed in the middle
-    let msgArray = [...new Array(h).keys()].map(r => [...new Array(w).keys()].map(c => {
-        if (r == 6 && c > 12 && c <= 12 + msgString.length) {
-            return msgString.split("")[c - 13];
-        }
-        return " ";
-    }))
-
-    console.log(msgArray)
-    let msgTarget = new PixelArtTarget(msgArray, " ");
-    console.log(msgTarget.draw())
+        // start by taking this and converting the image to flips.
+        let frame1 = new GroupAction(1, [[Action.FLIP, frameUnitId]]);
+        let frame2 = new GroupAction(2, [[Action.FLIP, frameUnitId]]);
+        // keeping it at zero breaks first frame
+        // let frame1 = new GroupAction(0, [[Action.FLIP, frameUnitId]]);
+        console.log(frame1);
 
 
-    // let schedule = scheduleDirectional(
-    //     sfhw.units as SplitflapUnit[],
-    //     finalState,
-    //     1,
-    //     sfhw,
-    //     "LEFT_TO_RIGHT"
-    // );
+        let msgString = "cheese";
+        msgString = "ejggug"
+        let finalMessage = msgString.split("").map(c => new SplitflapState(c));
+        // the message should be from like 12 to 20 in row 7
+        let finalState = [...new Array(h * w)].map(j => new SplitflapState(" "));
+        [...new Array(msgString.length).keys()].forEach(i => finalState[6 * w + i + 13] = finalMessage[i]);
 
-    // let schedule = scheduleConstantSpeed(sfhw.units as SplitflapUnit[], finalState, 1)
-    // let schedule2 = scheduleDirectional(sfhw.units as SplitflapUnit[], finalState, 1, sfhw, "LEFT_TO_RIGHT");
-    // let schedule3 = scheduleSyncEnd(sfhw.units as SplitflapUnit[], finalState, 1)
-    // // console.log(schedule)
+        // I basically need it to be...
+        // an array with that deployed in the middle
+        let msgArray = [...new Array(h).keys()].map(r => [...new Array(w).keys()].map(c => {
+            if (r == 6 && c > 12 && c <= 12 + msgString.length) {
+                return msgString.split("")[c - 13];
+            }
+            return " ";
+        }))
 
-    // let restGA = buildTimeline(schedule3, 4);
-    // console.log("frame 1 is ", frame1);
-    // console.log("other schedule is ", restGA);
+        console.log(msgArray)
+        let msgTarget = new PixelArtTarget(msgArray, " ");
+        console.log(msgTarget.draw())
 
 
+        // let schedule = scheduleDirectional(
+        //     sfhw.units as SplitflapUnit[],
+        //     finalState,
+        //     1,
+        //     sfhw,
+        //     "LEFT_TO_RIGHT"
+        // );
 
-    // let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    // // groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    // groupActionsFromTransition = new FlipDirectional(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    // groupActionsFromTransition = new FlipSyncEnd().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
-    // // sfhw.compile([frame1]);
-    // console.log(groupActionsFromTransition)
-    // groupActionsFromTransition
-    // sfhw.compile([frame1, frame2, ...delayGroupActions(groupActionsFromTransition, 4)]);
-    // // sfhw.compile([frame1, frame2, ...restGA]);
-    // // now I want the position of the text.
-    // // row 7 from 12 to 20
+        // let schedule = scheduleConstantSpeed(sfhw.units as SplitflapUnit[], finalState, 1)
+        // let schedule2 = scheduleDirectional(sfhw.units as SplitflapUnit[], finalState, 1, sfhw, "LEFT_TO_RIGHT");
+        // let schedule3 = scheduleSyncEnd(sfhw.units as SplitflapUnit[], finalState, 1)
+        // // console.log(schedule)
+
+        // let restGA = buildTimeline(schedule3, 4);
+        // console.log("frame 1 is ", frame1);
+        // console.log("other schedule is ", restGA);
 
 
 
-    // let rectangle = new RectangleTarget(8,6,[3, 7,], [h,w]);
-    // let rectangle = new RectangleTarget(4,4,[5,5,], [h,w]);
-    let rectangle = new RectangleTarget(w-1,h-1,[0,0], [w,h]);
-    console.log(rectangle.draw())
-    // some kind of 0,10 problerm 
-    // let flipAnimation = new CascadeImage(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
-    // let cross = new LineTarget([0,0,],[3,7], [h,w]);
-    // let cross2 = new LineTarget([7,0],[0,7],[h,w]);
-    // console.log(cross.draw())
-    // let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), cross, 60, sfhw);
-    // let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), rectangle, 60, sfhw);
-    console.log(sfhw.indexToCoord);
-    let flipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 2000, sfhw);
-    console.log(flipAnimation)
-    sfhw.compile(flipAnimation);
+        let groupActionsFromTransition = new FlipConstantSpeed().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+        // groupActionsFromTransition = new FlipDirectional(new GrowFromCentre((h, w) => [0,0])).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+        groupActionsFromTransition = new FlipDirectional(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+        groupActionsFromTransition = new FlipSyncEnd().generateGroupActions(new PixelArtTarget([], ""), msgTarget, 1, sfhw);
+        // sfhw.compile([frame1]);
+        console.log(groupActionsFromTransition)
+        groupActionsFromTransition
+        sfhw.compile([frame1, frame2, ...delayGroupActions(groupActionsFromTransition, 4)]);
+        // sfhw.compile([frame1, frame2, ...restGA]);
+        // now I want the position of the text.
+        // row 7 from 12 to 20
 
-    
+
+
+        // let rectangle = new RectangleTarget(8,6,[3, 7,], [h,w]);
+        let rectangle = new RectangleTarget(4, 4, [5, 5,], [h, w]);
+        // let rectangle = new RectangleTarget(w-1,h-1,[0,0], [w,h]);
+        console.log(rectangle.draw())
+        // some kind of 0,10 problerm 
+        // let flipAnimation = new CascadeImage(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw);
+        // let cross = new LineTarget([0,0,],[3,7], [h,w]);
+        // let cross2 = new LineTarget([7,0],[0,7],[h,w]);
+        // console.log(cross.draw())
+        // let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), cross, 60, sfhw);
+        let flipAnimation = new MotionImage().generateGroupActions(new PixelArtTarget([], ""), rectangle, 60, sfhw);
+        console.log(sfhw.indexToCoord);
+        sfhw.compile(flipAnimation);
+    }
+
+    let smallSfhw = SplitflapHardware.Rectangular(30, 5, (x: number, y: number) => (ALPHABET_WITH_EXCLAMATION).split("").map(s => new SplitflapState(s)));
+    let srectangle = new RectangleTarget(30, 5, [0, 0], [30, 5]);
+
+    let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 2000, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 2000, smallSfhw);
+    console.log(sflipAnimation)
+    smallSfhw.compile(sflipAnimation);
+
+
     // let fdshw2 = new FlipdotSimHardware([], i => [], [height, width]);
     // let flipAnimation3 = new OneByOne(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), new RectangleTarget(2,2,[3, 7,], [h,w]), 30, sfhw)
     // fdshw2.compile([...flipAnimation3, ...delayGroupActions(flipAnimation3, 4), ...delayGroupActions(flipAnimation3, 8)]);
 
-    
+
     // let fdshw = new FlipdotSimHardware([], i => [], [height, width]);
     // let flipAnimation2 = new OneByOne(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw)
     // fdshw.compile(flipAnimation2);
 
-    // let threed = new FlipdotSimHard ware([], i => [], undefined, "public/lowpolybunny.stl");
-    // threed.finalize3D().then(_ => {
-    //     console.log("got it")
-    //     console.log(threed.simulation.getProjectionFor3DHardware([0, 0, -1]));
-    // });
+    let threed = new FlipdotSimHardware([], i => [], undefined, "public/troika.stl");
+    // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
+    threed.finalize3D().then(_ => {
+        console.log("got it")
+
+        let basic = new WaveTransition3D(new BottomUp()).generateGroupActions(new RectangleTarget(0,0,[0,0],[20,20]), new CircleTarget(5, [0,0], [20,20]), 40, threed);
+
+        threed.compile(basic);
+        // new STLLoader().load("public/troika.stl", (geometry) => {
+
+            // let geometryStripes = rowOfDiscs.computeGeomStripes(geometry);
+            // rowOfDiscs.resetAnimation(i => [[geometryStripes[numfaces - (i % numfaces)]]])
+            // let rowOfDiscs = threed.simulation;
+            // let ring = rowOfDiscs.moveCircleAcrossMesh(geometry);
+            // console.log(ring)
+            // let diffed = computeFlips(ring);
+
+
+            // threed.compile();
+            // console.log(diffed)
+            // rowOfDiscs.resetAnimation(i => [diffed[i % 6]]);
+        // });
+    });
+
 
 }
+
+
+export function computeFlips(frames: number[][]): number[][] {
+    const flips: number[][] = [];
+
+    if (frames.length === 0) return flips;
+
+    // Convert frame arrays to sets for fast lookup
+    const frameSets = frames.map(f => new Set(f));
+
+    // --- Frame 1: always flip all lights that are ON ---
+    flips.push([...frameSets[0]]);
+
+    // --- Later frames: flip indices that changed state ---
+    for (let i = 1; i < frameSets.length; i++) {
+        const prev = frameSets[i - 1];
+        const curr = frameSets[i];
+
+        const changes: number[] = [];
+
+        // Get all lights seen in either frame
+        const allIndices = new Set([...prev, ...curr]);
+
+        for (const light of allIndices) {
+            const wasOn = prev.has(light);
+            const isOn = curr.has(light);
+
+            if (wasOn !== isOn) {
+                changes.push(light);
+            }
+        }
+
+        flips.push(changes);
+    }
+
+        // --- Final extra frame: flip everything OFF ---
+    const lastFrame = frameSets[frameSets.length - 1];
+    const finalFlips = [...lastFrame]; // all currently ON lights must flip OFF
+    flips.push(finalFlips);
+    
+    return flips;
+}
+
 
 // need basically a set of things to generate directions
 

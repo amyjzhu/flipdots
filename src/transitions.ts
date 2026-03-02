@@ -1,4 +1,4 @@
-import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit } from "./hardware";
+import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware } from "./hardware";
 import { Colour } from "./language";
 import { Target } from "./language2";
 import { AllAtOnce, GridOrder, StutterOrder } from "./order";
@@ -747,8 +747,60 @@ export class OneByOneKeepFlipping implements Transition {
  
         }
 
+        console.log(result.map(g => g.actions[0][1].length))
         return result;
 
+
+    }
+}
+
+export class WaveTransition3D implements Transition {
+    order: GridOrder;
+
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        // how many steps do I get though?
+        // let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        let projection = (h as FlipdotSimHardware).simulation.getProjectionFor3DHardware([0, 0, -1])!;
+        console.log(projection)
+        let unitsToFlap = new Set(diffIndices(o1, o2, h));
+
+        let [grid, x, y] = generateMaskFromCoords([...unitsToFlap], h);
+
+        let [timeGrid, times] = this.order.applyMask(grid as boolean[][]);
+        // I need to remember that the SHAPE INDEX != global index! 
+        console.log(timeGrid, times);
+        
+
+        let projFunction = (i: [number, number]) => projection[i[1]][i[0]]!;
+        let timeFunction = this.order.getTimeFunction(timeGrid, projFunction);
+
+
+        let actions: GroupAction[] = [];
+
+        let unitsSoFar: Set<UnitId> = new Set();
+
+        // maybe ti should give you a time list ike Adriana suggested 
+        for (let ti = 0; ti < times.length; ti += 1) {
+            let time = times[ti];
+
+            let draw = new Set(timeFunction(time));
+
+            let update = draw.difference(unitsSoFar);
+            unitsSoFar = unitsSoFar.union(update);
+            console.log(update)
+            let updateList = [...update].map(c => h.coordToIndex([h.indexToCoord.get(c)![0] + (x as number), h.indexToCoord.get(c)![1] + (y as number)]));
+            let action = new GroupAction(time, [[Action.FLIP, updateList]]);
+
+            actions.push(action);
+        }
+
+
+        console.log(actions)
+        return actions;
 
     }
 }

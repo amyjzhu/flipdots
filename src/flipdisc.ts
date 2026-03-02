@@ -49,7 +49,7 @@ export class RowOfDiscs {
     mesh: THREE.Mesh | undefined;
     units: THREE.Vector3[] | undefined
 
-    constructor(width: number, height: number, flat: boolean = true) {
+    constructor(width: number, height: number, flat: boolean = true, meshPath?: string) {
 
         this.width = width;
         this.height = height;
@@ -74,7 +74,11 @@ export class RowOfDiscs {
         if (flat) {
             this.makeRowOfDiscs(this.width, this.height);
         } else {
-            this.makeArbitraryMeshDiscSetup("public/lowpolybunny.stl");
+            if (meshPath == undefined) {
+                console.log("Undefined mesh path, defaulting to bunny")
+                meshPath = "public/lowpolybunny.stl";
+            }
+            this.makeArbitraryMeshDiscSetup(meshPath);
             this.height = 1;
         }
 

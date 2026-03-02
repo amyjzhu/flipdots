@@ -966,12 +966,13 @@ export class FlipdotSimHardware implements HardwareInterface {
             console.log("in the other constructor half");
             this.units = units;
             this.unitAdjacency = adjacency;
-            this.simulation = new RowOfDiscs(1, 1, false);
+            this.simulation = new RowOfDiscs(1, 1, false, meshInput);
             if (meshInput == undefined) {
                 throw new Error("No mesh input and not flat");
             }
             this.meshLocationStr = meshInput;
             this.coordToIndex = i => i[0] // need to fix this
+            // I need this to look like a UV map basically 
             this.indexToCoord = new Map(); // need to fix this 
         }
 
