@@ -50,6 +50,8 @@ export interface Unit {
     actions: Action[];
     actionTiming: [Action, Duration][];
     states: [Action, State[]][];
+
+    clone: () => Unit;
 }
 
 export enum Action {
@@ -126,6 +128,10 @@ export class SplitflapUnit implements Unit {
         this.actionTiming = [[Action.FLIP, 1]];
         this.states = [[Action.FLIP, reel]]; // I should use this instead...
         this.currentIndex = currIndex;
+    }
+
+    clone(): SplitflapUnit {
+        return new SplitflapUnit(this.id, this.states[0][1] as SplitflapState[])
     }
 }
 
@@ -283,7 +289,9 @@ export class SplitflapHardware implements HardwareInterface {
 
         // at the very beginning, they are all available
         for (let ga of groupActions) {
+            
             let time = this.getRealTiming(ga.tPlus);
+            console.log("executing groupaction at time", ga.tPlus, time)
             const frame = Math.round(ga.tPlus);
             // console.log(time, frame)
 
@@ -439,6 +447,7 @@ export class SplitflapHardware implements HardwareInterface {
         console.log("schedule is ", scheduled);
         let schedule = (f: number) => {
             return (i: number): [number | undefined, number | undefined] => {
+                console.log("for frame ", f, " we are getting ", tickSchedule.get(i), scheduled.get(i))
                 let delaysInTicks = tickSchedule.get(i)!;
 
                 const timeline = scheduled.get(i);
@@ -513,6 +522,10 @@ export class BrixelUnit implements Unit {
         this.actionTiming = [[Action.INCREMENT, 1], [Action.DECREMENT, 1]];
         this.states = [[Action.INCREMENT, [...new Array(360)].map(i => new BrixelState(i))],
         [Action.DECREMENT, [...new Array(360)].map(i => new BrixelState(360 - i))]]; // I should use this instead...
+    }
+
+    clone(): BrixelUnit {
+        return new BrixelUnit(this.id);
     }
 }
 
@@ -1169,6 +1182,10 @@ export class FlipdotUnit implements Unit {
         this.id = id;
         this.actions = [Action.FLIP];
         this.states = [[Action.FLIP, [new FlipdotState(0), new FlipdotState(1)]]];
+    }
+
+    clone(): Unit {
+        return new FlipdotUnit(this.id);
     }
 }
 

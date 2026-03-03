@@ -460,6 +460,9 @@ export class SplitFlapDisplay {
                 this.flaps[idx] = [stepping, falling, rising];
 
                 // console.log(stepping.rotation.x/Math.PI*180, falling.rotation.x/Math.PI/2*180, rising.rotation.x/Math.PI*180)
+                // ASSUMPTION BREAKDOWN: this is getting the nextflips from the current FLAPPOS perspective 
+                // and not from the GLOBAL FLIP perspective. the flappos perspective is lower because 
+                // it doesn't flip with every flap
                 let [newPause, newCycle] = this.setNextFlips(this.flapPos[idx])(idx);
                 this.perPixelPauses[idx] = newPause;
                 // if (newPause != 24) console.log("new perpixel pause is", this.perPixelPauses[idx], idx)

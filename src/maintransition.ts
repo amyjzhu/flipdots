@@ -3,7 +3,7 @@ import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
 import { BackAndForth, BottomLeftWildfire, BottomUp, GrowFromCentre, GrowFromPoint, LeftToRight, MatrixDown, SpiralOrder } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D } from "./transitions";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -290,14 +290,29 @@ ball 3 ->* move ->* ball 8"
         sfhw.compile(flipAnimation);
     }
 
-    let smallSfhw = SplitflapHardware.Rectangular(30, 5, (x: number, y: number) => (ALPHABET_WITH_EXCLAMATION).split("").map(s => new SplitflapState(s)));
-    let srectangle = new RectangleTarget(30, 5, [0, 0], [30, 5]);
+    let sh = 6;
+    let sw = 32;
+    let smallSfhw = SplitflapHardware.Rectangular(sw, sh, (x: number, y: number) => (ALPHABET_WITH_EXCLAMATION).split("").map(s => new SplitflapState(s)));
+    let srectangle = new RectangleTarget(sw, sh, [0, 0], [sw, sh]);
 
-    let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 2000, smallSfhw);
+    let msg = "up next\nmatrix";
+    msg = "ocvtkz\nwr pgzv";
+    let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg, [5,2]), " ");
+    let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    let thenFlipTo = new AndThenFlipTo(sflipAnimation).generateGroupActions(srectangle, state, 30, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 2000, smallSfhw);
-    console.log(sflipAnimation)
-    smallSfhw.compile(sflipAnimation);
+    // console.log(sflipAnimation)
+    // smallSfhw.compile(sflipAnimation);
+    // sflipAnimation.push(new GroupAction(sflipAnimation[sflipAnimation.length-1].tPlus+1, [[Action.FLIP, []]]))
+    console.log(thenFlipTo);
+    // smallSfhw.compile(thenFlipTo);
+    // why would it keep flipping
+    smallSfhw.compile([...sflipAnimation, ...delayGroupActions(thenFlipTo, sflipAnimation[sflipAnimation.length-1].tPlus+1)]);
 
+    // what if I just try this...?
+    // let allFlipManyTimes = [...new Array(50).keys()].map(i => new GroupAction(i, [[Action.FLIP, [...new Array(sh*sw).keys()]]]));
+    // console.log(allFlipManyTimes)
+    // smallSfhw.compile(allFlipManyTimes);
 
     // let fdshw2 = new FlipdotSimHardware([], i => [], [height, width]);
     // let flipAnimation3 = new OneByOne(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), new RectangleTarget(2,2,[3, 7,], [h,w]), 30, sfhw)
@@ -313,26 +328,42 @@ ball 3 ->* move ->* ball 8"
     threed.finalize3D().then(_ => {
         console.log("got it")
 
-        let basic = new WaveTransition3D(new BottomUp()).generateGroupActions(new RectangleTarget(0,0,[0,0],[20,20]), new CircleTarget(5, [0,0], [20,20]), 40, threed);
+        let basic = new WaveTransition3D(new BottomUp()).generateGroupActions(new RectangleTarget(0, 0, [0, 0], [20, 20]), new CircleTarget(5, [0, 0], [20, 20]), 40, threed);
 
         threed.compile(basic);
         // new STLLoader().load("public/troika.stl", (geometry) => {
 
-            // let geometryStripes = rowOfDiscs.computeGeomStripes(geometry);
-            // rowOfDiscs.resetAnimation(i => [[geometryStripes[numfaces - (i % numfaces)]]])
-            // let rowOfDiscs = threed.simulation;
-            // let ring = rowOfDiscs.moveCircleAcrossMesh(geometry);
-            // console.log(ring)
-            // let diffed = computeFlips(ring);
+        // let geometryStripes = rowOfDiscs.computeGeomStripes(geometry);
+        // rowOfDiscs.resetAnimation(i => [[geometryStripes[numfaces - (i % numfaces)]]])
+        // let rowOfDiscs = threed.simulation;
+        // let ring = rowOfDiscs.moveCircleAcrossMesh(geometry);
+        // console.log(ring)
+        // let diffed = computeFlips(ring);
 
 
-            // threed.compile();
-            // console.log(diffed)
-            // rowOfDiscs.resetAnimation(i => [diffed[i % 6]]);
+        // threed.compile();
+        // console.log(diffed)
+        // rowOfDiscs.resetAnimation(i => [diffed[i % 6]]);
         // });
     });
 
 
+}
+
+function generateSplitflapState(h: number, w: number, msg: string, position: [number, number]) {
+    let rows = msg.split("\n");
+    let states = rows.map(r => r.split(""));
+    // let states = rows.map(r => r.split("").map(c => new SplitflapState(c)));
+
+
+    let finalState = [...new Array(h)].map(r => [...new Array(w)].map(c => " "));
+    for (let ri = 0; ri < rows.length; ri++) {
+        let row = rows[ri];
+        for (let ci = 0; ci < row.length; ci++) {
+            finalState[ri + position[1]][ci + position[0]] = states[ri][ci];
+        }
+    }
+    return finalState
 }
 
 
@@ -369,11 +400,11 @@ export function computeFlips(frames: number[][]): number[][] {
         flips.push(changes);
     }
 
-        // --- Final extra frame: flip everything OFF ---
+    // --- Final extra frame: flip everything OFF ---
     const lastFrame = frameSets[frameSets.length - 1];
     const finalFlips = [...lastFrame]; // all currently ON lights must flip OFF
     flips.push(finalFlips);
-    
+
     return flips;
 }
 

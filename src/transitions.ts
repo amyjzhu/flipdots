@@ -1,4 +1,4 @@
-import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware } from "./hardware";
+import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit } from "./hardware";
 import { Colour } from "./language";
 import { Target } from "./language2";
 import { AllAtOnce, GridOrder, StutterOrder } from "./order";
@@ -565,6 +565,112 @@ export class OffsetFlipImage implements Transition {
     // just keep flipping
 }
 
+export class AndThenFlipTo implements Transition {
+    first: GroupAction[];
+
+    constructor(first: GroupAction[]) {
+        this.first = first;
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // first take this and use the transition to compute the states of things involved.
+        if (!isSplitflapHardware(h)) {
+            throw new Error("Cannot flip with hardware");
+        }        
+
+        let simUnits: Map<number, SplitflapUnit> = new Map(h.units.map(u => [u.id, (u as SplitflapUnit).clone()]));
+        // 
+        // just count the number of flips... 
+        for (let ga of this.first) {
+            for (let subaction of ga.actions) {
+                let action = subaction[0];
+                let units = subaction[1];
+                for (let unitId of units) {
+                    simUnits.get(unitId)!.currentIndex += 1;
+                }
+            }
+
+        }
+
+
+        // this is going to be the target set, but I need to order it in terms of my units. 
+        // let d2: Colour[][] = o2.draw();
+
+        // let units = h.units;
+
+        // let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+        // let unitOrder: number[] = units.map(u => u.id);
+        // d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
+        // let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
+
+
+        // const schedule = new Map<UnitId, Time[]>();
+        // const finishBuckets = new Map<Time, UnitId[]>();
+        // const dt = 1 / h.actionDurations.get(Action.FLIP)!;
+
+        // for (let i = 0; i < units.length; i++) {
+        //     let unitId = units[i].id;
+        //     let currentStateUnit = simUnits.get(unitId);
+        //     console.log(currentStateUnit, targets[i])
+        //     const flips = h.computeFlipDistance(currentStateUnit as SplitflapUnit, targets[i]);
+        //     const times: Time[] = [];
+
+        //     for (let i = 0; i < flips; i++) {
+        //         times.push(i * dt);
+        //     }
+
+        //     schedule.set(unitId, times);
+
+        //     if (times.length === 0) continue;
+
+        //     const finishTime = times[times.length - 1];
+
+        //     if (!finishBuckets.has(finishTime)) {
+        //         finishBuckets.set(finishTime, []);
+        //     }
+        //     finishBuckets.get(finishTime)!.push(unitId);
+        // }
+
+        // return buildTimeline(schedule);
+
+         // this is going to be the target set, but I need to order it in terms of my units. 
+        let d2: Colour[][] = o2.draw();
+
+        let units = h.units;
+
+        let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+        let unitOrder: number[] = units.map(u => u.id);
+        d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
+        let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
+
+
+        const schedule = new Map<UnitId, Time[]>();
+        const dt = 1 / h.actionDurations.get(Action.FLIP)!;
+        console.log(dt)
+
+        const maxFlips = Math.max(
+            ...units.map((u, i) => h.computeFlipDistance(u as SplitflapUnit, targets[i]))
+        );
+
+        const endTime = maxFlips * dt;
+
+        for (let i = 0; i < units.length; i++) {
+            let unit = units[i]
+            const flips = h.computeFlipDistance(unit as SplitflapUnit, targets[i]);
+            const startTime = endTime - flips * dt;
+            const times: Time[] = [];
+
+            for (let i = 0; i < flips; i++) {
+                times.push(startTime + i * dt);
+            }
+
+            schedule.set(unit.id, times);
+        }
+
+        return buildTimeline(schedule);
+    }
+
+}
 
 export class StochasticTransition implements Transition {
     order: GridOrder;
@@ -634,7 +740,7 @@ export class OneByOne implements Transition {
     order: GridOrder;
 
     // use the order and highlight only the elements at this time
-    
+
     constructor(order: GridOrder) {
         this.order = order;
     }
@@ -658,12 +764,12 @@ export class OneByOne implements Transition {
                 const frame = maskTime[r][c];
 
                 let id = h.coordToIndex([c + (x as number), r + (y as number)]);
-                
+
 
                 if (!frameMap.has(frame)) {
                     frameMap.set(frame, []);
                 }
-                
+
                 frameMap.get(frame)!.push(id);
             }
         }
@@ -678,10 +784,10 @@ export class OneByOne implements Transition {
             const activeUnits = new Set(frameMap.get(frame)!);
             prevFlips = [...activeUnits];
 
-                currentTime += flipTime;
+            currentTime += flipTime;
 
             result.push(new GroupAction(currentTime, [[Action.FLIP, [...activeUnits, ...prevFlips]]]))
-            
+
         }
 
         return result;
@@ -697,7 +803,7 @@ export class OneByOneKeepFlipping implements Transition {
     order: GridOrder;
 
     // use the order and highlight only the elements at this time
-    
+
     constructor(order: GridOrder) {
         this.order = order;
     }
@@ -721,12 +827,12 @@ export class OneByOneKeepFlipping implements Transition {
                 const frame = maskTime[r][c];
 
                 let id = h.coordToIndex([c + (x as number), r + (y as number)]);
-                
+
 
                 if (!frameMap.has(frame)) {
                     frameMap.set(frame, []);
                 }
-                
+
                 frameMap.get(frame)!.push(id);
             }
         }
@@ -739,12 +845,12 @@ export class OneByOneKeepFlipping implements Transition {
 
         for (const frame of allFrames) {
             const activeUnits = new Set(frameMap.get(frame)!);
-           
-                currentTime += flipTime;
+
+            currentTime += flipTime;
 
             result.push(new GroupAction(currentTime, [[Action.FLIP, [...activeUnits, ...prevFlips]]]))
             prevFlips = prevFlips.concat([...activeUnits]);
- 
+
         }
 
         console.log(result.map(g => g.actions[0][1].length))
@@ -773,7 +879,7 @@ export class WaveTransition3D implements Transition {
         let [timeGrid, times] = this.order.applyMask(grid as boolean[][]);
         // I need to remember that the SHAPE INDEX != global index! 
         console.log(timeGrid, times);
-        
+
 
         let projFunction = (i: [number, number]) => projection[i[1]][i[0]]!;
         let timeFunction = this.order.getTimeFunction(timeGrid, projFunction);
@@ -953,7 +1059,7 @@ export class CascadeImage implements Transition {
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
         // What I should do is: 
         // establish frames that units are going to start flipping FASTER/SLOWER (let's say slower.)
-        
+
         let flip = diffIndices(o1, o2, h);
         let [mask, x, y] = generateMaskFromCoords(flip, h);
         let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
@@ -972,12 +1078,12 @@ export class CascadeImage implements Transition {
                 const frame = maskTime[r][c];
 
                 let id = h.coordToIndex([c + (x as number), r + (y as number)]);
-                
+
 
                 if (!frameMap.has(frame)) {
                     frameMap.set(frame, []);
                 }
-                
+
                 frameMap.get(frame)!.push(id);
             }
         }
@@ -1167,6 +1273,8 @@ export class OverrotateRevealTransition implements Transition {
 
     }
 }
+
+
 
 // TODO: make thinking systematic
 // improve way to specify brixel positions 
