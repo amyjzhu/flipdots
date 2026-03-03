@@ -586,88 +586,96 @@ export class AndThenFlipTo implements Transition {
                 let action = subaction[0];
                 let units = subaction[1];
                 for (let unitId of units) {
-                    simUnits.get(unitId)!.currentIndex += 1;
+                    let simUnit = simUnits.get(unitId)!;
+                    let cur = simUnit.currentIndex;
+                     
+                    let numStates = simUnit.states.find(s => s[0] == action)![1].length;
+                    simUnits.get(unitId)!.currentIndex = (cur + 1) % numStates;
                 }
             }
 
         }
 
+        console.log([...simUnits.values().map(s => s.currentIndex)])
+        // console.log([...simUnits.values().map(s => s.states[0][1][s.currentIndex])])
 
         // this is going to be the target set, but I need to order it in terms of my units. 
-        // let d2: Colour[][] = o2.draw();
-
-        // let units = h.units;
-
-        // let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
-        // let unitOrder: number[] = units.map(u => u.id);
-        // d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
-        // let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
-
-
-        // const schedule = new Map<UnitId, Time[]>();
-        // const finishBuckets = new Map<Time, UnitId[]>();
-        // const dt = 1 / h.actionDurations.get(Action.FLIP)!;
-
-        // for (let i = 0; i < units.length; i++) {
-        //     let unitId = units[i].id;
-        //     let currentStateUnit = simUnits.get(unitId);
-        //     console.log(currentStateUnit, targets[i])
-        //     const flips = h.computeFlipDistance(currentStateUnit as SplitflapUnit, targets[i]);
-        //     const times: Time[] = [];
-
-        //     for (let i = 0; i < flips; i++) {
-        //         times.push(i * dt);
-        //     }
-
-        //     schedule.set(unitId, times);
-
-        //     if (times.length === 0) continue;
-
-        //     const finishTime = times[times.length - 1];
-
-        //     if (!finishBuckets.has(finishTime)) {
-        //         finishBuckets.set(finishTime, []);
-        //     }
-        //     finishBuckets.get(finishTime)!.push(unitId);
-        // }
-
-        // return buildTimeline(schedule);
-
-         // this is going to be the target set, but I need to order it in terms of my units. 
         let d2: Colour[][] = o2.draw();
 
-        let units = h.units;
+        let units = [...simUnits.values()];
 
         let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
         let unitOrder: number[] = units.map(u => u.id);
         d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
         let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
-
+        console.log(d2AsUnits);
 
         const schedule = new Map<UnitId, Time[]>();
+        const finishBuckets = new Map<Time, UnitId[]>();
         const dt = 1 / h.actionDurations.get(Action.FLIP)!;
-        console.log(dt)
-
-        const maxFlips = Math.max(
-            ...units.map((u, i) => h.computeFlipDistance(u as SplitflapUnit, targets[i]))
-        );
-
-        const endTime = maxFlips * dt;
 
         for (let i = 0; i < units.length; i++) {
-            let unit = units[i]
-            const flips = h.computeFlipDistance(unit as SplitflapUnit, targets[i]);
-            const startTime = endTime - flips * dt;
+            let unitId = units[i].id;
+            let currentStateUnit = simUnits.get(unitId);
+            console.log(currentStateUnit, targets[i])
+            const flips = h.computeFlipDistance(currentStateUnit as SplitflapUnit, targets[i]);
             const times: Time[] = [];
 
             for (let i = 0; i < flips; i++) {
-                times.push(startTime + i * dt);
+                times.push(i * dt);
             }
 
-            schedule.set(unit.id, times);
+            schedule.set(unitId, times);
+
+            if (times.length === 0) continue;
+
+            const finishTime = times[times.length - 1];
+
+            if (!finishBuckets.has(finishTime)) {
+                finishBuckets.set(finishTime, []);
+            }
+            finishBuckets.get(finishTime)!.push(unitId);
         }
 
+        console.log(schedule)
         return buildTimeline(schedule);
+
+        // below if you want to sync ending 
+         // this is going to be the target set, but I need to order it in terms of my units. 
+        // let d2: Colour[][] = o2.draw();
+
+        // let units = [...simUnits.values()];
+
+        // let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+        // let unitOrder: number[] = units.map(u => u.id);
+        // d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
+        // let targets = d2AsUnits.map(c => new SplitflapState(`${c[1]}`));
+        // console.log(d2AsUnits)
+
+        // const schedule = new Map<UnitId, Time[]>();
+        // const dt = 1 / h.actionDurations.get(Action.FLIP)!;
+        // console.log(dt)
+
+        // const maxFlips = Math.max(
+        //     ...units.map((u, i) => h.computeFlipDistance(u as SplitflapUnit, targets[i]))
+        // );
+
+        // const endTime = maxFlips * dt;
+
+        // for (let i = 0; i < units.length; i++) {
+        //     let unit = units[i]
+        //     const flips = h.computeFlipDistance(unit as SplitflapUnit, targets[i]);
+        //     const startTime = endTime - flips * dt;
+        //     const times: Time[] = [];
+
+        //     for (let i = 0; i < flips; i++) {
+        //         times.push(startTime + i * dt);
+        //     }
+
+        //     schedule.set(unit.id, times);
+        // }
+
+        // return buildTimeline(schedule);
     }
 
 }

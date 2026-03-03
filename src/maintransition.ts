@@ -2,7 +2,7 @@ import { STLLoader } from "three/addons/loaders/STLLoader";
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
-import { BackAndForth, BottomLeftWildfire, BottomUp, GrowFromCentre, GrowFromPoint, LeftToRight, MatrixDown, SpiralOrder } from "./order";
+import { BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, MatrixDown, OrganicRipple, OutFromCentre, RandomOrder, RowByRowOverlap, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
 import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo } from "./transitions";
 import { getImages } from "./util";
 
@@ -292,19 +292,37 @@ ball 3 ->* move ->* ball 8"
 
     let sh = 6;
     let sw = 32;
+    
     let smallSfhw = SplitflapHardware.Rectangular(sw, sh, (x: number, y: number) => (ALPHABET_WITH_EXCLAMATION).split("").map(s => new SplitflapState(s)));
     let srectangle = new RectangleTarget(sw, sh, [0, 0], [sw, sh]);
 
     let msg = "up next\nmatrix";
-    msg = "ocvtkz\nwr pgzv";
-    let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg, [5,2]), " ");
+    // msg = "ocvtkz\nwrbpgzv";
+    msg = "matrix\nup next"
+    // AGAIN: HAS PROBLEMS WITH NOT FLIPPING ENOUGH TIMES IF IT'S LAST FEW!!!!!!!!
+    let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg, [13,2]), " ");
     let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new OutFromCentre()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new StaggeredRow()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new SpiralIn()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // this one has a pretty cool spiral effect
+    // let sflipAnimation = new OneByOneKeepFlipping(new RowByRowOverlap()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new RandomOrder()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new Diagonal()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // bonus: suggested by chatgpt
+    // let sflipAnimation = new OneByOneKeepFlipping(new SpiralOut()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new OrganicRipple()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // this one isn't bad actually (first two... eh) -> programmatic -> rhythmic 
+    // let sflipAnimation = new OneByOneKeepFlipping(new CentrePulse()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+
+
     let thenFlipTo = new AndThenFlipTo(sflipAnimation).generateGroupActions(srectangle, state, 30, smallSfhw);
-    // let sflipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 2000, smallSfhw);
-    // console.log(sflipAnimation)
+    console.log(sflipAnimation)
     // smallSfhw.compile(sflipAnimation);
     // sflipAnimation.push(new GroupAction(sflipAnimation[sflipAnimation.length-1].tPlus+1, [[Action.FLIP, []]]))
-    console.log(thenFlipTo);
+    // console.log(thenFlipTo);
     // smallSfhw.compile(thenFlipTo);
     // why would it keep flipping
     smallSfhw.compile([...sflipAnimation, ...delayGroupActions(thenFlipTo, sflipAnimation[sflipAnimation.length-1].tPlus+1)]);
@@ -355,14 +373,26 @@ function generateSplitflapState(h: number, w: number, msg: string, position: [nu
     let states = rows.map(r => r.split(""));
     // let states = rows.map(r => r.split("").map(c => new SplitflapState(c)));
 
+    let bank = ALPHABET_WITH_EXCLAMATION.split("");
+    // cipher it...
+    states = states.map(r => r.map(c => {
+        let idx = bank.findIndex(t => t == c);
+        if (idx == -1) {
+            throw new Error("message can't be parsed")
+        }
+        return bank[(idx+2) % bank.length]
+    }))
+    console.log(states);
 
-    let finalState = [...new Array(h)].map(r => [...new Array(w)].map(c => " "));
+    let finalState = [...new Array(h)].map(r => [...new Array(w)].map(c => "b"));
+    // let finalState = [...new Array(h)].map(r => [...new Array(w)].map(c => " "));
     for (let ri = 0; ri < rows.length; ri++) {
         let row = rows[ri];
         for (let ci = 0; ci < row.length; ci++) {
             finalState[ri + position[1]][ci + position[0]] = states[ri][ci];
         }
     }
+    console.log(finalState)
     return finalState
 }
 

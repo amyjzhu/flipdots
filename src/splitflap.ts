@@ -36,6 +36,7 @@ export class SplitFlapDisplay {
 
     animationFrameCounters: number[] = [];
     flipCycles: number[] = [];
+    totalFlips: number[] = [];
 
     // updateIdxs: (number[] = [];
 
@@ -250,7 +251,7 @@ export class SplitFlapDisplay {
     setUpAlphabetRolls() {
         for (let _ of this.flaps) {
             // this.flipCycle.push([...new Array(6).keys()]);
-            this.flipCycle.push([...new Array(28).keys()]);
+            this.flipCycle.push([...new Array(30).keys()]);
             this.flapPos.push(0);
         }
     }
@@ -274,6 +275,7 @@ export class SplitFlapDisplay {
         this.perPixelPauses = this.flaps.map((f, i) => newFlip(0)(i)[0]);
         // I assume I should reset this?
         this.flipCycles = this.flaps.map(_ => 0);
+        this.totalFlips = this.flaps.map(_ => 0);
         console.log(this.perPixelPauses)
 
     }
@@ -357,6 +359,7 @@ export class SplitFlapDisplay {
             }
 
             this.flipCycles = this.flaps.map(_ => 0);
+            this.totalFlips = this.flaps.map(_ => 0);
             this.animationFrameCounters = this.flaps.map(_ => 0);
         }
 
@@ -425,7 +428,10 @@ export class SplitFlapDisplay {
             if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
 
                 // console.log("completing: ",  this.flaps[idx].map(f => rad2deg(f.rotation.x)))
+                // problem: this actually just checks to see if the current can be retrieved. if we reset it right away, we won't know if it's the last one
+                // if YOUR cycle is longer than flapPos, it flips forever
                 let nextIdx = this.flapPos[idx] + 1 >= this.flipCycle[idx].length ? 0 : this.flapPos[idx] + 1;
+                // console.log(this.flapPos[idx], this.flipCycle[idx]);
 
                 let front = this.canvases[this.flipCycle[idx][this.flapPos[idx]]];
                 let back = this.canvasBacks[this.flipCycle[idx][nextIdx]];
@@ -463,7 +469,9 @@ export class SplitFlapDisplay {
                 // ASSUMPTION BREAKDOWN: this is getting the nextflips from the current FLAPPOS perspective 
                 // and not from the GLOBAL FLIP perspective. the flappos perspective is lower because 
                 // it doesn't flip with every flap
-                let [newPause, newCycle] = this.setNextFlips(this.flapPos[idx])(idx);
+                // WAIT - flapPos is specific to the ALPHABET ROLL which is 28 long UGH 
+                this.totalFlips[idx] += 1;
+                let [newPause, newCycle] = this.setNextFlips(this.totalFlips[idx])(idx);
                 this.perPixelPauses[idx] = newPause;
                 // if (newPause != 24) console.log("new perpixel pause is", this.perPixelPauses[idx], idx)
 

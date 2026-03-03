@@ -443,11 +443,11 @@ export class SplitflapHardware implements HardwareInterface {
 
         }
 
-        console.log("schedule is ", tickSchedule);
+        console.log("schedule is ", [...tickSchedule.entries().map(e => `${e[0]}:${e[1]}`)]);
         console.log("schedule is ", scheduled);
         let schedule = (f: number) => {
             return (i: number): [number | undefined, number | undefined] => {
-                console.log("for frame ", f, " we are getting ", tickSchedule.get(i), scheduled.get(i))
+                // console.log("for frame ", f, " unit ", i, " we are getting ", tickSchedule.get(i), scheduled.get(i))
                 let delaysInTicks = tickSchedule.get(i)!;
 
                 const timeline = scheduled.get(i);

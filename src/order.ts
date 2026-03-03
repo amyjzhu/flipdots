@@ -185,7 +185,273 @@ export class BackAndForth extends GridOrder {
         return grid;
     }
 }
+///// GO ChatGPT!
 
+export class OutFromCentre extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        let mid = Math.floor(width / 2);
+
+        for (let i = 0; i < height; i++) {
+            let frame = 0;
+            grid[i][mid] = frame++;
+
+            for (let offset = 1; offset < width; offset++) {
+                if (mid - offset >= 0) {
+                    grid[i][mid - offset] = frame++;
+                }
+                if (mid + offset < width) {
+                    grid[i][mid + offset] = frame++;
+                }
+            }
+        }
+
+        return grid;
+    }
+}
+
+export class StaggeredRow extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        for (let i = 0; i < height; i++) {
+            const leftToRight = i % 2 === 0;
+
+            for (let j = 0; j < width; j++) {
+                if (leftToRight) {
+                    grid[i][j] = j;
+                } else {
+                    grid[i][j] = width - 1 - j;
+                }
+            }
+        }
+
+        return grid;
+    }
+}
+
+export class SpiralIn extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        let top = 0;
+        let bottom = height - 1;
+        let left = 0;
+        let right = width - 1;
+        let frame = 0;
+
+        while (top <= bottom && left <= right) {
+
+            for (let j = left; j <= right; j++)
+                grid[top][j] = frame++;
+            top++;
+
+            for (let i = top; i <= bottom; i++)
+                grid[i][right] = frame++;
+            right--;
+
+            if (top <= bottom) {
+                for (let j = right; j >= left; j--)
+                    grid[bottom][j] = frame++;
+                bottom--;
+            }
+
+            if (left <= right) {
+                for (let i = bottom; i >= top; i--)
+                    grid[i][left] = frame++;
+                left++;
+            }
+        }
+
+        return grid;
+    }
+}
+
+export class RowByRowOverlap extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        let half = Math.floor(width / 2);
+
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                let reversedIndex = width - 1 - j;
+                grid[i][reversedIndex] = i * half + j;
+            }
+        }
+
+        return grid;
+    }
+}
+
+export class RandomOrder extends GridOrder {
+    constructor(private maxPerFrame: number = 3) {
+        super();
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        const cells: [number, number][] = [];
+
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                cells.push([i, j]);
+            }
+        }
+
+        // Fisher–Yates shuffle
+        for (let k = cells.length - 1; k > 0; k--) {
+            const r = Math.floor(Math.random() * (k + 1));
+            [cells[k], cells[r]] = [cells[r], cells[k]];
+        }
+
+        let frame = 0;
+        for (let i = 0; i < cells.length; i += this.maxPerFrame) {
+            for (let k = 0; k < this.maxPerFrame && i + k < cells.length; k++) {
+                const [row, col] = cells[i + k];
+                grid[row][col] = frame;
+            }
+            frame++;
+        }
+
+        return grid;
+    }
+}
+
+export class Diagonal extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        let frame = 0;
+
+        for (let sum = 0; sum <= width + height - 2; sum++) {
+            for (let i = 0; i < height; i++) {
+                let j = sum - i;
+                if (j >= 0 && j < width) {
+                    grid[i][j] = frame++;
+                }
+            }
+        }
+
+        return grid;
+    }
+}
+
+export class SpiralOut extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(-1));
+
+        let cx = Math.floor(width / 2);
+        let cy = Math.floor(height / 2);
+
+        let x = cx;
+        let y = cy;
+        let dx = 1;
+        let dy = 0;
+
+        let segmentLength = 1;
+        let segmentPassed = 0;
+        let segmentCount = 0;
+
+        let frame = 0;
+        grid[y][x] = frame++;
+
+        while (frame < width * height) {
+            x += dx;
+            y += dy;
+
+            if (x >= 0 && x < width && y >= 0 && y < height) {
+                grid[y][x] = frame++;
+            }
+
+            segmentPassed++;
+            if (segmentPassed === segmentLength) {
+                segmentPassed = 0;
+
+                // rotate right
+                [dx, dy] = [-dy, dx];
+                segmentCount++;
+
+                if (segmentCount % 2 === 0) {
+                    segmentLength++;
+                }
+            }
+        }
+
+        return grid;
+    }
+}
+
+
+export class CentrePulse extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        let cx = (width - 1) / 2;
+        let cy = (height - 1) / 2;
+
+        let cells: { x: number; y: number; d: number }[] = [];
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let dx = x - cx;
+                let dy = y - cy;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                cells.push({ x, y, d: dist });
+            }
+        }
+
+        cells.sort((a, b) => a.d - b.d);
+
+        cells.forEach((cell, index) => {
+            grid[cell.y][cell.x] = index;
+        });
+
+        return grid;
+    }
+}
+
+export class OrganicRipple extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        let cx = (width - 1) / 2;
+        let cy = (height - 1) / 2;
+
+        let cells: { x: number; y: number; value: number }[] = [];
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+
+                let dx = x - cx;
+                let dy = y - cy;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Smooth noise distortion
+                let noise =
+                    Math.sin(x * 0.6) * 0.5 +
+                    Math.sin(y * 0.6) * 0.5 +
+                    Math.sin((x + y) * 0.3) * 0.5;
+
+                let value = dist + noise;
+
+                cells.push({ x, y, value });
+            }
+        }
+
+        cells.sort((a, b) => a.value - b.value);
+
+        cells.forEach((cell, index) => {
+            grid[cell.y][cell.x] = index;
+        });
+
+        return grid;
+    }
+}
+
+/////
 
 export class MatrixDown extends GridOrder {
     // maybe we need more fine-grained operators to help make order generation easier? 
@@ -202,14 +468,19 @@ export class MatrixDown extends GridOrder {
         let count = 0;
         for (let j of colStartTimes) {
             for (let i = 0; i < height; i++) {
-                grid[i][j] = count + i;
+                grid[i][j] = count + (height -1 - i);
             }
             count++;
-            if (Math.random() < 0.3) {
+
+            // unless this is the last one, I don't want to go twice.
+            if (Math.random() < 0.3 && j == colStartTimes[colStartTimes.length-1]) {
                 count++;
             }
         }
 
+        // TODO: it's something like.... the total number must be divisible by four... 
+        // because what happens is: we move in groups of 4 which means that sometimes frames get skipped
+        // 
         return grid;
     }
 }
