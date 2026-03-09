@@ -617,7 +617,7 @@ export class AndThenFlipTo implements Transition {
         for (let i = 0; i < units.length; i++) {
             let unitId = units[i].id;
             let currentStateUnit = simUnits.get(unitId);
-            console.log(currentStateUnit, targets[i])
+            // console.log(currentStateUnit, targets[i])
             const flips = h.computeFlipDistance(currentStateUnit as SplitflapUnit, targets[i]);
             const times: Time[] = [];
 

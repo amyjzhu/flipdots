@@ -217,7 +217,7 @@ export class SplitflapHardware implements HardwareInterface {
             throw new Error(`Invalid state for unit ${unit.id}`);
         }
 
-        console.log((end - start + states.length) % states.length)
+        // console.log((end - start + states.length) % states.length)
 
         return (end - start + states.length) % states.length;
     }

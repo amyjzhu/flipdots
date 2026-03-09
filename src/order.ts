@@ -199,11 +199,12 @@ export class OutFromCentre extends GridOrder {
 
             for (let offset = 1; offset < width; offset++) {
                 if (mid - offset >= 0) {
-                    grid[i][mid - offset] = frame++;
+                    grid[i][mid - offset] = frame;
                 }
                 if (mid + offset < width) {
-                    grid[i][mid + offset] = frame++;
+                    grid[i][mid + offset] = frame;
                 }
+                frame++;
             }
         }
 
@@ -451,7 +452,63 @@ export class OrganicRipple extends GridOrder {
     }
 }
 
+
+
 /////
+
+export class PingPong extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        let mid = Math.floor(width / 2);
+
+        for (let i = 0; i < height; i++) {
+            let frame = 0;
+            grid[i][mid] = frame++;
+
+            for (let offset = 1; offset < width; offset++) {
+                if (mid - offset >= 0) {
+                    grid[i][mid - offset] = frame++;
+                }
+                if (mid + offset < width) {
+                    grid[i][mid + offset] = frame++;
+                }
+            }
+        }
+
+        return grid;
+    }
+}
+
+export class MiddleOutDiagonal extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let mid = Math.floor(width / 2);
+        let mid2 = width - mid;
+        let grid1 = new Diagonal().generateGrid(mid, height);
+        let grid2 = new Diagonal().generateGrid(mid2, height);
+        // transpose grid2
+        grid2.forEach(row => row.reverse());
+
+        let both = grid1.map((r1, i) => r1.concat(grid2[i]));
+
+        return both;
+    }
+}
+
+
+export class ShallowDiagonal extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        let compressedGrid = new Diagonal().generateGrid(Math.floor(width / 2) + 1, height);
+        let grid = compressedGrid.map(r => r.map(c => [c, c]).flat());
+
+        if (width % 2 == 1) {
+            // drop the last column
+            grid = grid.map(r => r.slice(0, -1))
+        }
+
+        return grid;
+    }
+}
 
 export class MatrixDown extends GridOrder {
     // maybe we need more fine-grained operators to help make order generation easier? 

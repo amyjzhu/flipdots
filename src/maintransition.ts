@@ -2,7 +2,7 @@ import { STLLoader } from "three/addons/loaders/STLLoader";
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
-import { BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, MatrixDown, OrganicRipple, OutFromCentre, RandomOrder, RowByRowOverlap, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
+import { BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong, RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
 import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo } from "./transitions";
 import { getImages } from "./util";
 
@@ -221,8 +221,8 @@ ball 3 ->* move ->* ball 8"
         console.log(frame1);
 
 
-        let msgString = "cheese";
-        msgString = "ejggug"
+        let msgString = "cheese!";
+        msgString = "ejggug*"
         let finalMessage = msgString.split("").map(c => new SplitflapState(c));
         // the message should be from like 12 to 20 in row 7
         let finalState = [...new Array(h * w)].map(j => new SplitflapState(" "));
@@ -299,9 +299,10 @@ ball 3 ->* move ->* ball 8"
     let msg = "up next\nmatrix";
     // msg = "ocvtkz\nwrbpgzv";
     msg = "matrix\nup next"
+    msg = "bugs?\nis shrimps"
     // AGAIN: HAS PROBLEMS WITH NOT FLIPPING ENOUGH TIMES IF IT'S LAST FEW!!!!!!!!
-    let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg, [13,2]), " ");
-    let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg), " ");
+    // let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new OutFromCentre()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
@@ -315,11 +316,14 @@ ball 3 ->* move ->* ball 8"
     // let sflipAnimation = new OneByOneKeepFlipping(new SpiralOut()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new OrganicRipple()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // this one isn't bad actually (first two... eh) -> programmatic -> rhythmic 
-    // let sflipAnimation = new OneByOneKeepFlipping(new CentrePulse()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    let sflipAnimation = new OneByOneKeepFlipping(new CentrePulse()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new PingPong()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new MiddleOutDiagonal()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new ShallowDiagonal()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
 
 
     let thenFlipTo = new AndThenFlipTo(sflipAnimation).generateGroupActions(srectangle, state, 30, smallSfhw);
-    console.log(sflipAnimation)
+    // console.log(sflipAnimation)
     // smallSfhw.compile(sflipAnimation);
     // sflipAnimation.push(new GroupAction(sflipAnimation[sflipAnimation.length-1].tPlus+1, [[Action.FLIP, []]]))
     // console.log(thenFlipTo);
@@ -341,6 +345,7 @@ ball 3 ->* move ->* ball 8"
     // let flipAnimation2 = new OneByOne(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw)
     // fdshw.compile(flipAnimation2);
 
+    if (false) {
     let threed = new FlipdotSimHardware([], i => [], undefined, "public/troika.stl");
     // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");
     threed.finalize3D().then(_ => {
@@ -364,13 +369,15 @@ ball 3 ->* move ->* ball 8"
         // rowOfDiscs.resetAnimation(i => [diffed[i % 6]]);
         // });
     });
-
+    }
 
 }
 
-function generateSplitflapState(h: number, w: number, msg: string, position: [number, number]) {
+function generateSplitflapState(h: number, w: number, msg: string, position?: [number, number]) {
     let rows = msg.split("\n");
     let states = rows.map(r => r.split(""));
+    let rowStart = position ? position[1] : Math.round((h - rows.length)/2);
+
     // let states = rows.map(r => r.split("").map(c => new SplitflapState(c)));
 
     let bank = ALPHABET_WITH_EXCLAMATION.split("");
@@ -388,8 +395,9 @@ function generateSplitflapState(h: number, w: number, msg: string, position: [nu
     // let finalState = [...new Array(h)].map(r => [...new Array(w)].map(c => " "));
     for (let ri = 0; ri < rows.length; ri++) {
         let row = rows[ri];
+        let colStart = position ? position[0] : Math.round((w - row.length) / 2);
         for (let ci = 0; ci < row.length; ci++) {
-            finalState[ri + position[1]][ci + position[0]] = states[ri][ci];
+            finalState[ri + rowStart][ci + colStart] = states[ri][ci];
         }
     }
     console.log(finalState)

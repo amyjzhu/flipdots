@@ -15,7 +15,7 @@ export class SplitFlapDisplay {
     width: number;
     height: number;
     scene: THREE.Scene;
-    camera: THREE.Camera;
+    camera: THREE.PerspectiveCamera;
     renderer: THREE.WebGLRenderer;
     listener: THREE.AudioListener;
 
@@ -70,7 +70,7 @@ export class SplitFlapDisplay {
 
         // where to put the camera? depends... 
         // not really sure how to automatically calculate z...
-        this.camera.position.z = 100;
+        this.camera.position.z = 300;
         this.renderer = new THREE.WebGLRenderer();
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -180,8 +180,8 @@ export class SplitFlapDisplay {
         sun.shadow.normalBias = 0.02;
         sun.shadow.intensity = 1.3; // default is 1
 
-        this.scene.add(sun);
-        this.scene.add(sun.target);
+        // this.scene.add(sun);
+        // this.scene.add(sun.target);
 
         // FRONT FILL LIGHT (for readability)
         const frontLight = new THREE.DirectionalLight(0xffffff, 3.5);
@@ -208,6 +208,7 @@ export class SplitFlapDisplay {
         // for (let letter of 'abcdefg'.split('')) {
         // this is so stupid... has to be multiples of three
         for (let letter of ALPHABET_WITH_EXCLAMATION.split('')) {
+            letter = letter.toLocaleUpperCase();
             for (let top of [true, false]) {
                 const canvas = document.createElement("canvas");
                 const ctx = canvas.getContext("2d")!;
@@ -309,7 +310,18 @@ export class SplitFlapDisplay {
 
     makeRowsOfSplitFlaps(numWide: number, numTall: number) {
         let backingBorder = 10;
-        let offsetZ = -5;
+        let offsetZ = -2.1;
+        let offsetX = (numWide * this.SPACING_X - backingBorder / 2) / -2;
+        let offsetY = (numTall * this.SPACING_Y - backingBorder * 2) / -2;
+
+        let backing = new THREE.BoxGeometry(numWide * this.SPACING_X + backingBorder, numTall * this.SPACING_Y + backingBorder, 4);
+        let backingMaterial = new THREE.MeshPhongMaterial({ color: 0x111111 })
+        let backingPiece = new THREE.Mesh(backing, backingMaterial);
+        this.scene.add(backingPiece)
+        // should be behind the discs.
+
+        backingPiece.position.set(0, 0, offsetZ);
+        // backingPiece.position.set((this.SPACING_X * numWide - backingBorder) / 2, (this.SPACING_Y * numTall - backingBorder) / 2, offsetZ)
 
         for (let j = 0; j < numTall; j++) {
             // let row = [];
@@ -321,14 +333,14 @@ export class SplitFlapDisplay {
                 let pivot = new THREE.Object3D();
                 obj1.position.set(0, 3.75, 0)
                 pivot.add(obj1);
-                pivot.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0)
+                pivot.position.set(i * this.SPACING_X + offsetX, j * this.SPACING_Y - 3.5 + offsetY, 0)
                 this.scene.add(pivot)
 
                 let [obj2, c3, c4] = this.makePiece(false);
                 let pivot2 = new THREE.Object3D();
                 obj2.position.set(0, -3.75, 0);
                 pivot2.add(obj2);
-                pivot2.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0);
+                pivot2.position.set(i * this.SPACING_X + offsetX, j * this.SPACING_Y - 3.5 + offsetY, 0);
                 this.scene.add(pivot2)
 
                 // this will be the third piece that movees down/up 
@@ -336,7 +348,7 @@ export class SplitFlapDisplay {
                 let pivot3 = new THREE.Object3D();
                 obj3.position.set(0, 3.75, 0);
                 pivot3.add(obj3);
-                pivot3.position.set(i * this.SPACING_X, j * this.SPACING_Y - 3.5, 0);
+                pivot3.position.set(i * this.SPACING_X + offsetX, j * this.SPACING_Y - 3.5 + offsetY, 0);
                 pivot3.rotation.x = rotFlapBack;
                 this.scene.add(pivot3)
 
@@ -363,12 +375,36 @@ export class SplitFlapDisplay {
             this.animationFrameCounters = this.flaps.map(_ => 0);
         }
 
-        let backing = new THREE.BoxGeometry(numWide * this.SPACING_X + backingBorder, numTall * this.SPACING_Y + backingBorder, 4);
-        let backingMaterial = new THREE.MeshPhongMaterial({ color: 0x111111 })
-        let backingPiece = new THREE.Mesh(backing, backingMaterial);
-        this.scene.add(backingPiece)
-        // should be behind the discs.
-        backingPiece.position.set((this.SPACING_X * numWide - backingBorder) / 2, (this.SPACING_Y * numTall - backingBorder) / 2, offsetZ)
+        const boundingBox = new THREE.Box3().setFromObject(backingPiece);
+
+        // 2. Get the size of the bounding box
+        const size = new THREE.Vector3();
+        boundingBox.getSize(size);
+
+        // The 'size' vector now contains the width (x), height (y), and depth (z) of the object in world units.
+        const objectWidth = size.x;
+        const objectHeight = size.y;
+
+        // 3. Set the renderer size to match the object's dimensions (width and height)
+        // this.renderer.setSize(objectWidth, objectHeight);
+
+        // console.log(`Renderer size set to: ${objectWidth}x${objectHeight}`);
+        let dist = this.camera.position.z - offsetZ;
+        // Create a Vector2 to store the size (can be reused)
+        let sz = new THREE.Vector2();
+        // Get the size of the renderer
+        this.renderer.getSize(sz);
+        // Calculate the aspect ratio
+        let aspect = sz.x / sz.y;
+
+        if (aspect < objectWidth / objectHeight) {
+            // it's more wide, so set width
+            this.camera.fov = 2 * Math.atan( ( objectWidth / aspect ) / ( 2 * dist ) ) * ( 180 / Math.PI ); // in degrees
+        } else {
+            this.camera.fov = 2 * Math.atan( objectHeight / ( 2 * dist ) ) * ( 180 / Math.PI ); // in degrees
+        }
+        console.log(aspect, objectWidth/objectHeight)
+        this.camera.updateProjectionMatrix();
     }
 
     makePiece = (top: boolean): [THREE.Mesh, HTMLCanvasElement, HTMLCanvasElement] => {
