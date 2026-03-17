@@ -340,6 +340,46 @@ export class Diagonal extends GridOrder {
     }
 }
 
+export class LineDiagonal extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = Array.from({ length: height }, () =>
+    Array(width).fill(1000)
+  );
+
+  const centerRow = Math.floor(height / 2);
+  const centerCol = Math.floor(width / 2);
+
+  grid[centerRow][centerCol] = 0;
+
+  for (let r = 0; r < height; r++) {
+    const d = Math.abs(r - centerRow);
+
+    if (d === 0) continue;
+
+    const shift = (d - 1) * 5
+
+    // LEFT: 5 → 1
+    for (let i = 0; i < 5; i++) {
+      const c = centerCol - 5 - shift + i;
+      if (c >= 0 && c < width) {
+        grid[r][c] = 5 - i;
+      }
+    }
+
+    // RIGHT: 1 → 5
+    for (let i = 0; i < 5; i++) {
+      const c = centerCol + 1 + shift + i;
+      if (c >= 0 && c < width) {
+        grid[r][c] = i + 1;
+      }
+    }
+  }
+
+  return grid;
+
+    }
+}
+
 export class SpiralOut extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {
         let grid = Array.from({ length: height }, () => Array(width).fill(-1));
@@ -519,18 +559,18 @@ export class MatrixDown extends GridOrder {
         let colStartTimes = [...new Array(width).keys()].map((a) => ({ sort: Math.random(), value: a }))
             .sort((a, b) => a.sort - b.sort)
             .map((a) => a.value);
-        
+
         // extrapolate orders from smaller grids
         // also, need to combine orders and transitions to make building blocks - like matrix PLUS text reveal 
         let count = 0;
         for (let j of colStartTimes) {
             for (let i = 0; i < height; i++) {
-                grid[i][j] = count + (height -1 - i);
+                grid[i][j] = count + (height - 1 - i);
             }
             count++;
 
             // unless this is the last one, I don't want to go twice.
-            if (Math.random() < 0.3 && j == colStartTimes[colStartTimes.length-1]) {
+            if (Math.random() < 0.3 && j == colStartTimes[colStartTimes.length - 1]) {
                 count++;
             }
         }

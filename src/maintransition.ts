@@ -2,7 +2,7 @@ import { STLLoader } from "three/addons/loaders/STLLoader";
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
-import { BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong, RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
+import { BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, LineDiagonal, MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong, RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
 import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo } from "./transitions";
 import { getImages } from "./util";
 
@@ -300,6 +300,7 @@ ball 3 ->* move ->* ball 8"
     // msg = "ocvtkz\nwrbpgzv";
     msg = "matrix\nup next"
     msg = "bugs?\nis shrimps"
+    msg = "giddyup\nthese are my horse"
     // AGAIN: HAS PROBLEMS WITH NOT FLIPPING ENOUGH TIMES IF IT'S LAST FEW!!!!!!!!
     let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg), " ");
     // let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
@@ -316,11 +317,14 @@ ball 3 ->* move ->* ball 8"
     // let sflipAnimation = new OneByOneKeepFlipping(new SpiralOut()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new OrganicRipple()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // this one isn't bad actually (first two... eh) -> programmatic -> rhythmic 
-    let sflipAnimation = new OneByOneKeepFlipping(new CentrePulse()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
+    // let sflipAnimation = new OneByOneKeepFlipping(new CentrePulse()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new PingPong()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new MiddleOutDiagonal()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new ShallowDiagonal()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
 
+    let sflipAnimation = new OneByOneKeepFlipping(new LineDiagonal()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 200, smallSfhw);
+
+    console.log(new LineDiagonal().generateGrid(21,5));
 
     let thenFlipTo = new AndThenFlipTo(sflipAnimation).generateGroupActions(srectangle, state, 30, smallSfhw);
     // console.log(sflipAnimation)
@@ -329,7 +333,9 @@ ball 3 ->* move ->* ball 8"
     // console.log(thenFlipTo);
     // smallSfhw.compile(thenFlipTo);
     // why would it keep flipping
-    smallSfhw.compile([...sflipAnimation, ...delayGroupActions(thenFlipTo, sflipAnimation[sflipAnimation.length-1].tPlus+1)]);
+
+    smallSfhw.compile([...sflipAnimation]);
+    // smallSfhw.compile([...sflipAnimation, ...delayGroupActions(thenFlipTo, sflipAnimation[sflipAnimation.length-1].tPlus+1)]);
 
     // what if I just try this...?
     // let allFlipManyTimes = [...new Array(50).keys()].map(i => new GroupAction(i, [[Action.FLIP, [...new Array(sh*sw).keys()]]]));

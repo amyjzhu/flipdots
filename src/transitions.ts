@@ -862,6 +862,12 @@ export class OneByOneKeepFlipping implements Transition {
         }
 
         console.log(result.map(g => g.actions[0][1].length))
+        while (currentTime < t) {
+             currentTime += flipTime;
+
+            result.push(new GroupAction(currentTime, [[Action.FLIP, [...prevFlips]]]))
+        }
+        
         return result;
 
 
