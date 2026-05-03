@@ -265,7 +265,8 @@ export class SplitflapHardware implements HardwareInterface {
         // };
 
 
-        return new SplitflapHardware(unitList, indexToCoord, adjacency, new SplitFlapDisplay(width, height, undefined, undefined, container));
+        const firstReel = reelConfig(0, 0).map(s => String(s.id));
+        return new SplitflapHardware(unitList, indexToCoord, adjacency, new SplitFlapDisplay(width, height, undefined, undefined, container, firstReel));
     }
 
     static Headless(width: number, height: number, reelConfig: (x: number, y: number) => SplitflapState[]) {

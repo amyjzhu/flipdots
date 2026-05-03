@@ -5,16 +5,17 @@ import {
     CascadeImage, OneByOne, OneByOneKeepFlipping, SnapTransition,
     TextOrder, textToPixelCoords, Transition, WaveTransition,
 } from './transitions';
-import { PixelArtTarget, RectangleTarget } from './language2';
+import { Colour, PixelArtTarget, Target } from './language2';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const SW = 32;
 const SH = 6;
-const REEL = ALPHABET_WITH_EXCLAMATION.split('');
+let REEL = ALPHABET_WITH_EXCLAMATION.split('');
 const CELL_W = 16;
 const CELL_H = 24;
 const PAINTER_CELL = 18;
+const SHAPE_CELL = 10;
 
 // ── PainterOrder ─────────────────────────────────────────────────────────────
 class PainterOrder extends GridOrder {
@@ -115,11 +116,17 @@ let painterGrid: number[][] = Array.from({ length: SH }, () => new Array(SW).fil
 let painterMaxValue = 5;
 let dragPaintValue = 1;
 let isPainting = false;
+
+let startGrid: boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(false));
+let endGrid:   boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(true));
+let shapeDragValue = false;
+let shapeDragTarget: 'start' | 'end' | null = null;
 let selectedOrderIdx = 0;
 let selectedTransitionIdx = 0;
 
 let is3dMode = false;
 let hw3d: SplitflapHardware | null = null;
+let simContainer: HTMLElement;
 
 let simulatedFrames: string[][] = [];
 let currentTick = 0;
@@ -128,7 +135,6 @@ let isLooping = true;
 let speedMs = 100;
 
 let hw: SplitflapHardware;
-let srectangle: RectangleTarget;
 
 // ── DOM refs (assigned in init) ───────────────────────────────────────────────
 let previewCanvas: HTMLCanvasElement;
@@ -147,6 +153,92 @@ let scaleInput: HTMLInputElement;
 let playBtn: HTMLButtonElement;
 let loopBtn: HTMLButtonElement;
 let speedLabel: HTMLElement;
+let reelInput: HTMLInputElement;
+let startShapeCanvas!: HTMLCanvasElement;
+let startShapeCtx!: CanvasRenderingContext2D;
+let endShapeCanvas!: HTMLCanvasElement;
+let endShapeCtx!: CanvasRenderingContext2D;
+
+// ── Shape helpers ─────────────────────────────────────────────────────────────
+function gridToPixelArt(grid: boolean[][]): PixelArtTarget {
+    return new PixelArtTarget(grid.map(row => row.map(v => v as unknown as Colour)), false as unknown as Colour);
+}
+
+function renderShapeCanvas(ctx: CanvasRenderingContext2D, grid: boolean[][]) {
+    for (let row = 0; row < SH; row++) {
+        for (let col = 0; col < SW; col++) {
+            const x = col * SHAPE_CELL;
+            const y = row * SHAPE_CELL;
+            ctx.fillStyle = grid[row][col] ? '#c8a040' : '#1a1a1a';
+            ctx.fillRect(x, y, SHAPE_CELL - 1, SHAPE_CELL - 1);
+        }
+    }
+}
+
+function shapeCanvasCellAt(e: MouseEvent, canvas: HTMLCanvasElement): [number, number] | null {
+    const rect = canvas.getBoundingClientRect();
+    const col = Math.floor((e.clientX - rect.left) / SHAPE_CELL);
+    const row = Math.floor((e.clientY - rect.top) / SHAPE_CELL);
+    if (col < 0 || col >= SW || row < 0 || row >= SH) return null;
+    return [col, row];
+}
+
+function buildShapeCanvases() {
+    startShapeCanvas.width = SW * SHAPE_CELL;
+    startShapeCanvas.height = SH * SHAPE_CELL;
+    endShapeCanvas.width = SW * SHAPE_CELL;
+    endShapeCanvas.height = SH * SHAPE_CELL;
+
+    renderShapeCanvas(startShapeCtx, startGrid);
+    renderShapeCanvas(endShapeCtx, endGrid);
+
+    function attachListeners(canvas: HTMLCanvasElement, which: 'start' | 'end') {
+        const grid = () => which === 'start' ? startGrid : endGrid;
+        const ctx  = () => which === 'start' ? startShapeCtx : endShapeCtx;
+
+        canvas.addEventListener('mousedown', e => {
+            e.preventDefault();
+            const cell = shapeCanvasCellAt(e, canvas);
+            if (!cell) return;
+            const [col, row] = cell;
+            shapeDragValue = !grid()[row][col];
+            shapeDragTarget = which;
+            grid()[row][col] = shapeDragValue;
+            renderShapeCanvas(ctx(), grid());
+        });
+        canvas.addEventListener('mousemove', e => {
+            if (shapeDragTarget !== which) return;
+            const cell = shapeCanvasCellAt(e, canvas);
+            if (!cell) return;
+            const [col, row] = cell;
+            grid()[row][col] = shapeDragValue;
+            renderShapeCanvas(ctx(), grid());
+        });
+        canvas.addEventListener('mouseup', () => { shapeDragTarget = null; });
+        canvas.addEventListener('mouseleave', () => { shapeDragTarget = null; });
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+    }
+
+    attachListeners(startShapeCanvas, 'start');
+    attachListeners(endShapeCanvas, 'end');
+
+    document.getElementById('start-clear-btn')!.addEventListener('click', () => {
+        startGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
+        renderShapeCanvas(startShapeCtx, startGrid);
+    });
+    document.getElementById('start-fill-btn')!.addEventListener('click', () => {
+        startGrid = Array.from({ length: SH }, () => new Array(SW).fill(true));
+        renderShapeCanvas(startShapeCtx, startGrid);
+    });
+    document.getElementById('end-clear-btn')!.addEventListener('click', () => {
+        endGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
+        renderShapeCanvas(endShapeCtx, endGrid);
+    });
+    document.getElementById('end-fill-btn')!.addEventListener('click', () => {
+        endGrid = Array.from({ length: SH }, () => new Array(SW).fill(true));
+        renderShapeCanvas(endShapeCtx, endGrid);
+    });
+}
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 function timeToColor(value: number, maxValue: number): string {
@@ -235,8 +327,9 @@ function generateAndPlay() {
     const t = Math.max(1, parseInt(durationInput.value) || 200);
     const scale = parseFloat(scaleInput.value) || 1;
 
-    const o1 = new PixelArtTarget([], ' ');
-    let groupActions = transition.generateGroupActions(o1, srectangle, t, hw);
+    const o1 = gridToPixelArt(startGrid);
+    const o2 = gridToPixelArt(endGrid);
+    let groupActions = transition.generateGroupActions(o1, o2, t, hw);
     if (scale !== 1) groupActions = scaleGroupActions(groupActions, scale);
 
     if (is3dMode && hw3d) {
@@ -570,7 +663,7 @@ function buildPreviewControls() {
     });
 
     const sim3dBtn = document.getElementById('sim3d-btn') as HTMLButtonElement;
-    const simContainer = document.getElementById('sim-container') as HTMLElement;
+    simContainer = document.getElementById('sim-container') as HTMLElement;
     sim3dBtn.addEventListener('click', () => {
         is3dMode = !is3dMode;
         sim3dBtn.classList.toggle('active', is3dMode);
@@ -594,10 +687,19 @@ function buildPreviewControls() {
     });
 }
 
+// ── Rebuild hardware when reel changes ────────────────────────────────────────
+function rebuildHardware() {
+    hw = SplitflapHardware.Headless(SW, SH, (_x, _y) => REEL.map(s => new SplitflapState(s)));
+    if (hw3d !== null) {
+        hw3d.sim!.renderer.setAnimationLoop(null);
+        simContainer.removeChild(hw3d.sim!.renderer.domElement);
+        hw3d = SplitflapHardware.Rectangular(SW, SH, (_x, _y) => REEL.map(s => new SplitflapState(s)), simContainer);
+    }
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────────
 function init() {
     hw = SplitflapHardware.Headless(SW, SH, (_x, _y) => REEL.map(s => new SplitflapState(s)));
-    srectangle = new RectangleTarget(SW, SH, [0, 0], [SW, SH]);
 
     previewCanvas   = document.getElementById('preview-canvas') as HTMLCanvasElement;
     previewCtx      = previewCanvas.getContext('2d')!;
@@ -615,11 +717,25 @@ function init() {
     playBtn         = document.getElementById('play-btn') as HTMLButtonElement;
     loopBtn         = document.getElementById('loop-btn') as HTMLButtonElement;
     speedLabel      = document.getElementById('speed-label')!;
+    reelInput         = document.getElementById('reel-input') as HTMLInputElement;
+    startShapeCanvas  = document.getElementById('start-shape-canvas') as HTMLCanvasElement;
+    startShapeCtx     = startShapeCanvas.getContext('2d')!;
+    endShapeCanvas    = document.getElementById('end-shape-canvas') as HTMLCanvasElement;
+    endShapeCtx       = endShapeCanvas.getContext('2d')!;
+
+    reelInput.addEventListener('input', () => {
+        const v = reelInput.value;
+        if (v.length < 1) return;
+        REEL = v.split('');
+        rebuildHardware();
+        generateAndPlay();
+    });
 
     buildPreviewControls();
     buildComposerUI();
     buildReferencePanel();
     buildPainter();
+    buildShapeCanvases();
     buildExportModal();
 
     generateAndPlay();

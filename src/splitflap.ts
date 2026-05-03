@@ -48,8 +48,9 @@ export class SplitFlapDisplay {
     // this should be just the offsets 
     perPixelPauses: (number | undefined)[] = [];
     perPixelCycleLength: (number | undefined)[] = [];
+    reel: string[] = [];
 
-    constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number, container?: HTMLElement) {
+    constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number, container?: HTMLElement, reel?: string[]) {
         if (numFramesRotating) {
             this.numFramesRotating = numFramesRotating;
         }
@@ -61,6 +62,7 @@ export class SplitFlapDisplay {
 
         this.width = width;
         this.height = height;
+        this.reel = reel ?? ALPHABET_WITH_EXCLAMATION.split('');
         this.scene = new THREE.Scene();
         const targetEl = container ?? document.body;
         const targetW = container ? (container.clientWidth || 640) : window.innerWidth;
@@ -210,7 +212,7 @@ export class SplitFlapDisplay {
     makeAlphabetCycle() {
         // for (let letter of 'abcdefg'.split('')) {
         // this is so stupid... has to be multiples of three
-        for (let letter of ALPHABET_WITH_EXCLAMATION.split('')) {
+        for (let letter of this.reel) {
             letter = letter.toLocaleUpperCase();
             for (let top of [true, false]) {
                 const canvas = document.createElement("canvas");
@@ -246,8 +248,6 @@ export class SplitFlapDisplay {
                     });
                     this.canvasBacks.push(material);
                 }
-                document.body.appendChild(canvas);
-
             }
         }
     }
@@ -255,25 +255,23 @@ export class SplitFlapDisplay {
     setUpAlphabetRolls() {
         for (let _ of this.flaps) {
             // this.flipCycle.push([...new Array(6).keys()]);
-            this.flipCycle.push([...new Array(30).keys()]);
+            this.flipCycle.push([...new Array(this.reel.length).keys()]);
             this.flapPos.push(0);
         }
     }
 
     resetAnimation = (newFlip: (f: number) => (i: number) => [number | undefined, number | undefined]) => {
 
-        for (let idx of this.flaps) {
-            let [falling, rising, stepping] = idx;
-            console.log("resetting: ", falling.rotation.x, rising.rotation.x, stepping.rotation.x)
-            // "about to start" doing what we say
+        for (let i = 0; i < this.flaps.length; i++) {
+            let [falling, rising, stepping] = this.flaps[i];
             rising.rotation.x = 0;
             falling.rotation.x = 0;
-            stepping.rotation.x = rotFlapBack;
-
+            stepping.rotation.x = newFlip(0)(i)[0] !== undefined ? rotFlapBack : 0;
         }
         // console.log(this.flipCycles)
         // console.log(this.idxToUpdate)
         this.animationFrameCounters = this.flaps.map(_ => 0);
+        this.flapPos = this.flaps.map(_ => 0);
         this.setNextFlips = newFlip;
         console.log("I'm setting perPixelPauses")
         this.perPixelPauses = this.flaps.map((f, i) => newFlip(0)(i)[0]);
