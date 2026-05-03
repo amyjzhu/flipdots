@@ -139,6 +139,9 @@ export let delayGroupActions = (input: GroupAction[], delay: number) => {
     return input.map(ga => new GroupAction(ga.tPlus + delay, ga.actions));
 }
 
+export let scaleGroupActions = (input: GroupAction[], factor: number) =>
+    input.map(ga => new GroupAction(ga.tPlus * factor, ga.actions));
+
 export let isSplitflapHardware = (x: HardwareInterface): x is SplitflapHardware => {
     return (<SplitflapHardware>x).computeFlipDistance != undefined;
 }
@@ -155,9 +158,9 @@ export class SplitflapHardware implements HardwareInterface {
 
     dirsToTime: Map<string, (t: Time) => number[]> = new Map();
     idsToStates: Map<UnitId, State>;
-    sim: SplitFlapDisplay;
+    sim: SplitFlapDisplay | null;
 
-    constructor(units: SplitflapUnit[], indexToCoord: Map<number, [number, number]>, unitAdjacency: (toCheck: UnitId) => UnitId[], sim: SplitFlapDisplay) {
+    constructor(units: SplitflapUnit[], indexToCoord: Map<number, [number, number]>, unitAdjacency: (toCheck: UnitId) => UnitId[], sim: SplitFlapDisplay | null) {
         this.units = units;
         this.actionDurations = new Map();
         this.actionDurations.set(units[0].actionTiming[0][0], units[0].actionTiming[0][1]);
@@ -222,7 +225,7 @@ export class SplitflapHardware implements HardwareInterface {
         return (end - start + states.length) % states.length;
     }
 
-    static Rectangular(width: number, height: number, reelConfig: (x: number, y: number) => SplitflapState[]) {
+    static Rectangular(width: number, height: number, reelConfig: (x: number, y: number) => SplitflapState[], container?: HTMLElement) {
         let indexToCoord = new Map<number, [number, number]>();
 
         let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => {
@@ -262,7 +265,35 @@ export class SplitflapHardware implements HardwareInterface {
         // };
 
 
-        return new SplitflapHardware(unitList, indexToCoord, adjacency, new SplitFlapDisplay(width, height));
+        return new SplitflapHardware(unitList, indexToCoord, adjacency, new SplitFlapDisplay(width, height, undefined, undefined, container));
+    }
+
+    static Headless(width: number, height: number, reelConfig: (x: number, y: number) => SplitflapState[]) {
+        let indexToCoord = new Map<number, [number, number]>();
+        let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => {
+            let reel = reelConfig(j, i);
+            let newUnit = new SplitflapUnit(i * width + j, reel);
+            indexToCoord.set(i * width + j, [j, i]);
+            return newUnit;
+        }).flat()).flat();
+
+        let adjacency = (i: UnitId) => {
+            let neighbours: UnitId[] = [];
+            let xCoord = i % width;
+            let yCoord = Math.floor(i / width);
+            for (let yPlus of [-1, 0, 1]) {
+                for (let xPlus of [-1, 0, 1]) {
+                    if (!((xPlus == 0 && yPlus == 0) ||
+                        (xCoord + xPlus >= width || xCoord + xPlus < 0
+                            || yCoord + yPlus < 0 || yCoord + yPlus >= height))) {
+                        neighbours.push(i + yPlus * width + xPlus);
+                    }
+                }
+            }
+            return neighbours;
+        };
+
+        return new SplitflapHardware(unitList, indexToCoord, adjacency, null);
     }
 
     getRealTiming(time: Time): number {
@@ -274,6 +305,7 @@ export class SplitflapHardware implements HardwareInterface {
     }
 
     compile(groupActions: GroupAction[]) {
+        if (!this.sim) throw new Error('Cannot compile: use SplitflapHardware.Rectangular() to get a hardware with a display.');
         console.log(groupActions)
         let framesPerMs = 10;
 

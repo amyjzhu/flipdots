@@ -1,6 +1,6 @@
 // this is just chatgpt
 import * as THREE from "three";
-import { Colour } from "./language";
+import { Colour } from "./language2";
 export class MinPriorityQueue<T> {
   private heap: { item: T; priority: number }[] = [];
 

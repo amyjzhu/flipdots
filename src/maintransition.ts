@@ -1,9 +1,9 @@
 import { STLLoader } from "three/addons/loaders/STLLoader";
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
-import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
+import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions, scaleGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
 import { BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, LineDiagonal, MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong, RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo } from "./transitions";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo, MarqueeTransition, textToPixelCoords, TextOrder } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -350,7 +350,15 @@ ball 3 ->* move ->* ball 8"
     // let fdshw = new FlipdotSimHardware([], i => [], [height, width]);
     // let flipAnimation2 = new OneByOne(new SpiralOrder()).generateGroupActions(new PixelArtTarget([], ""), rectangle, 30, sfhw)
     // fdshw.compile(flipAnimation2);
+const coords = textToPixelCoords("wor", { verticalOffset: 0 });
+const order  = new TextOrder(coords);
 
+// Pass srectangle as o2 so the diff covers the full display (no -1 holes in the mask).
+// TextOrder makes background cells flip at time=0, text pixels at time=1.
+const textAnim = new CascadeImage(order)
+    .generateGroupActions(new PixelArtTarget([], " "), srectangle, 200, smallSfhw);
+
+smallSfhw.compile(scaleGroupActions(textAnim, 0.5));
     if (false) {
     let threed = new FlipdotSimHardware([], i => [], undefined, "public/troika.stl");
     // let threed = new FlipdotSimHardware([], i => [], undefined, "public/lowpolybunny.stl");

@@ -49,7 +49,7 @@ export class SplitFlapDisplay {
     perPixelPauses: (number | undefined)[] = [];
     perPixelCycleLength: (number | undefined)[] = [];
 
-    constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number) {
+    constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number, container?: HTMLElement) {
         if (numFramesRotating) {
             this.numFramesRotating = numFramesRotating;
         }
@@ -62,7 +62,10 @@ export class SplitFlapDisplay {
         this.width = width;
         this.height = height;
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const targetEl = container ?? document.body;
+        const targetW = container ? (container.clientWidth || 640) : window.innerWidth;
+        const targetH = container ? (container.clientHeight || 300) : window.innerHeight;
+        this.camera = new THREE.PerspectiveCamera(75, targetW / targetH, 0.1, 1000);
 
         // create an AudioListener and add it to the camera
         this.listener = new THREE.AudioListener();
@@ -74,15 +77,15 @@ export class SplitFlapDisplay {
         this.renderer = new THREE.WebGLRenderer();
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setSize(targetW, targetH);
 
         // ENABLE SHADOWS
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setSize(targetW, targetH);
         this.renderer.setAnimationLoop(this.animate);
-        document.body.appendChild(this.renderer.domElement);
+        targetEl.appendChild(this.renderer.domElement);
 
         const controls = new OrbitControls(this.camera, this.renderer.domElement);
 

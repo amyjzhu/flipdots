@@ -1,5 +1,6 @@
 import { ImageBitmapLoader } from "three";
-import { AnimationStrategy, AreaEffect, Background, Colour, DerivedTarget, Effect, FlipDotState, MovingNoise, Noise, PixelArtTarget, SimulationHardware, Static, Target, UniformInterpolateStrategy } from "./language";
+import { AnimationStrategy, AreaEffect, Background, DerivedTarget, Effect, FlipDotState, MovingNoise, Noise, PixelArtTarget, SimulationHardware, Static, Target, UniformInterpolateStrategy } from "./language";
+import { Colour } from "./language2";
 
 let latestIndices: [number, number][][] = [];
 let frameIndices: [number, number][][][] = [];

@@ -18,10 +18,14 @@
 
 import { Action, delayGroupActions, FlipdotSimHardware, GroupAction, HardwareInterface } from "./hardware";
 import { FlipTransition, SnapTransition, StochasticTransition, WaveTransition } from "./transitions"
-import { Colour, DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
+import { DColour, DotFlipFrame, DotFlipInstruction, DotFlipOptions, FlipDotState, SimulationHardware } from "./language";
 import { bresenhamLine, frameDisplay, getImages, inBounds, Perlin, rgb2Hex } from "./util";
 import { BottomLeftWildfire, BottomUp, GrowFromCentre, StutterOrder } from "./order";
 import { DrawingHeadWipe, Effect, EffectType, FlipEffect, GrowWipe, Instantaneous, MotionFlipTo, Sparkle, TracePath, UniformMove, Wipe, WipeDirection } from "./effect";
+
+
+
+export interface Colour { }
 
 let collisionStats = [4, 2];
 

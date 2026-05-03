@@ -1,6 +1,5 @@
-import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit } from "./hardware";
-import { Colour } from "./language";
-import { Target } from "./language2";
+import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit, delayGroupActions } from "./hardware";
+import { Target, Colour } from "./language2";
 import { AllAtOnce, GridOrder, StutterOrder } from "./order";
 
 export interface Transition {
@@ -1133,6 +1132,18 @@ export class CascadeImage implements Transition {
             }
         }
 
+        // Tile the generated pattern until t is reached
+        const period = currentTime;
+        if (period > 0) {
+            const firstPass = [...result];
+            let offset = period;
+            while (offset < t) {
+                result.push(...delayGroupActions(firstPass, offset));
+                offset += period;
+            }
+            result = result.filter(ga => ga.tPlus < t);
+        }
+
         return result;
 
 
@@ -1679,4 +1690,209 @@ export class FlipSyncEnd implements Transition {
         }
     }
 
+}
+
+// ---------------------------------------------------------------------------
+// Marquee transition: scrolls a text string right-to-left via pixel motion.
+// ---------------------------------------------------------------------------
+
+// 4-wide × 5-tall pixel font.
+// Each entry is [row0..row4]; each number encodes a row in 4-bit big-endian
+// (bit 3 = leftmost column, bit 0 = rightmost column).
+const MARQUEE_FONT: Record<string, number[]> = {
+    ' ': [0,  0,  0,  0,  0 ],
+    'a': [6,  9,  15, 9,  9 ],
+    'b': [14, 9,  14, 9,  14],
+    'c': [7,  8,  8,  8,  7 ],
+    'd': [14, 9,  9,  9,  14],
+    'e': [15, 8,  14, 8,  15],
+    'f': [15, 8,  14, 8,  8 ],
+    'g': [7,  8,  11, 9,  7 ],
+    'h': [9,  9,  15, 9,  9 ],
+    'i': [15, 6,  6,  6,  15],
+    'j': [3,  1,  1,  9,  6 ],
+    'k': [9,  10, 12, 10, 9 ],
+    'l': [8,  8,  8,  8,  15],
+    'm': [9,  15, 9,  9,  9 ],
+    'n': [9,  13, 11, 9,  9 ],
+    'o': [6,  9,  9,  9,  6 ],
+    'p': [14, 9,  14, 8,  8 ],
+    'q': [6,  9,  9,  11, 7 ],
+    'r': [14, 9,  14, 10, 9 ],
+    's': [7,  8,  6,  1,  14],
+    't': [15, 6,  6,  6,  6 ],
+    'u': [9,  9,  9,  9,  6 ],
+    'v': [9,  9,  9,  6,  6 ],
+    'w': [9,  9,  11, 13, 9 ],
+    'x': [9,  5,  2,  5,  9 ],
+    'y': [9,  6,  6,  4,  4 ],
+    'z': [15, 1,  2,  4,  15],
+    '0': [6,  9,  9,  9,  6 ],
+    '1': [6,  14, 6,  6,  15],
+    '2': [6,  9,  2,  4,  15],
+    '3': [6,  1,  6,  1,  6 ],
+    '4': [2,  6,  10, 15, 2 ],
+    '5': [15, 8,  14, 1,  14],
+    '6': [7,  8,  14, 9,  6 ],
+    '7': [15, 1,  2,  4,  8 ],
+    '8': [6,  9,  6,  9,  6 ],
+    '9': [6,  9,  7,  1,  6 ],
+    '!': [6,  6,  6,  0,  6 ],
+    '?': [6,  9,  2,  0,  2 ],
+    '-': [0,  0,  14, 0,  0 ],
+    '.': [0,  0,  0,  0,  6 ],
+};
+
+const MARQUEE_CHAR_WIDTH = 4;
+
+function decodeMarqueeChar(rows: number[]): boolean[][] {
+    return rows.map(row =>
+        Array.from({ length: MARQUEE_CHAR_WIDTH }, (_, i) =>
+            !!(row & (1 << (MARQUEE_CHAR_WIDTH - 1 - i)))
+        )
+    );
+}
+
+// Returns a displayHeight x displayWidth boolean grid for a given scroll position.
+// scrollOffset=1 means the first column of text just entered the right edge.
+function renderMarqueeFrame(
+    text: string,
+    scrollOffset: number,
+    displayWidth: number,
+    displayHeight: number,
+    charGap: number,
+    verticalOffset: number,
+): boolean[][] {
+    const charStep = MARQUEE_CHAR_WIDTH + charGap;
+    const frame: boolean[][] = Array.from({ length: displayHeight }, () =>
+        new Array(displayWidth).fill(false)
+    );
+    for (let i = 0; i < text.length; i++) {
+        const encoded = MARQUEE_FONT[text[i].toLowerCase()];
+        if (!encoded) continue;
+        const bitmap = decodeMarqueeChar(encoded);
+        const charLeft = displayWidth - scrollOffset + i * charStep;
+        for (let row = 0; row < bitmap.length; row++) {
+            const displayRow = row + verticalOffset;
+            if (displayRow < 0 || displayRow >= displayHeight) continue;
+            for (let col = 0; col < bitmap[row].length; col++) {
+                const displayCol = charLeft + col;
+                if (displayCol >= 0 && displayCol < displayWidth && bitmap[row][col]) {
+                    frame[displayRow][displayCol] = true;
+                }
+            }
+        }
+    }
+    return frame;
+}
+
+// Scrolls text right-to-left across the display one column per step.
+// t is the total animation duration (same units as all other transitions).
+// charGap: blank columns between glyphs (default 1).
+// verticalOffset: which display row the top of the 5-tall glyph sits on (default 0).
+export class MarqueeTransition implements Transition {
+    text: string;
+    charGap: number;
+    verticalOffset: number;
+
+    constructor(text: string, options: { charGap?: number; verticalOffset?: number } = {}) {
+        this.text = text;
+        this.charGap = options.charGap ?? 1;
+        this.verticalOffset = options.verticalOffset ?? 0;
+    }
+
+    generateGroupActions(_o1: Target, _o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        const coords = [...h.indexToCoord.values()];
+        const displayWidth  = Math.max(...coords.map(c => c[0])) + 1;
+        const displayHeight = Math.max(...coords.map(c => c[1])) + 1;
+
+        const charStep    = MARQUEE_CHAR_WIDTH + this.charGap;
+        const totalSteps  = displayWidth + this.text.length * charStep;
+
+        const flipTime     = h.actionDurations.get(Action.FLIP)!;
+        const stepDuration = Math.max(t / totalSteps, flipTime);
+
+        const actions: GroupAction[] = [];
+        let prevFrame: boolean[][] = Array.from({ length: displayHeight }, () =>
+            new Array(displayWidth).fill(false)
+        );
+        let currentTime = 0;
+
+        for (let step = 1; step <= totalSteps; step++) {
+            const frame = renderMarqueeFrame(
+                this.text, step, displayWidth, displayHeight,
+                this.charGap, this.verticalOffset
+            );
+            const toFlip: number[] = [];
+            for (let row = 0; row < displayHeight; row++) {
+                for (let col = 0; col < displayWidth; col++) {
+                    if (frame[row][col] !== prevFrame[row][col]) {
+                        toFlip.push(h.coordToIndex([col, row]));
+                    }
+                }
+            }
+            if (toFlip.length > 0) {
+                actions.push(new GroupAction(currentTime, [[Action.FLIP, toFlip]]));
+            }
+            prevFrame = frame;
+            currentTime += stepDuration;
+        }
+
+        return actions;
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Text layout helpers — build pixel coordinates for a word and an Order for it.
+// ---------------------------------------------------------------------------
+
+// Returns [col, row] pixel coordinates for every lit pixel in `text`,
+// laid out left-to-right using MARQUEE_FONT (4-wide glyphs, charGap gap between them).
+// verticalOffset shifts the whole block down by that many rows (default 0).
+export function textToPixelCoords(
+    text: string,
+    options: { charGap?: number; verticalOffset?: number } = {}
+): [number, number][] {
+    const charGap = options.charGap ?? 1;
+    const verticalOffset = options.verticalOffset ?? 0;
+    const charStep = MARQUEE_CHAR_WIDTH + charGap;
+    const coords: [number, number][] = [];
+
+    for (let i = 0; i < text.length; i++) {
+        const encoded = MARQUEE_FONT[text[i].toLowerCase()];
+        if (!encoded) continue;
+        const bitmap = decodeMarqueeChar(encoded);
+        const charLeft = i * charStep;
+        for (let row = 0; row < bitmap.length; row++) {
+            for (let col = 0; col < bitmap[row].length; col++) {
+                if (bitmap[row][col]) {
+                    coords.push([charLeft + col, row + verticalOffset]);
+                }
+            }
+        }
+    }
+    return coords;
+}
+
+// An Order where every cell matching a supplied set of [col, row] coordinates
+// gets time 1, and all other cells get time 0.
+// Use with OneByOneKeepFlipping and o2 = full-display target (e.g. srectangle)
+// so the mask has no -1 entries.  The text pixels will join the flip one step
+// after the background pixels do.
+export class TextOrder extends GridOrder {
+    private litCoords: Set<string>;
+
+    constructor(coords: [number, number][]) {
+        super();
+        this.litCoords = new Set(coords.map(([col, row]) => `${col},${row}`));
+    }
+
+    generateGrid(width: number, height: number): number[][] {
+        return Array.from({ length: height }, (_, row) =>
+            Array.from({ length: width }, (_, col) =>
+                this.litCoords.has(`${col},${height - 1 - row}`) ? 1 : 0
+            )
+        );
+    }
 }

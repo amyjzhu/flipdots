@@ -3,8 +3,8 @@
 // 2. what's a way to control the low-level hardware?
 
 import { RowOfDiscs } from "./flipdisc";
+import { Colour } from "./language2";
 
-export interface Colour { }
 
 export class DColour<T> implements Colour { }
 
