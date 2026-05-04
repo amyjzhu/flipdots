@@ -1,15 +1,369 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>My first three.js app</title>
-    <style>
-      body { margin: 0; }
-    </style>
-  </head>
-  <body id="app">
-    <!-- <script type="module" src="/src/language.ts"></script> -->
-    <script type="module" src="/src/maintransition.ts"></script>
-     <div id="render"></div>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <title>Flipdot Playground</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111;
+      color: #ddd;
+      font-family: monospace;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    h2 { font-size: 13px; font-weight: bold; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    h3 { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+
+    #top-bar {
+      background: #1a1a1a;
+      border-bottom: 1px solid #333;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #top-bar h1 { font-size: 14px; color: #ccc; font-weight: bold; }
+
+    .main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      grid-template-rows: auto 1fr;
+      gap: 1px;
+      background: #333;
+      overflow: hidden;
+    }
+
+    /* ── Preview ── */
+    #preview-section {
+      background: #111;
+      padding: 12px;
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    #preview-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    #preview-canvas {
+      display: block;
+      border: 1px solid #444;
+    }
+
+    #preview-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    #preview-controls button {
+      background: #2a2a2a;
+      color: #ccc;
+      border: 1px solid #444;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #preview-controls button:hover { background: #333; }
+    #preview-controls button.active { background: #1a3a1a; border-color: #3a8a3a; color: #8eff8e; }
+
+    .control-row { display: flex; align-items: center; gap: 6px; }
+    .control-row label { color: #888; font-size: 11px; min-width: 50px; }
+    .control-row input[type=range] { width: 100px; }
+
+    #tick-counter { color: #666; font-size: 11px; }
+
+    /* ── Composer + Painter ── */
+    #work-section {
+      background: #111;
+      padding: 12px;
+      grid-column: 1;
+      grid-row: 2;
+      overflow-y: auto;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-content: flex-start;
+    }
+
+    #composer {
+      min-width: 220px;
+    }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .field label { color: #888; min-width: 90px; }
+
+    .field select, .field input[type=number], .field input[type=text] {
+      background: #1e1e1e;
+      color: #ccc;
+      border: 1px solid #444;
+      padding: 3px 6px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    .field select { width: 160px; }
+    .field input[type=number] { width: 70px; }
+    .field input[type=text] { width: 140px; }
+
+    #generate-btn {
+      margin-top: 8px;
+      background: #1a3060;
+      color: #7ab4ff;
+      border: 1px solid #3060a0;
+      padding: 5px 14px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #generate-btn:hover { background: #203878; }
+
+    /* ── Painter ── */
+    #painter-section {
+      min-width: 200px;
+    }
+
+    #painter-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    #painter-controls label { color: #888; font-size: 11px; }
+    #painter-controls input[type=number] {
+      background: #1e1e1e;
+      color: #ccc;
+      border: 1px solid #444;
+      padding: 2px 5px;
+      width: 50px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    #painter-controls button, .shape-btn {
+      background: #2a1a1a;
+      color: #aaa;
+      border: 1px solid #553333;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    #painter-controls button:hover, .shape-btn:hover { background: #3a1a1a; }
+
+    #painter-canvas {
+      display: block;
+      border: 1px solid #444;
+      cursor: crosshair;
+    }
+
+    #painter-legend {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #777; padding: 2px 4px; border: 1px solid transparent; border-radius: 2px; }
+    .legend-item.selected { color: #ddd; border-color: #666; background: #2a2a2a; }
+    .legend-swatch { width: 12px; height: 12px; border: 1px solid #555; }
+
+    /* ── Reference Panel ── */
+    #ref-panel {
+      background: #111;
+      grid-column: 2;
+      grid-row: 1 / 3;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #ref-tabs {
+      display: flex;
+      border-bottom: 1px solid #333;
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: #1a1a1a;
+      color: #888;
+      border: none;
+      padding: 7px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .tab-btn.active { background: #111; color: #ccc; border-bottom: 2px solid #3a7aff; }
+    .tab-btn:hover { color: #ccc; }
+
+    .tab-pane { display: none; flex: 1; overflow-y: auto; padding: 8px; }
+    .tab-pane.active { display: block; }
+
+    .ref-item {
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+    .ref-item:hover { background: #222; border-color: #444; }
+    .ref-item.selected { background: #1a2a3a; border-color: #3060a0; }
+
+    .ref-item-name { font-size: 12px; color: #ddd; margin-bottom: 3px; }
+    .ref-item-desc { font-size: 10px; color: #666; }
+    .ref-item-badge {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 4px;
+      margin-left: 4px;
+      background: #1a3a1a;
+      color: #5a9a5a;
+      border: 1px solid #2a5a2a;
+    }
+    .ref-item-canvas { display: block; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div id="top-bar">
+    <h1>Flipdot Playground</h1>
+    <span id="tick-counter" style="color:#666; font-size:11px;">tick 0</span>
+    <button id="reset-btn" style="background:#2a1a1a; color:#aaa; border:1px solid #553333; padding:3px 10px; cursor:pointer; font-family:monospace; font-size:11px;">Reset</button>
+  </div>
+
+  <div class="main">
+    <!-- Preview -->
+    <div id="preview-section">
+      <div id="preview-wrap">
+        <canvas id="preview-canvas"></canvas>
+        <div id="preview-controls">
+          <button id="play-btn">▶ Play</button>
+          <button id="loop-btn" class="active">⟳ Loop</button>
+          <button id="sim3d-btn">3D Sim</button>
+          <div class="control-row">
+            <label>Speed</label>
+            <input type="range" id="speed-slider" min="20" max="800" value="100" step="20">
+            <span id="speed-label">100ms</span>
+          </div>
+        </div>
+      </div>
+      <div id="sim-container" style="display:none; width:640px; height:300px; border:1px solid #444; margin-top:8px;"></div>
+    </div>
+
+    <!-- Composer + Painter -->
+    <div id="work-section">
+      <div id="composer">
+        <h2>Composer</h2>
+        <div class="field">
+          <label>Transition</label>
+          <select id="transition-select"></select>
+        </div>
+        <div class="field" id="order-field">
+          <label>Order</label>
+          <select id="order-select"></select>
+        </div>
+        <div class="field" id="text-field" style="display:none">
+          <label>Text</label>
+          <input type="text" id="text-input" value="hello">
+        </div>
+        <div class="field">
+          <label>Duration (t)</label>
+          <input type="number" id="duration-input" value="200" min="1" max="2000">
+        </div>
+        <div class="field">
+          <label>Speed scale</label>
+          <input type="number" id="scale-input" value="1" min="0.05" max="10" step="0.05">
+        </div>
+        <div class="field">
+          <label>Reel</label>
+          <input type="text" id="reel-input" value=" abcdefghijklmnopqrstuvwxyz!?*">
+        </div>
+        <button id="generate-btn">Generate &amp; Play</button>
+      </div>
+
+      <div id="shape-section">
+        <h2>Shapes</h2>
+        <div style="display:flex; gap:16px; align-items:flex-start;">
+          <div>
+            <h3>Start</h3>
+            <div style="display:flex; gap:6px; margin-bottom:4px;">
+              <button class="shape-btn" id="start-clear-btn">Clear</button>
+              <button class="shape-btn" id="start-fill-btn">Fill</button>
+            </div>
+            <canvas id="start-shape-canvas" style="display:block; border:1px solid #444; cursor:crosshair;"></canvas>
+            <input type="text" id="start-text-input" placeholder="text…" style="margin-top:4px; width:100%; background:#1e1e1e; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
+          </div>
+          <div>
+            <h3>End</h3>
+            <div style="display:flex; gap:6px; margin-bottom:4px;">
+              <button class="shape-btn" id="end-clear-btn">Clear</button>
+              <button class="shape-btn" id="end-fill-btn">Fill</button>
+            </div>
+            <canvas id="end-shape-canvas" style="display:block; border:1px solid #444; cursor:crosshair;"></canvas>
+            <input type="text" id="end-text-input" placeholder="text…" style="margin-top:4px; width:100%; background:#1e1e1e; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
+          </div>
+        </div>
+      </div>
+
+      <div id="painter-section" style="display:none">
+        <h2>Grid Painter</h2>
+        <div id="painter-controls">
+          <label>Max <input type="number" id="max-value" min="1" max="20" value="5"></label>
+          <button id="clear-painter">Clear</button>
+          <button id="fill-painter">Fill row-by-row</button>
+          <button id="export-ts-btn">Export TS</button>
+        </div>
+        <canvas id="painter-canvas"></canvas>
+        <div id="painter-legend"></div>
+      </div>
+    </div>
+
+    <!-- Export modal -->
+    <div id="export-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100; align-items:center; justify-content:center;">
+      <div style="background:#1a1a1a; border:1px solid #444; padding:16px; width:600px; max-width:90vw; display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="color:#aaa; font-size:12px; flex-shrink:0;">Class name:</span>
+          <input type="text" id="export-classname" value="CustomOrder" style="flex:1; background:#111; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
+          <button id="export-copy-btn" style="background:#1a3060; color:#7ab4ff; border:1px solid #3060a0; padding:3px 10px; cursor:pointer; font-family:monospace; font-size:12px;">Copy</button>
+          <button id="export-close-btn" style="background:#2a2a2a; color:#aaa; border:1px solid #444; padding:3px 8px; cursor:pointer; font-family:monospace; font-size:12px;">✕</button>
+        </div>
+        <textarea id="export-code" readonly style="background:#0d0d0d; color:#ccc; border:1px solid #333; font-family:monospace; font-size:11px; padding:8px; height:220px; resize:vertical; white-space:pre;"></textarea>
+      </div>
+    </div>
+
+    <!-- Reference Panel -->
+    <div id="ref-panel">
+      <div id="ref-tabs">
+        <button class="tab-btn active" data-tab="orders">Orders</button>
+        <button class="tab-btn" data-tab="transitions">Transitions</button>
+      </div>
+      <div id="orders-pane" class="tab-pane active"></div>
+      <div id="transitions-pane" class="tab-pane"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/playground.ts"></script>
+</body>
 </html>

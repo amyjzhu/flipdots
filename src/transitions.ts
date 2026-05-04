@@ -1875,6 +1875,213 @@ export function textToPixelCoords(
     return coords;
 }
 
+// Each group fires repeatedly throughout duration t.
+// Group with orderVal v gets interval = rateMap[v] ?? max(flipTime, v * stepDelay).
+// A group with interval I fires at I, 2I, 3I, ... up to t.
+// Lower orderVal → smaller interval → faster flipping.
+// rateMap overrides the interval for specific order values.
+export class StaggeredRateTransition implements Transition {
+    constructor(
+        private order: GridOrder,
+        private defaultDelay?: Time,
+        private rateMap: Map<number, Time> = new Map()
+    ) {}
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        const flip = diffIndices(o1, o2, h);
+        const [mask, x, y] = generateMaskFromCoords(flip, h);
+        const [maskTime] = this.order.applyMask(mask as boolean[][]);
+
+        const rows = maskTime.length;
+        const cols = maskTime[0]?.length ?? 0;
+
+        const frameMap = new Map<number, UnitId[]>();
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const orderVal = maskTime[r][c];
+                if (orderVal === -1) continue;
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(orderVal)) frameMap.set(orderVal, []);
+                frameMap.get(orderVal)!.push(id);
+            }
+        }
+
+        const flipTime = h.actionDurations.get(Action.FLIP) ?? 1;
+        const stepDelay = this.defaultDelay ?? flipTime;
+
+        // Accumulate flip events across all groups: tPlus → units
+        const events = new Map<number, UnitId[]>();
+        const addEvent = (time: number, units: UnitId[]) => {
+            if (!events.has(time)) events.set(time, []);
+            events.get(time)!.push(...units);
+        };
+
+        for (const [orderVal, units] of frameMap) {
+            const interval = this.rateMap.has(orderVal)
+                ? this.rateMap.get(orderVal)!
+                : Math.max(flipTime, orderVal * stepDelay);
+
+            let time = interval;
+            while (time <= t) {
+                addEvent(time, units);
+                time += interval;
+            }
+        }
+
+        const result: GroupAction[] = [];
+        for (const [tPlus, units] of events) {
+            result.push(new GroupAction(tPlus, [[Action.FLIP, units]]));
+        }
+        result.sort((a, b) => a.tPlus - b.tPlus);
+        return result;
+    };
+}
+
+
+// Like StaggeredRateTransition but each unit's flip interval is modulated by
+// the vertical offset from the nearest unit in the previous activation group.
+// Faster if that neighbour was above (smaller row index), slower if below.
+// interval = clamp(baseInterval + (prevRow - currRow) * slopePerRow, flipTime, ∞)
+export class VerticalDriftRateTransition implements Transition {
+    constructor(
+        private order: GridOrder,
+        private baseInterval?: Time, // interval at dy=0; defaults to flipTime
+        private slopePerRow: number = 1
+    ) {}
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        const flip = diffIndices(o1, o2, h);
+        const [mask, x, y] = generateMaskFromCoords(flip, h);
+        const [maskTime] = this.order.applyMask(mask as boolean[][]);
+
+        const rows = maskTime.length;
+        const cols = maskTime[0]?.length ?? 0;
+
+        const frameMap = new Map<number, UnitId[]>();
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const orderVal = maskTime[r][c];
+                if (orderVal === -1) continue;
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(orderVal)) frameMap.set(orderVal, []);
+                frameMap.get(orderVal)!.push(id);
+            }
+        }
+
+        const flipTime = h.actionDurations.get(Action.FLIP) ?? 1;
+        const base = this.baseInterval ?? flipTime;
+
+        const sortedGroups = [...frameMap.entries()].sort((a, b) => a[0] - b[0]);
+
+        const events = new Map<number, UnitId[]>();
+        const addEvent = (time: number, unit: UnitId) => {
+            if (!events.has(time)) events.set(time, []);
+            events.get(time)!.push(unit);
+        };
+
+        let prevUnits: UnitId[] = [];
+        let groupStartOffset = 0;
+
+        for (const [, units] of sortedGroups) {
+            for (const unit of units) {
+                const [uCol, uRow] = h.indexToCoord.get(unit)!;
+
+                let interval = base;
+                if (prevUnits.length > 0) {
+                    let bestDist = Infinity;
+                    let dy = 0;
+                    for (const prev of prevUnits) {
+                        const [pCol, pRow] = h.indexToCoord.get(prev)!;
+                        const dist = Math.hypot(pCol - uCol, pRow - uRow);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            dy = pRow - uRow; // negative if prev is above → faster
+                        }
+                    }
+                    interval = Math.max(flipTime, base + dy * this.slopePerRow);
+                }
+
+                let time = groupStartOffset + interval;
+                while (time <= t) {
+                    addEvent(time, unit);
+                    time += interval;
+                }
+            }
+            prevUnits = [...units];
+            groupStartOffset += flipTime;
+        }
+
+        const result: GroupAction[] = [];
+        for (const [tPlus, units] of events) {
+            result.push(new GroupAction(tPlus, [[Action.FLIP, units]]));
+        }
+        result.sort((a, b) => a.tPlus - b.tPlus);
+        return result;
+    };
+}
+
+
+// Even order values lead with shortDelay then alternate: [short, long, short, long, ...]
+// Odd order values lead with longDelay then alternate:  [long, short, long, short, ...]
+// The two phases naturally interleave — both groups coincide at every short+long boundary.
+export class EvenOddRhythmTransition implements Transition {
+    constructor(
+        private order: GridOrder,
+        private shortDelay: Time = 1,
+        private longDelay: Time = 2
+    ) {}
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        const flip = diffIndices(o1, o2, h);
+        const [mask, x, y] = generateMaskFromCoords(flip, h);
+        const [maskTime] = this.order.applyMask(mask as boolean[][]);
+
+        const rows = maskTime.length;
+        const cols = maskTime[0]?.length ?? 0;
+
+        const frameMap = new Map<number, UnitId[]>();
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const orderVal = maskTime[r][c];
+                if (orderVal === -1) continue;
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(orderVal)) frameMap.set(orderVal, []);
+                frameMap.get(orderVal)!.push(id);
+            }
+        }
+
+        const events = new Map<number, UnitId[]>();
+        const addEvent = (time: number, units: UnitId[]) => {
+            if (!events.has(time)) events.set(time, []);
+            events.get(time)!.push(...units);
+        };
+
+        for (const [orderVal, units] of frameMap) {
+            const isEven = orderVal % 2 === 0;
+            const delays = isEven
+                ? [this.shortDelay, this.longDelay]
+                : [this.longDelay, this.shortDelay];
+
+            let time = 0;
+            let step = 0;
+            while (true) {
+                time += delays[step % 2];
+                if (time > t) break;
+                addEvent(time, units);
+                step++;
+            }
+        }
+
+        const result: GroupAction[] = [];
+        for (const [tPlus, units] of events) {
+            result.push(new GroupAction(tPlus, [[Action.FLIP, units]]));
+        }
+        result.sort((a, b) => a.tPlus - b.tPlus);
+        return result;
+    };
+}
+
+
 // An Order where every cell matching a supplied set of [col, row] coordinates
 // gets time 1, and all other cells get time 0.
 // Use with OneByOneKeepFlipping and o2 = full-display target (e.g. srectangle)

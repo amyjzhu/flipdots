@@ -271,6 +271,7 @@ export class SplitFlapDisplay {
         // console.log(this.flipCycles)
         // console.log(this.idxToUpdate)
         this.animationFrameCounters = this.flaps.map(_ => 0);
+        // TODO tbh not sure if this next line is correct 
         this.flapPos = this.flaps.map(_ => 0);
         this.setNextFlips = newFlip;
         console.log("I'm setting perPixelPauses")

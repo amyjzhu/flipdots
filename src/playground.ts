@@ -2,8 +2,9 @@ import { Action, GroupAction, SplitflapHardware, SplitflapState, scaleGroupActio
 import * as OrderModule from './order';
 import { GridOrder, GrowFromCentre } from './order';
 import {
-    CascadeImage, OneByOne, OneByOneKeepFlipping, SnapTransition,
-    TextOrder, textToPixelCoords, Transition, WaveTransition,
+    CascadeImage, EvenOddRhythmTransition, OneByOne, OneByOneKeepFlipping, SnapTransition,
+    StaggeredRateTransition, textToPixelCoords, Transition,
+    VerticalDriftRateTransition, WaveTransition,
 } from './transitions';
 import { Colour, PixelArtTarget, Target } from './language2';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
@@ -79,9 +80,7 @@ function buildOrderDefs(): OrderDef[] {
     const manuals: OrderDef[] = [
         { name: 'GrowFromCentre', description: ORDER_DESCRIPTIONS['GrowFromCentre'] ?? '',
             create: () => new GrowFromCentre((w, h) => [Math.floor(w / 2), Math.floor(h / 2)]) },
-        { name: 'TextOrder', description: 'Text pixels first, background second', needsText: true,
-            create: (text = 'hello') => new TextOrder(textToPixelCoords(text, {})) },
-        { name: 'Custom (Painter)', description: 'Paint your own timing grid', isPainter: true,
+{ name: 'Custom (Painter)', description: 'Paint your own timing grid', isPainter: true,
             create: () => new PainterOrder(painterGrid) },
     ];
 
@@ -109,6 +108,9 @@ const TRANSITION_DEFS: TransitionDef[] = [
     { name: 'OneByOne',             description: 'Units flip once, one at a time',               needsOrder: true,  create: o => new OneByOne(o) },
     { name: 'WaveTransition',       description: 'Wave-like sweep of flips',                     needsOrder: true,  create: o => new WaveTransition(o) },
     { name: 'SnapTransition',       description: 'All differing units flip at time t',           needsOrder: false, create: _o => new SnapTransition() },
+    { name: 'StaggeredRate',        description: 'Each order group fires at orderVal × delay',    needsOrder: true,  create: o => new StaggeredRateTransition(o) },
+    { name: 'VerticalDriftRate',    description: 'Flip rate depends on vertical offset from prev group', needsOrder: true, create: o => new VerticalDriftRateTransition(o) },
+    { name: 'EvenOddRhythm',        description: 'Even groups: 1,2,1,2… / Odd groups: 2,1,2,1…',       needsOrder: true, create: o => new EvenOddRhythmTransition(o) },
 ];
 
 // ── Mutable state ─────────────────────────────────────────────────────────────
@@ -183,6 +185,15 @@ function shapeCanvasCellAt(e: MouseEvent, canvas: HTMLCanvasElement): [number, n
     return [col, row];
 }
 
+function textToGrid(text: string): boolean[][] {
+    const grid = Array.from({ length: SH }, () => new Array(SW).fill(false));
+    const vOffset = Math.floor((SH - 5) / 2);
+    for (const [col, row] of textToPixelCoords(text, { verticalOffset: vOffset })) {
+        if (col >= 0 && col < SW && row >= 0 && row < SH) grid[row][col] = true;
+    }
+    return grid;
+}
+
 function buildShapeCanvases() {
     startShapeCanvas.width = SW * SHAPE_CELL;
     startShapeCanvas.height = SH * SHAPE_CELL;
@@ -236,6 +247,15 @@ function buildShapeCanvases() {
     });
     document.getElementById('end-fill-btn')!.addEventListener('click', () => {
         endGrid = Array.from({ length: SH }, () => new Array(SW).fill(true));
+        renderShapeCanvas(endShapeCtx, endGrid);
+    });
+
+    document.getElementById('start-text-input')!.addEventListener('input', e => {
+        startGrid = textToGrid((e.target as HTMLInputElement).value);
+        renderShapeCanvas(startShapeCtx, startGrid);
+    });
+    document.getElementById('end-text-input')!.addEventListener('input', e => {
+        endGrid = textToGrid((e.target as HTMLInputElement).value);
         renderShapeCanvas(endShapeCtx, endGrid);
     });
 }
@@ -317,6 +337,12 @@ function stopAnimation() {
 
 // ── Generate & play ────────────────────────────────────────────────────────────
 function generateAndPlay() {
+    const newReel = reelInput.value.length >= 1 ? reelInput.value.split('') : REEL;
+    if (newReel.join('') !== REEL.join('')) {
+        REEL = newReel;
+        rebuildHardware();
+    }
+
     const orderDef = ORDER_DEFS[selectedOrderIdx];
     const transDef = TRANSITION_DEFS[selectedTransitionIdx];
 
@@ -333,7 +359,12 @@ function generateAndPlay() {
     if (scale !== 1) groupActions = scaleGroupActions(groupActions, scale);
 
     if (is3dMode && hw3d) {
-        hw3d.compile(groupActions);
+        const flipId = (id: number) => (SH - 1 - Math.floor(id / SW)) * SW + (id % SW);
+        const flipped = groupActions.map(ga => new GroupAction(
+            ga.tPlus,
+            ga.actions.map(([action, ids]) => [action, ids.map(flipId)] as [Action, number[]])
+        ));
+        hw3d.compile(flipped);
     }
 
     simulatedFrames = simulate(groupActions);
@@ -687,6 +718,29 @@ function buildPreviewControls() {
     });
 }
 
+// ── Reset all state ────────────────────────────────────────────────────────────
+function resetAll() {
+    stopAnimation();
+
+    startGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
+    endGrid   = Array.from({ length: SH }, () => new Array(SW).fill(true));
+    renderShapeCanvas(startShapeCtx, startGrid);
+    renderShapeCanvas(endShapeCtx, endGrid);
+    (document.getElementById('start-text-input') as HTMLInputElement).value = '';
+    (document.getElementById('end-text-input')   as HTMLInputElement).value = '';
+
+    painterGrid = Array.from({ length: SH }, () => new Array(SW).fill(0));
+    renderPainter();
+
+    simulatedFrames = [];
+    currentTick = 0;
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    tickCounter.textContent = 'tick 0';
+    playBtn.textContent = '▶ Play';
+
+    rebuildHardware();
+}
+
 // ── Rebuild hardware when reel changes ────────────────────────────────────────
 function rebuildHardware() {
     hw = SplitflapHardware.Headless(SW, SH, (_x, _y) => REEL.map(s => new SplitflapState(s)));
@@ -723,13 +777,6 @@ function init() {
     endShapeCanvas    = document.getElementById('end-shape-canvas') as HTMLCanvasElement;
     endShapeCtx       = endShapeCanvas.getContext('2d')!;
 
-    reelInput.addEventListener('input', () => {
-        const v = reelInput.value;
-        if (v.length < 1) return;
-        REEL = v.split('');
-        rebuildHardware();
-        generateAndPlay();
-    });
 
     buildPreviewControls();
     buildComposerUI();
@@ -737,6 +784,8 @@ function init() {
     buildPainter();
     buildShapeCanvases();
     buildExportModal();
+
+    document.getElementById('reset-btn')!.addEventListener('click', resetAll);
 
     generateAndPlay();
 }
