@@ -1,7 +1,7 @@
 import { HardwareInterface, GroupAction } from "./hardware";
 import { Merged, Moved, PixelArtTarget, Target, toWindows } from "./language2";
-import { GrowFromCentre, BottomUp, GrowAlongContour } from "./order";
-import { FlipTransition, OffsetFlipImage, SnapTransition, StochasticTransition, WaveTransition } from "./transitions";
+import { GrowFromCentre, BottomUp, GrowAlongContour, AllAtOnce } from "./order";
+import { FlipTransition, KeepFlippingTransition, OffsetFlipImage, OneByOneKeepFlipping, SnapTransition, StochasticTransition, WaveTransition } from "./transitions";
 import { inBounds } from "./util";
 
 export enum EffectType {
@@ -102,6 +102,44 @@ export class UniformMove implements Effect {
     }
 
 }
+
+
+export class CtsFlipEffect implements Effect {
+    from: Target | undefined;
+    to: Target | undefined;
+    type: EffectType;
+    constructor(from: Target | undefined, to: Target | undefined, type: EffectType) {
+        this.from = from;
+        this.to = to;
+        this.type = type;
+    }
+    generateGroupActions(time: number, flips: number): ((h: HardwareInterface) => GroupAction[]) {
+        let frames = this.generateCompleteFrames(flips) // not sure how to translate this exactly...
+        
+
+        // console.log(allFrames)
+        console.log(frames)
+        let windowFrames: Target[][] = toWindows<Target>(frames, 2);
+        // let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+
+        // return h => windowFrames.map(w => new KeepFlippingTransition().generateGroupActions(w[0], w[1], time, h)).flat();
+        
+        return h => windowFrames.map(w => new FlipTransition().generateGroupActions(w[0], w[1], time, h)).flat();
+
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        return [this.from!, this.to!]
+    }
+
+}
+
 
 export class FlipEffect implements Effect {
     from: Target | undefined;

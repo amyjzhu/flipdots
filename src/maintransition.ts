@@ -53,7 +53,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 0 -> sparkle -> rectangle 1";
 
-    parseToGroupAction(logoExample) ;
+    // parseToGroupAction(logoExample) ;
 
     let logoBasicExample = "timing: [15,15]\n\
     filepath: /animations/text-logo${i}.png \n\
@@ -677,9 +677,13 @@ export let wildfireTemplate: GridOrder = (width: number, height: number) => {
 
 
 
-let starFallExample = "timing: [2,2,2,2,2,2]\n\
+// let starFallExample = "timing: [3,6,9,12,15,18]\n\
+// filepath: /animations/starfall${i}.png \n\
+// objects: [#639bff star] [#222034 tail]\n\
+// star 0 ->* instantaneous ->* star 5\n\
+// tail 0 ->* ctsflip ->* tail 5"
+let starFallExample = "timing: [3,6,9,12,15,18]\n\
 filepath: /animations/starfall${i}.png \n\
 objects: [#639bff star] [#222034 tail]\n\
-star 0 ->* instantaneous ->* star 5\n\
-tail 0 ->* instantaneous ->* tail 5"
-// parseToGroupAction(starFallExample);
+tail 0 -> ctsflip -> tail 1 -> ctsflip -> tail 2 -> ctsflip -> tail 3 -> ctsflip -> tail 4 -> ctsflip -> tail 5"
+parseToGroupAction(starFallExample);

@@ -487,7 +487,7 @@ export class FlipTransition implements Transition {
         for (let i = 0; i < o2Flips.length; i++) {
             for (let j = 0; j < o2Flips[0].length; j++) {
                 if (o2Flips[i][j]) {
-                    subsequent.push(h.coordToIndex([i, j]));
+                    subsequent.push(h.coordToIndex([j, i]));
                 }
             }
         }
@@ -506,6 +506,55 @@ export class FlipTransition implements Transition {
             let idxes = [...oddFlips];
             if (i != 0) {
                 idxes = subsequent;
+            }
+            let action = new GroupAction(time, [[Action.FLIP, idxes]])
+            groupActions.push(action);
+        }
+
+        return groupActions;
+        // one extra at the end 
+    }
+    // just keep flipping
+}
+
+
+
+export class KeepFlippingTransition implements Transition {
+    // this probably needs an order as well
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        console.log("generating flips... ", t);
+        // o1 and o2 - for things not 
+        // the difference is things that must get flipped.
+        // everything else must stay the same
+        let oddFlips = new Set(diffIndices(o1, o2, h));
+        // the first flips are this, but the subsequent flips should just be the same as o1.
+        let subsequent = [];
+        let o2Flips = o2.draw();
+        for (let i = 0; i < o2Flips.length; i++) {
+            for (let j = 0; j < o2Flips[0].length; j++) {
+                if (o2Flips[i][j]) {
+                    subsequent.push(h.coordToIndex([j, i]));
+                }
+            }
+        }
+
+        // how many flips should I do?
+        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        let maxFlips = Math.floor(t / flipTiming);
+        let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;
+
+        let groupActions: GroupAction[] = [];
+
+        for (let i = 0; i < oddCount; i++) {
+            let time = i * flipTiming;
+            console.log("time is ", time)
+            
+            let idxes = subsequent;
+
+            if (i == 1) {
+                // oh wait... this actually depends on what colour it is.
+                // one of these depends on having odd flips the other even maybe
+                idxes = idxes.concat([...oddFlips]);
             }
             let action = new GroupAction(time, [[Action.FLIP, idxes]])
             groupActions.push(action);

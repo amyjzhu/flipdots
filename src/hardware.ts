@@ -961,7 +961,8 @@ export class FlipdotSimHardware implements HardwareInterface {
             }
 
             this.units = unitList;
-            this.indexToCoord = new Map(unitList.map(u => [u.id, [Math.floor(u.id / width), u.id % width]]));
+            this.indexToCoord = new Map(unitList.map(u => [u.id, [u.id % width, Math.floor(u.id / width)]]));
+            // this.indexToCoord = new Map(unitList.map(u => [u.id, [Math.floor(u.id / width), u.id % width]]));
             this.unitAdjacency = adjacency;
 
 
@@ -969,7 +970,8 @@ export class FlipdotSimHardware implements HardwareInterface {
                 // console.log("check: ", width);
                 // console.log("check: ", n[0], n[1], n[0] * width + n[1])
                 // console.log(n)
-                return n[0] * width + n[1]
+                return n[1] * width + n[0]
+                // return n[0] * width + n[1]
             };
 
             this.simulation = new RowOfDiscs(width, height);
@@ -1072,7 +1074,13 @@ export class FlipdotSimHardware implements HardwareInterface {
 
 
     compile(groupActions: GroupAction[]) {
+        //// just sort group actions first?
+        
+        groupActions.sort((a, b) => a.tPlus - b.tPlus);
+
         console.log(groupActions)
+        console.log(groupActions.map(ga => ga.tPlus + " " + ga.actions.map(a => a[1])))
+        
         let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
         // let cumulativeTime = 0;
         let lastTime = 0;
