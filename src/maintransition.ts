@@ -2,8 +2,8 @@ import { STLLoader } from "three/addons/loaders/STLLoader";
 import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
-import { BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, LineDiagonal, MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong, RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo } from "./transitions";
+import { AllAtOnce, BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, LineDiagonal, MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong, RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo, LayerForeBackTransition } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -53,7 +53,7 @@ if (typeof window != 'undefined') {
     objects: [#000000 rectangle] \n\
     rectangle 0 -> sparkle -> rectangle 1";
 
-    // parseToGroupAction(logoExample) ;
+    parseToGroupAction(logoExample) ;
 
     let logoBasicExample = "timing: [15,15]\n\
     filepath: /animations/text-logo${i}.png \n\
@@ -302,7 +302,7 @@ ball 3 ->* move ->* ball 8"
     msg = "bugs?\nis shrimps"
     msg = "giddyup\nthese are my horse"
     // AGAIN: HAS PROBLEMS WITH NOT FLIPPING ENOUGH TIMES IF IT'S LAST FEW!!!!!!!!
-    let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg), " ");
+    // let state = new PixelArtTarget(generateSplitflapState(sh, sw, msg), " ");
     // let sflipAnimation = new OneByOneKeepFlipping(new MatrixDown()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new BackAndForth()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
     // let sflipAnimation = new OneByOneKeepFlipping(new LeftToRight()).generateGroupActions(new PixelArtTarget([], ""), srectangle, 50, smallSfhw);
@@ -326,7 +326,33 @@ ball 3 ->* move ->* ball 8"
 
     console.log(new LineDiagonal().generateGrid(21,5));
 
-    let thenFlipTo = new AndThenFlipTo(sflipAnimation).generateGroupActions(srectangle, state, 30, smallSfhw);
+    // let thenFlipTo = new AndThenFlipTo(sflipAnimation).generateGroupActions(srectangle, state, 30, smallSfhw);
+
+
+
+    let square = new RectangleTarget(3, 3, [Math.round(w/2)+2, 2], [w, h]);
+    // let square2 = new RectangleTarget(3, 3, [Math.round(w/2)+3, 3], [w, h]);
+    let order1 = new AllAtOnce();
+    let order2 = new LineDiagonal();
+    sflipAnimation = new LayerForeBackTransition(order1, order2, 
+        srectangle, 
+        new OneByOneKeepFlipping(order1), 
+        new OneByOneKeepFlipping(order2))
+        .generateGroupActions(new PixelArtTarget([], ""), square, 200, smallSfhw);
+
+    // sflipAnimation = new OneByOneKeepFlipping(new AllAtOnce()).generateGroupActions(new PixelArtTarget([], ""), square, 200, smallSfhw);
+    // try this background layering thing
+
+    
+    // sflipAnimation = new LayerForeBackTransition(order1, order2, 
+    //     srectangle, 
+    //     new OneByOne(order1), 
+    //     new OneByOneKeepFlipping(order2))
+    //     .generateGroupActions(new PixelArtTarget([], ""), square, 200, smallSfhw);
+
+
+    // sflipAnimation = new OneByOne(order1).generateGroupActions(new PixelArtTarget([], ""), square, 200, smallSfhw);
+
     // console.log(sflipAnimation)
     // smallSfhw.compile(sflipAnimation);
     // sflipAnimation.push(new GroupAction(sflipAnimation[sflipAnimation.length-1].tPlus+1, [[Action.FLIP, []]]))
@@ -647,3 +673,13 @@ export let wildfireTemplate: GridOrder = (width: number, height: number) => {
 
 
 //// testing stuff
+
+
+
+
+let starFallExample = "timing: [2,2,2,2,2,2]\n\
+filepath: /animations/starfall${i}.png \n\
+objects: [#639bff star] [#222034 tail]\n\
+star 0 ->* instantaneous ->* star 5\n\
+tail 0 ->* instantaneous ->* tail 5"
+// parseToGroupAction(starFallExample);

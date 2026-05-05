@@ -94,6 +94,7 @@ let green = 0x02f516;
 export let DISC_SIDE_COLOUR = 0x000000;
 
 
+// export let ALPHABET_WITH_EXCLAMATION = ' AAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 export let ALPHABET_WITH_EXCLAMATION = ' abcdefghijklmnopqrstuvwxyz!?*';
 
 

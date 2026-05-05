@@ -342,41 +342,80 @@ export class Diagonal extends GridOrder {
 
 export class LineDiagonal extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {
+        let N = 0;
+        // let N = 1000;
+        // let grid = [
+        //     [N, N, N, N, N, N, 1, 2, 3, 4, 5, N, N, N, N, N, N, N, N, N, N, N, 5, 4, 3, 2, 1, N, N, N, N, N],
+        //     [N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5, N, 5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N],
+        //     [N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, 0, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N],
+        //     [N, N, N, N, N, N, N, N, N, N, N, 5, 4, 3, 2, 1, N, 1, 2, 3, 4, 5, N, N, N, N, N, N, N, N, N, N],
+        //     [N, N, N, N, N, N, 5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5, N, N, N, N, N],
+        //     [5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5]
+        // ]
+
+
+        let grid = [
+            [N, N, N, N, N, N, 1, 2, 3, 4, 5, N, N, N, N, N, N, N, N, N, N, N, 5, 4, 3, 2, 1, N, N, N, N, N],
+            [N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5, N, 5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N],
+            [N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, 0, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N],
+            [N, N, N, N, N, N, N, N, N, N, N, 5, 4, 3, 2, 1, N, 1, 2, 3, 4, 5, N, N, N, N, N, N, N, N, N, N],
+            [N, N, N, N, N, N, 5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5, N, N, N, N, N],
+            [N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N]
+        ]
+
+
+        // grid = [
+        //     [N, N, N, N, N, N, 1, 2, 3, 4, 5, N, N, N, N, N, N, N, N, N, N, N, 5, 4, 3, 2, 1, N, N, N, N, N].map(i => i == N ? N : i + 10),
+        //     [N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5, N, 5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N].map(i => i == N ? N : i + 5),
+        //     [N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, 0, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N],
+        //     [N, N, N, N, N, N, N, N, N, N, N, 5, 4, 3, 2, 1, N, 1, 2, 3, 4, 5, N, N, N, N, N, N, N, N, N, N].map(i => i == N ? N : i + 5),
+        //     [N, N, N, N, N, N, 5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5, N, N, N, N, N].map(i => i == N ? N : i + 10),
+        //     [5, 4, 3, 2, 1, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, 1, 2, 3, 4, 5].map(i => i == N ? N : i + 15),
+        // ]
+
+
+        grid.reverse();
+        return grid;
+    }
+
+    generateGridX(width: number, height: number): OrderedGrid {
         const grid = Array.from({ length: height }, () =>
-    Array(width).fill(1000)
-  );
+            Array(width).fill(-1)
+        );
 
-  const centerRow = Math.floor(height / 2);
-  const centerCol = Math.floor(width / 2);
+        const centerRow = Math.floor(height / 2);
+        const centerCol = Math.floor(width / 2);
 
-  grid[centerRow][centerCol] = 0;
+        grid[centerRow][centerCol] = 0;
 
-  for (let r = 0; r < height; r++) {
-    const d = Math.abs(r - centerRow);
+        for (let r = 0; r < height; r++) {
+            const d = Math.abs(r - centerRow);
+            if (d === 0) continue;
 
-    if (d === 0) continue;
+            const shift = (d - 1) * 5;
 
-    const shift = (d - 1) * 5
+            const isAbove = r < centerRow;
 
-    // LEFT: 5 → 1
-    for (let i = 0; i < 5; i++) {
-      const c = centerCol - 5 - shift + i;
-      if (c >= 0 && c < width) {
-        grid[r][c] = 5 - i;
-      }
-    }
+            // LEFT SIDE
+            for (let i = 0; i < 5; i++) {
+                const c = centerCol - shift - 5 + i;
+                if (c >= 0 && c < width) {
+                    grid[r][c] = isAbove
+                        ? i + 1        // 1 → 5 (reversed)
+                        : 5 - i;       // 5 → 1 (original)
+                }
+            }
 
-    // RIGHT: 1 → 5
-    for (let i = 0; i < 5; i++) {
-      const c = centerCol + 1 + shift + i;
-      if (c >= 0 && c < width) {
-        grid[r][c] = i + 1;
-      }
-    }
-  }
+            // RIGHT SIDE (unchanged)
+            for (let i = 0; i < 5; i++) {
+                const c = centerCol + shift + 1 + i;
+                if (c >= 0 && c < width) {
+                    grid[r][c] = i + 1;
+                }
+            }
+        }
 
-  return grid;
-
+        return grid;
     }
 }
 

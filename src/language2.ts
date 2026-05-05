@@ -1157,7 +1157,9 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
         console.log(o, "tagged", o.debugTag, o.frameId, frameNum)
         while (o && o.effect != undefined && frameNum <= 50) {
             console.log(o.frameId, frameNum)
+            console.log(o.effect);
 
+            console.log(frameDisplay(o.draw()))
             // timing issue - subtract the duration
             let prev = frameNum == 0 ? 1 : transitionTiming[frameNum - 1]
             console.log(prev)
@@ -1169,6 +1171,7 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
             // console.log(fullObjects(h))
             let objs = fullObjects(h);
             console.log(objs)
+            
             objs.forEach(o => o.tPlus = o.tPlus + prev)
             console.log(objs)
 
@@ -2158,7 +2161,7 @@ let [imagePath, numKeyframes] = [(i: number) => `/animations/slide-2obj${i + 1}.
 // let [imagePath, numKeyframes] = [(i: number) => `/animations/basic${i+1}.png`, 6];
 let tweenFrameNumber = 10;
 
-if (false)
+if (false) {
     // parseImagesIntoFrames([1,2,3,4,5,6,7,8,9].map(i => `/animations/golf-coloured${i}.png`)).then(data => {
     parseImagesIntoFrames([...new Array(numKeyframes)].map((_, i) => imagePath(i))).then(data => {
         // parseImagesIntoFrames([1, 2, 3].map(i => `/animations/slide-normal${i + 1}.png`)).then(data => {
@@ -2200,7 +2203,7 @@ if (false)
         console.log(allCollisionPoints([[[true, false], [true, false]], [[false, true], [false, true]]], false));
 
     })
-
+}
 
 
 

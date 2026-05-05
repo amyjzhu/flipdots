@@ -1,7 +1,8 @@
 import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit } from "./hardware";
-import { Colour } from "./language";
-import { Target } from "./language2";
+import { Colour,  } from "./language";
+import { LineTarget, Target, PixelArtTarget } from "./language2";
 import { AllAtOnce, GridOrder, StutterOrder } from "./order";
+import { frameDisplay } from "./util";
 
 export interface Transition {
     // just curry these later 
@@ -75,6 +76,8 @@ function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
                 (inA && !inB && aVal) ||
                 (!inA && inB && bVal)
             ) {
+                // why is this [c, r]???
+                // lol this breaks flipddots and other one breaks split flaps
                 result.push([c, r]);
             }
         }
@@ -722,6 +725,9 @@ export class StochasticTransition implements Transition {
 
 export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
     let coords = [...units].map(u => h.indexToCoord.get(u)!);
+    console.log(coords)
+    console.log(units);
+    console.log(h.indexToCoord);
 
     let minX = Math.min(...coords.map(u => u[0]))
     let maxX = Math.max(...coords.map(u => u[0]))
@@ -801,6 +807,56 @@ export class OneByOne implements Transition {
         return result;
 
 
+    }
+}
+
+
+export class LayerForeBackTransition implements Transition {
+    order1: GridOrder;
+    order2: GridOrder;
+    background: Target;
+    transition1: Transition;
+    transition2: Transition;
+    
+    constructor(order1: GridOrder, order2: GridOrder, background: Target, transition1: Transition, transition2: Transition) {
+        this.order1 = order1;
+        this.order2 = order2;
+        this.background = background;
+        this.transition1 = transition1;
+        this.transition2 = transition2;
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // here's the thing... 
+        // we need to make it so that the orders don't conflict.
+        // effect one should be implicitly in front 
+        // so... how do we handle this?
+        // also how does each object work?
+        
+        // okay, idea is: the actual image is taking predence, so generated with transition1
+        // background image is whole thing
+        // so, evict the order with 1
+
+        let flip = diffIndices(o1, o2, h);
+        // let [mask, x, y] = generateMaskFromCoords(flip, h);
+        // let [maskTime, times] = this.order1.applyMask(mask as boolean[][]);
+
+        
+        let t1 = this.transition1.generateGroupActions(o1, o2, t, h);
+        // this shouldn't be o1, o2...
+        let t2 = this.transition2.generateGroupActions(new PixelArtTarget([], ""), this.background, t, h);
+
+        // remove t2 according to t1
+        // where does it actually come from?
+        t2 = t2.map(ga => new GroupAction(ga.tPlus + 1, ga.actions.map(a => [a[0], a[1].filter(e => !flip.includes(e))])));
+        t2 = t2.filter(ga => ga.actions.every(a => a[1].length != 0));
+
+        let all = t1.concat(t2);
+        all.sort((ga, gb) => ga.tPlus - gb.tPlus);
+
+        console.log(all);
+        console.log(flip);
+        return all;
     }
 }
 
@@ -937,6 +993,8 @@ export class WaveTransition implements Transition {
         // let flipTiming = h.actionDurations.get(Action.FLIP)!;
 
         let unitsToFlap = new Set(diffIndices(o1, o2, h));
+        console.log(frameDisplay(o1.draw()))
+        console.log(frameDisplay(o2.draw()))
 
         let [grid, x, y] = generateMaskFromCoords([...unitsToFlap], h);
 
