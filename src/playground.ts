@@ -2,12 +2,13 @@ import { Action, GroupAction, SplitflapHardware, SplitflapState, scaleGroupActio
 import * as OrderModule from './order';
 import { GridOrder, GrowFromCentre } from './order';
 import {
-    CascadeImage, EvenOddRhythmTransition, OneByOne, OneByOneKeepFlipping, SnapTransition,
+    CascadeImage, diffIndices, EvenOddRhythmTransition, generateMaskFromCoords, OneByOne, OneByOneKeepFlipping, SnapTransition,
     StaggeredRateTransition, textToPixelCoords, Transition,
     VerticalDriftRateTransition, WaveTransition,
 } from './transitions';
 import { Colour, PixelArtTarget, Target } from './language2';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
+import { frameDisplay } from './util';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const SW = 32;
@@ -120,7 +121,7 @@ let dragPaintValue = 1;
 let isPainting = false;
 
 let startGrid: boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(false));
-let endGrid:   boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(true));
+let endGrid:   boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(false));
 let shapeDragValue = false;
 let shapeDragTarget: 'start' | 'end' | null = null;
 let selectedOrderIdx = 0;
@@ -160,6 +161,7 @@ let startShapeCanvas!: HTMLCanvasElement;
 let startShapeCtx!: CanvasRenderingContext2D;
 let endShapeCanvas!: HTMLCanvasElement;
 let endShapeCtx!: CanvasRenderingContext2D;
+let maskVizCanvas!: HTMLCanvasElement;
 
 // ── Shape helpers ─────────────────────────────────────────────────────────────
 function gridToPixelArt(grid: boolean[][]): PixelArtTarget {
@@ -370,6 +372,8 @@ function generateAndPlay() {
     simulatedFrames = simulate(groupActions);
     currentTick = 0;
 
+    renderMaskViz(o1, o2, order);
+
     stopAnimation();
     if (simulatedFrames.length === 0) return;
 
@@ -454,6 +458,49 @@ function buildPainterLegend() {
             syncLegendSelection();
         });
         legend.appendChild(item);
+    }
+}
+
+// ── Mask result visualizer ────────────────────────────────────────────────────
+function renderMaskViz(o1: PixelArtTarget, o2: PixelArtTarget, order: GridOrder) {
+    const cw = SHAPE_CELL, ch = SHAPE_CELL;
+    maskVizCanvas.width = SW * cw;
+    maskVizCanvas.height = SH * ch;
+    const ctx = maskVizCanvas.getContext('2d')!;
+
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, maskVizCanvas.width, maskVizCanvas.height);
+
+    const flip = diffIndices(o1, o2, hw);
+    if (flip.length === 0) return;
+
+    const [mask, x, y] = generateMaskFromCoords(flip, hw);
+    console.log("mask is")
+    console.log(frameDisplay(o1.draw()))
+    console.log(frameDisplay(o2.draw()))
+    console.log(mask);
+    const [maskTime] = order.applyMask(mask as boolean[][]);
+    console.log(maskTime)
+
+    const rows = maskTime.length;
+    const cols = maskTime[0]?.length ?? 0;
+    const shapeVals = maskTime.flat().filter(v => v >= 0);
+    const maxVal = Math.max(...shapeVals, 0);
+
+    const maskColor = (val: number) => {
+        const ratio = maxVal === 0 ? 0 : val / maxVal;
+        const hue = Math.round(240 - ratio * 240);
+        return `hsl(${hue}, 85%, 50%)`;
+    };
+
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const gCol = c + (x as number);
+            const gRow = r + (y as number);
+            const val = maskTime[r]?.[c];
+            ctx.fillStyle = val === undefined ? '#0d0d0d' : val === -1 ? '#4a1a4a' : maskColor(val);
+            ctx.fillRect(gCol * cw, gRow * ch, cw - 1, ch - 1);
+        }
     }
 }
 
@@ -723,7 +770,7 @@ function resetAll() {
     stopAnimation();
 
     startGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
-    endGrid   = Array.from({ length: SH }, () => new Array(SW).fill(true));
+    endGrid   = Array.from({ length: SH }, () => new Array(SW).fill(false));
     renderShapeCanvas(startShapeCtx, startGrid);
     renderShapeCanvas(endShapeCtx, endGrid);
     (document.getElementById('start-text-input') as HTMLInputElement).value = '';
@@ -776,6 +823,7 @@ function init() {
     startShapeCtx     = startShapeCanvas.getContext('2d')!;
     endShapeCanvas    = document.getElementById('end-shape-canvas') as HTMLCanvasElement;
     endShapeCtx       = endShapeCanvas.getContext('2d')!;
+    maskVizCanvas     = document.getElementById('mask-viz-canvas') as HTMLCanvasElement;
 
 
     buildPreviewControls();

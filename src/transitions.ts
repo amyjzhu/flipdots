@@ -9,7 +9,7 @@ export interface Transition {
 
 
 
-function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
+export function diffIndices(at: Target, bt: Target, h: HardwareInterface): number[] {
     const result: [number, number][] = [];
 
     // const [aCol0, aRow0] = at.position;
@@ -769,6 +769,7 @@ export class OneByOne implements Transition {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const frame = maskTime[r][c];
+                if (frame === -1 || frame === undefined) continue;
 
                 let id = h.coordToIndex([c + (x as number), r + (y as number)]);
 
@@ -851,6 +852,7 @@ export class OneByOneKeepFlipping implements Transition {
         let prevFlips: UnitId[] = [];
 
         for (const frame of allFrames) {
+            if (frame === -1 || frame === undefined) continue;
             const activeUnits = new Set(frameMap.get(frame)!);
 
             currentTime += flipTime;
@@ -860,6 +862,7 @@ export class OneByOneKeepFlipping implements Transition {
 
         }
 
+        console.log(allFrames)
         console.log(result.map(g => g.actions[0][1].length))
         while (currentTime < t) {
              currentTime += flipTime;

@@ -262,11 +262,29 @@ export class SplitFlapDisplay {
 
     resetAnimation = (newFlip: (f: number) => (i: number) => [number | undefined, number | undefined]) => {
 
+
         for (let i = 0; i < this.flaps.length; i++) {
+            // restore canonical [falling, rising, stepping] order
+            // from claude
+            const k = this.totalFlips[i] % 3;
+            if (k === 1) {
+                this.flaps[i] = [this.flaps[i][1], this.flaps[i][2], this.flaps[i][0]];
+            } else if (k === 2) {
+                this.flaps[i] = [this.flaps[i][2], this.flaps[i][0], this.flaps[i][1]];
+            }
+
             let [falling, rising, stepping] = this.flaps[i];
             rising.rotation.x = 0;
             falling.rotation.x = 0;
             stepping.rotation.x = newFlip(0)(i)[0] !== undefined ? rotFlapBack : 0;
+
+            // reset materials to the original materials
+            // from claude -- there might be a conceptually better way to do this
+            for (const piece of this.flaps[i]) {
+                const mats = (piece.children[0] as THREE.Mesh).material as THREE.Material[];
+                mats[4] = new THREE.MeshPhongMaterial({ color: "white" });
+                mats[5] = this.basicMaterial;
+            }
         }
         // console.log(this.flipCycles)
         // console.log(this.idxToUpdate)
@@ -401,11 +419,11 @@ export class SplitFlapDisplay {
 
         if (aspect < objectWidth / objectHeight) {
             // it's more wide, so set width
-            this.camera.fov = 2 * Math.atan( ( objectWidth / aspect ) / ( 2 * dist ) ) * ( 180 / Math.PI ); // in degrees
+            this.camera.fov = 2 * Math.atan((objectWidth / aspect) / (2 * dist)) * (180 / Math.PI); // in degrees
         } else {
-            this.camera.fov = 2 * Math.atan( objectHeight / ( 2 * dist ) ) * ( 180 / Math.PI ); // in degrees
+            this.camera.fov = 2 * Math.atan(objectHeight / (2 * dist)) * (180 / Math.PI); // in degrees
         }
-        console.log(aspect, objectWidth/objectHeight)
+        console.log(aspect, objectWidth / objectHeight)
         this.camera.updateProjectionMatrix();
     }
 
