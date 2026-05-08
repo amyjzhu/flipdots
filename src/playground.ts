@@ -498,7 +498,8 @@ function renderMaskViz(o1: PixelArtTarget, o2: PixelArtTarget, order: GridOrder)
             const gCol = c + (x as number);
             const gRow = r + (y as number);
             const val = maskTime[r]?.[c];
-            ctx.fillStyle = val === undefined ? '#0d0d0d' : val === -1 ? '#4a1a4a' : maskColor(val);
+            console.log(val)
+            ctx.fillStyle = val === -1 ? '#4a1a4a' : maskColor(val);
             ctx.fillRect(gCol * cw, gRow * ch, cw - 1, ch - 1);
         }
     }
