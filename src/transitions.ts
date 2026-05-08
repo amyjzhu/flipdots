@@ -1,6 +1,6 @@
-import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit } from "./hardware";
+import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit, delayGroupActions } from "./hardware";
 // import { Colour,  } from "./language";
-import { LineTarget, Target, PixelArtTarget } from "./language2";
+import { LineTarget, Target, PixelArtTarget, Colour } from "./language2";
 import { AllAtOnce, GridOrder, StutterOrder } from "./order";
 import { frameDisplay } from "./util";
 
@@ -2010,7 +2010,7 @@ export class StaggeredRateTransition implements Transition {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const orderVal = maskTime[r][c];
-                if (orderVal === -1) continue;
+                if (orderVal === -1 || orderVal === undefined) continue;
                 const id = h.coordToIndex([c + (x as number), r + (y as number)]);
                 if (!frameMap.has(orderVal)) frameMap.set(orderVal, []);
                 frameMap.get(orderVal)!.push(id);
@@ -2072,7 +2072,7 @@ export class VerticalDriftRateTransition implements Transition {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const orderVal = maskTime[r][c];
-                if (orderVal === -1) continue;
+                if (orderVal === -1 || orderVal == undefined) continue;
                 const id = h.coordToIndex([c + (x as number), r + (y as number)]);
                 if (!frameMap.has(orderVal)) frameMap.set(orderVal, []);
                 frameMap.get(orderVal)!.push(id);
@@ -2154,7 +2154,7 @@ export class EvenOddRhythmTransition implements Transition {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const orderVal = maskTime[r][c];
-                if (orderVal === -1) continue;
+                if (orderVal === -1 || orderVal == undefined) continue;
                 const id = h.coordToIndex([c + (x as number), r + (y as number)]);
                 if (!frameMap.has(orderVal)) frameMap.set(orderVal, []);
                 frameMap.get(orderVal)!.push(id);

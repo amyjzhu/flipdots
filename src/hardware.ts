@@ -85,6 +85,8 @@ let actionToString = (action: Action) => {
             return "set";
         case Action.FLUTTER:
             return "flutter";
+        default:
+            return "unknown";
     }
 }
 
