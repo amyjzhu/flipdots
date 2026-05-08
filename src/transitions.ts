@@ -1,6 +1,8 @@
-import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit, delayGroupActions } from "./hardware";
-import { Target, Colour } from "./language2";
+import { HardwareInterface, GroupAction, Action, Duration, Time, UnitId, SplitflapState, SplitflapHardware, isSplitflapHardware, SplitflapUnit, FlipdotSimHardware, Unit } from "./hardware";
+// import { Colour,  } from "./language";
+import { LineTarget, Target, PixelArtTarget } from "./language2";
 import { AllAtOnce, GridOrder, StutterOrder } from "./order";
+import { frameDisplay } from "./util";
 
 export interface Transition {
     // just curry these later 
@@ -74,6 +76,8 @@ export function diffIndices(at: Target, bt: Target, h: HardwareInterface): numbe
                 (inA && !inB && aVal) ||
                 (!inA && inB && bVal)
             ) {
+                // why is this [c, r]???
+                // lol this breaks flipddots and other one breaks split flaps
                 result.push([c, r]);
             }
         }
@@ -483,7 +487,7 @@ export class FlipTransition implements Transition {
         for (let i = 0; i < o2Flips.length; i++) {
             for (let j = 0; j < o2Flips[0].length; j++) {
                 if (o2Flips[i][j]) {
-                    subsequent.push(h.coordToIndex([i, j]));
+                    subsequent.push(h.coordToIndex([j, i]));
                 }
             }
         }
@@ -502,6 +506,55 @@ export class FlipTransition implements Transition {
             let idxes = [...oddFlips];
             if (i != 0) {
                 idxes = subsequent;
+            }
+            let action = new GroupAction(time, [[Action.FLIP, idxes]])
+            groupActions.push(action);
+        }
+
+        return groupActions;
+        // one extra at the end 
+    }
+    // just keep flipping
+}
+
+
+
+export class KeepFlippingTransition implements Transition {
+    // this probably needs an order as well
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        console.log("generating flips... ", t);
+        // o1 and o2 - for things not 
+        // the difference is things that must get flipped.
+        // everything else must stay the same
+        let oddFlips = new Set(diffIndices(o1, o2, h));
+        // the first flips are this, but the subsequent flips should just be the same as o1.
+        let subsequent = [];
+        let o2Flips = o2.draw();
+        for (let i = 0; i < o2Flips.length; i++) {
+            for (let j = 0; j < o2Flips[0].length; j++) {
+                if (o2Flips[i][j]) {
+                    subsequent.push(h.coordToIndex([j, i]));
+                }
+            }
+        }
+
+        // how many flips should I do?
+        let flipTiming = h.actionDurations.get(Action.FLIP)!;
+        let maxFlips = Math.floor(t / flipTiming);
+        let oddCount = maxFlips % 2 == 0 ? maxFlips - 1 : maxFlips;
+
+        let groupActions: GroupAction[] = [];
+
+        for (let i = 0; i < oddCount; i++) {
+            let time = i * flipTiming;
+            console.log("time is ", time)
+            
+            let idxes = subsequent;
+
+            if (i == 1) {
+                // oh wait... this actually depends on what colour it is.
+                // one of these depends on having odd flips the other even maybe
+                idxes = idxes.concat([...oddFlips]);
             }
             let action = new GroupAction(time, [[Action.FLIP, idxes]])
             groupActions.push(action);
@@ -721,6 +774,9 @@ export class StochasticTransition implements Transition {
 
 export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
     let coords = [...units].map(u => h.indexToCoord.get(u)!);
+    console.log(coords)
+    console.log(units);
+    console.log(h.indexToCoord);
 
     let minX = Math.min(...coords.map(u => u[0]))
     let maxX = Math.max(...coords.map(u => u[0]))
@@ -801,6 +857,56 @@ export class OneByOne implements Transition {
         return result;
 
 
+    }
+}
+
+
+export class LayerForeBackTransition implements Transition {
+    order1: GridOrder;
+    order2: GridOrder;
+    background: Target;
+    transition1: Transition;
+    transition2: Transition;
+    
+    constructor(order1: GridOrder, order2: GridOrder, background: Target, transition1: Transition, transition2: Transition) {
+        this.order1 = order1;
+        this.order2 = order2;
+        this.background = background;
+        this.transition1 = transition1;
+        this.transition2 = transition2;
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // here's the thing... 
+        // we need to make it so that the orders don't conflict.
+        // effect one should be implicitly in front 
+        // so... how do we handle this?
+        // also how does each object work?
+        
+        // okay, idea is: the actual image is taking predence, so generated with transition1
+        // background image is whole thing
+        // so, evict the order with 1
+
+        let flip = diffIndices(o1, o2, h);
+        // let [mask, x, y] = generateMaskFromCoords(flip, h);
+        // let [maskTime, times] = this.order1.applyMask(mask as boolean[][]);
+
+        
+        let t1 = this.transition1.generateGroupActions(o1, o2, t, h);
+        // this shouldn't be o1, o2...
+        let t2 = this.transition2.generateGroupActions(new PixelArtTarget([], ""), this.background, t, h);
+
+        // remove t2 according to t1
+        // where does it actually come from?
+        t2 = t2.map(ga => new GroupAction(ga.tPlus + 1, ga.actions.map(a => [a[0], a[1].filter(e => !flip.includes(e))])));
+        t2 = t2.filter(ga => ga.actions.every(a => a[1].length != 0));
+
+        let all = t1.concat(t2);
+        all.sort((ga, gb) => ga.tPlus - gb.tPlus);
+
+        console.log(all);
+        console.log(flip);
+        return all;
     }
 }
 
@@ -939,6 +1045,8 @@ export class WaveTransition implements Transition {
         // let flipTiming = h.actionDurations.get(Action.FLIP)!;
 
         let unitsToFlap = new Set(diffIndices(o1, o2, h));
+        console.log(frameDisplay(o1.draw()))
+        console.log(frameDisplay(o2.draw()))
 
         let [grid, x, y] = generateMaskFromCoords([...unitsToFlap], h);
 
