@@ -300,6 +300,13 @@
           <label>Reel</label>
           <input type="text" id="reel-input" value=" abcdefghijklmnopqrstuvwxyz!?*">
         </div>
+        <div class="field">
+          <label>Source</label>
+          <select id="source-select">
+            <option value="shapes">Shapes</option>
+            <option value="characters">Characters</option>
+          </select>
+        </div>
         <button id="generate-btn">Generate &amp; Play</button>
       </div>
 
@@ -323,6 +330,27 @@
             </div>
             <canvas id="end-shape-canvas" style="display:block; border:1px solid #444; cursor:crosshair;"></canvas>
             <input type="text" id="end-text-input" placeholder="text…" style="margin-top:4px; width:100%; background:#1e1e1e; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
+          </div>
+        </div>
+      </div>
+
+      <div id="char-section">
+        <h2>Characters</h2>
+        <p style="font-size:10px; color:#666; margin-bottom:6px;">Click a cell · type to set · arrows to navigate · Esc to deselect · set Source = Characters to use</p>
+        <div style="display:flex; gap:16px; align-items:flex-start;">
+          <div>
+            <h3>Start</h3>
+            <div style="display:flex; gap:6px; margin-bottom:4px;">
+              <button class="shape-btn" id="char-start-clear-btn">Clear</button>
+            </div>
+            <canvas id="start-char-canvas" style="display:block; border:1px solid #444; cursor:text; outline:none;"></canvas>
+          </div>
+          <div>
+            <h3>End</h3>
+            <div style="display:flex; gap:6px; margin-bottom:4px;">
+              <button class="shape-btn" id="char-end-clear-btn">Clear</button>
+            </div>
+            <canvas id="end-char-canvas" style="display:block; border:1px solid #444; cursor:text; outline:none;"></canvas>
           </div>
         </div>
       </div>
