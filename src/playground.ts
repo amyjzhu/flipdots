@@ -18,6 +18,8 @@ const CELL_W = 16;
 const CELL_H = 24;
 const PAINTER_CELL = 18;
 const SHAPE_CELL = 10;
+const CHAR_W = 16;
+const CHAR_H = 22;
 
 // ── PainterOrder ─────────────────────────────────────────────────────────────
 class PainterOrder extends GridOrder {
@@ -124,6 +126,13 @@ let startGrid: boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill
 let endGrid:   boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(false));
 let shapeDragValue = false;
 let shapeDragTarget: 'start' | 'end' | null = null;
+
+let startCharGrid: string[][] = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+let endCharGrid:   string[][] = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+let charFocusedCell: [number, number] | null = null;
+let charFocusedTarget: 'start' | 'end' | null = null;
+let useCharSource = false;
+
 let selectedOrderIdx = 0;
 let selectedTransitionIdx = 0;
 
@@ -162,6 +171,11 @@ let startShapeCtx!: CanvasRenderingContext2D;
 let endShapeCanvas!: HTMLCanvasElement;
 let endShapeCtx!: CanvasRenderingContext2D;
 let maskVizCanvas!: HTMLCanvasElement;
+let startCharCanvas!: HTMLCanvasElement;
+let startCharCtx!: CanvasRenderingContext2D;
+let endCharCanvas!: HTMLCanvasElement;
+let endCharCtx!: CanvasRenderingContext2D;
+let sourceSelect!: HTMLSelectElement;
 
 // ── Shape helpers ─────────────────────────────────────────────────────────────
 function gridToPixelArt(grid: boolean[][]): PixelArtTarget {
@@ -262,6 +276,180 @@ function buildShapeCanvases() {
     });
 }
 
+// ── Character grid ────────────────────────────────────────────────────────────
+function renderCharCanvas(ctx: CanvasRenderingContext2D, grid: string[][], focused: [number, number] | null) {
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, SW * CHAR_W, SH * CHAR_H);
+    for (let row = 0; row < SH; row++) {
+        for (let col = 0; col < SW; col++) {
+            const x = col * CHAR_W;
+            const y = row * CHAR_H;
+            const ch = grid[row][col];
+            const isFocused = focused !== null && focused[0] === col && focused[1] === row;
+            ctx.fillStyle = isFocused ? '#1a2a4a' : (ch !== ' ' ? '#1a2a1a' : '#181818');
+            ctx.fillRect(x + 1, y + 1, CHAR_W - 2, CHAR_H - 2);
+            if (ch !== ' ') {
+                ctx.fillStyle = '#88cc44';
+                ctx.font = `bold ${Math.round(CHAR_H * 0.6)}px monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ch, x + CHAR_W / 2, y + CHAR_H / 2);
+            }
+            if (isFocused) {
+                ctx.strokeStyle = '#4488ff';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x + 0.5, y + 0.5, CHAR_W - 2, CHAR_H - 2);
+            }
+        }
+    }
+}
+
+function computeFlipCounts(startCG: string[][], endCG: string[][]): number[] {
+    const counts: number[] = [];
+    for (let row = 0; row < SH; row++) {
+        for (let col = 0; col < SW; col++) {
+            const si = REEL.indexOf(startCG[row][col]);
+            const ei = REEL.indexOf(endCG[row][col]);
+            const s = si >= 0 ? si : 0;
+            const e = ei >= 0 ? ei : 0;
+            counts.push((e - s + REEL.length) % REEL.length);
+        }
+    }
+    return counts;
+}
+
+function expandForFlipCounts(groupActions: GroupAction[], flipCounts: number[]): GroupAction[] {
+    const firstTick = new Map<number, number>();
+    for (const ga of groupActions) {
+        for (const [action, ids] of ga.actions) {
+            if (action === Action.FLIP || action === Action.INCREMENT) {
+                for (const id of ids) {
+                    if (!firstTick.has(id)) firstTick.set(id, Math.round(ga.tPlus));
+                }
+            }
+        }
+    }
+    const extra: GroupAction[] = [];
+    for (let id = 0; id < flipCounts.length; id++) {
+        const n = flipCounts[id];
+        if (n <= 1) continue;
+        const t = firstTick.get(id) ?? 0;
+        for (let i = 1; i < n; i++) {
+            extra.push(new GroupAction(t + i, [[Action.FLIP, [id]]]));
+        }
+    }
+    return [...groupActions, ...extra];
+}
+
+function buildCharCanvases() {
+    startCharCanvas.width = SW * CHAR_W;
+    startCharCanvas.height = SH * CHAR_H;
+    startCharCanvas.tabIndex = 0;
+    endCharCanvas.width = SW * CHAR_W;
+    endCharCanvas.height = SH * CHAR_H;
+    endCharCanvas.tabIndex = 0;
+
+    renderCharCanvas(startCharCtx, startCharGrid, null);
+    renderCharCanvas(endCharCtx, endCharGrid, null);
+
+    function attachListeners(canvas: HTMLCanvasElement, which: 'start' | 'end') {
+        const grid = () => which === 'start' ? startCharGrid : endCharGrid;
+        const otherGrid = () => which === 'start' ? endCharGrid : startCharGrid;
+        const ctx = () => which === 'start' ? startCharCtx : endCharCtx;
+        const otherCtx = () => which === 'start' ? endCharCtx : startCharCtx;
+
+        canvas.addEventListener('mousedown', e => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const col = Math.floor((e.clientX - rect.left) / CHAR_W);
+            const row = Math.floor((e.clientY - rect.top) / CHAR_H);
+            if (col < 0 || col >= SW || row < 0 || row >= SH) return;
+            if (charFocusedTarget !== which) {
+                renderCharCanvas(otherCtx(), otherGrid(), null);
+            }
+            charFocusedCell = [col, row];
+            charFocusedTarget = which;
+            renderCharCanvas(ctx(), grid(), charFocusedCell);
+            canvas.focus();
+        });
+
+        canvas.addEventListener('keydown', e => {
+            if (charFocusedCell === null || charFocusedTarget !== which) return;
+            const [col, row] = charFocusedCell;
+            const g = grid();
+
+            if (e.key === 'Tab') return;
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(e.key) || e.key.length === 1) {
+                e.preventDefault();
+            }
+
+            if (e.key === 'Escape') {
+                charFocusedCell = null;
+                charFocusedTarget = null;
+                renderCharCanvas(ctx(), g, null);
+                canvas.blur();
+                return;
+            }
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+                g[row][col] = ' ';
+                const prevCol = col > 0 ? col - 1 : SW - 1;
+                const prevRow = col > 0 ? row : Math.max(0, row - 1);
+                charFocusedCell = [prevCol, prevRow];
+                renderCharCanvas(ctx(), g, charFocusedCell);
+                return;
+            }
+            if (e.key === 'ArrowRight') {
+                charFocusedCell = [(col + 1) % SW, col + 1 < SW ? row : (row + 1) % SH];
+                renderCharCanvas(ctx(), g, charFocusedCell);
+                return;
+            }
+            if (e.key === 'ArrowLeft') {
+                charFocusedCell = [col > 0 ? col - 1 : SW - 1, col > 0 ? row : Math.max(0, row - 1)];
+                renderCharCanvas(ctx(), g, charFocusedCell);
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                charFocusedCell = [col, (row + 1) % SH];
+                renderCharCanvas(ctx(), g, charFocusedCell);
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                charFocusedCell = [col, (row + SH - 1) % SH];
+                renderCharCanvas(ctx(), g, charFocusedCell);
+                return;
+            }
+            if (e.key.length === 1) {
+                g[row][col] = e.key;
+                const nextCol = (col + 1) % SW;
+                const nextRow = col + 1 < SW ? row : (row + 1) % SH;
+                charFocusedCell = [nextCol, nextRow];
+                renderCharCanvas(ctx(), g, charFocusedCell);
+                return;
+            }
+        });
+
+        canvas.addEventListener('blur', () => {
+            if (charFocusedTarget === which) {
+                charFocusedCell = null;
+                charFocusedTarget = null;
+                renderCharCanvas(ctx(), grid(), null);
+            }
+        });
+    }
+
+    attachListeners(startCharCanvas, 'start');
+    attachListeners(endCharCanvas, 'end');
+
+    document.getElementById('char-start-clear-btn')!.addEventListener('click', () => {
+        startCharGrid = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+        renderCharCanvas(startCharCtx, startCharGrid, null);
+    });
+    document.getElementById('char-end-clear-btn')!.addEventListener('click', () => {
+        endCharGrid = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+        renderCharCanvas(endCharCtx, endCharGrid, null);
+    });
+}
+
 // ── Colour helpers ────────────────────────────────────────────────────────────
 function timeToColor(value: number, maxValue: number): string {
     if (value === 0) return '#222';
@@ -272,9 +460,9 @@ function timeToColor(value: number, maxValue: number): string {
 }
 
 // ── Simulation ────────────────────────────────────────────────────────────────
-function simulate(groupActions: GroupAction[]): string[][] {
+function simulate(groupActions: GroupAction[], initialState?: number[]): string[][] {
     const numUnits = SW * SH;
-    const state = new Array(numUnits).fill(0);
+    const state = initialState ? [...initialState] : new Array(numUnits).fill(0);
     const maxTick = groupActions.length > 0
         ? Math.ceil(Math.max(...groupActions.map(ga => ga.tPlus)))
         : 0;
@@ -355,9 +543,30 @@ function generateAndPlay() {
     const t = Math.max(1, parseInt(durationInput.value) || 200);
     const scale = parseFloat(scaleInput.value) || 1;
 
-    const o1 = gridToPixelArt(startGrid);
-    const o2 = gridToPixelArt(endGrid);
-    let groupActions = transition.generateGroupActions(o1, o2, t, hw);
+    let o1: PixelArtTarget;
+    let o2: PixelArtTarget;
+    let groupActions: GroupAction[];
+    let initialState: number[] | undefined;
+
+    if (useCharSource) {
+        const flipCounts = computeFlipCounts(startCharGrid, endCharGrid);
+        const o2Grid: boolean[][] = Array.from({ length: SH }, (_, row) =>
+            Array.from({ length: SW }, (_, col) => flipCounts[row * SW + col] > 0)
+        );
+        o1 = gridToPixelArt(Array.from({ length: SH }, () => new Array(SW).fill(false)));
+        o2 = gridToPixelArt(o2Grid);
+        initialState = startCharGrid.flat().map(ch => {
+            const i = REEL.indexOf(ch);
+            return i >= 0 ? i : 0;
+        });
+        groupActions = transition.generateGroupActions(o1, o2, t, hw);
+        groupActions = expandForFlipCounts(groupActions, flipCounts);
+    } else {
+        o1 = gridToPixelArt(startGrid);
+        o2 = gridToPixelArt(endGrid);
+        groupActions = transition.generateGroupActions(o1, o2, t, hw);
+    }
+
     if (scale !== 1) groupActions = scaleGroupActions(groupActions, scale);
 
     if (is3dMode && hw3d) {
@@ -369,7 +578,7 @@ function generateAndPlay() {
         hw3d.compile(flipped);
     }
 
-    simulatedFrames = simulate(groupActions);
+    simulatedFrames = simulate(groupActions, initialState);
     currentTick = 0;
 
     renderMaskViz(o1, o2, order);
@@ -776,6 +985,13 @@ function resetAll() {
     (document.getElementById('start-text-input') as HTMLInputElement).value = '';
     (document.getElementById('end-text-input')   as HTMLInputElement).value = '';
 
+    startCharGrid = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+    endCharGrid   = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+    renderCharCanvas(startCharCtx, startCharGrid, null);
+    renderCharCanvas(endCharCtx, endCharGrid, null);
+    sourceSelect.value = 'shapes';
+    useCharSource = false;
+
     painterGrid = Array.from({ length: SH }, () => new Array(SW).fill(0));
     renderPainter();
 
@@ -824,14 +1040,23 @@ function init() {
     endShapeCanvas    = document.getElementById('end-shape-canvas') as HTMLCanvasElement;
     endShapeCtx       = endShapeCanvas.getContext('2d')!;
     maskVizCanvas     = document.getElementById('mask-viz-canvas') as HTMLCanvasElement;
-
+    startCharCanvas   = document.getElementById('start-char-canvas') as HTMLCanvasElement;
+    startCharCtx      = startCharCanvas.getContext('2d')!;
+    endCharCanvas     = document.getElementById('end-char-canvas') as HTMLCanvasElement;
+    endCharCtx        = endCharCanvas.getContext('2d')!;
+    sourceSelect      = document.getElementById('source-select') as HTMLSelectElement;
 
     buildPreviewControls();
     buildComposerUI();
     buildReferencePanel();
     buildPainter();
     buildShapeCanvases();
+    buildCharCanvases();
     buildExportModal();
+
+    sourceSelect.addEventListener('change', () => {
+        useCharSource = sourceSelect.value === 'characters';
+    });
 
     document.getElementById('reset-btn')!.addEventListener('click', resetAll);
 
