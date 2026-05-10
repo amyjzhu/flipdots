@@ -2,7 +2,8 @@ import { Action, GroupAction, SplitflapHardware, SplitflapState, scaleGroupActio
 import * as OrderModule from './order';
 import { GridOrder, GrowFromCentre } from './order';
 import {
-    CascadeImage, diffIndices, EvenOddRhythmTransition, generateMaskFromCoords, OneByOne, OneByOneKeepFlipping, SnapTransition,
+    CascadeImage, diffIndices, EvenOddRhythmTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
+    generateMaskFromCoords, OneByOne, OneByOneKeepFlipping, SnapTransition,
     StaggeredRateTransition, textToPixelCoords, Transition,
     VerticalDriftRateTransition, WaveTransition,
 } from './transitions';
@@ -102,6 +103,9 @@ interface TransitionDef {
     name: string;
     description: string;
     needsOrder: boolean;
+    needsFlipsPerSecond?: boolean;
+    needsSyncStart?: boolean;
+    needsOnChar?: boolean;
     create: (order: GridOrder) => Transition;
 }
 
@@ -113,7 +117,10 @@ const TRANSITION_DEFS: TransitionDef[] = [
     { name: 'SnapTransition',       description: 'All differing units flip at time t',           needsOrder: false, create: _o => new SnapTransition() },
     { name: 'StaggeredRate',        description: 'Each order group fires at orderVal × delay',    needsOrder: true,  create: o => new StaggeredRateTransition(o) },
     { name: 'VerticalDriftRate',    description: 'Flip rate depends on vertical offset from prev group', needsOrder: true, create: o => new VerticalDriftRateTransition(o) },
-    { name: 'EvenOddRhythm',        description: 'Even groups: 1,2,1,2… / Odd groups: 2,1,2,1…',       needsOrder: true, create: o => new EvenOddRhythmTransition(o) },
+    { name: 'EvenOddRhythm',        description: 'Even groups: 1,2,1,2… / Odd groups: 2,1,2,1…',       needsOrder: true,  create: o => new EvenOddRhythmTransition(o) },
+    { name: 'FlipConstantSpeed',    description: 'Each unit flips at a fixed rate to reach its target',  needsOrder: false, needsFlipsPerSecond: true, needsOnChar: true, create: _o => new FlipConstantSpeed() },
+    { name: 'FlipDirectional',      description: 'Units flip in order direction, sync or staggered',     needsOrder: true,  needsFlipsPerSecond: true, needsSyncStart: true, needsOnChar: true, create: o => new FlipDirectional(o) },
+    { name: 'FlipSyncEnd',          description: 'Units speed-match so all finish at the same time',     needsOrder: false, needsFlipsPerSecond: true, needsSyncStart: true, needsOnChar: true, create: _o => new FlipSyncEnd() },
 ];
 
 // ── Mutable state ─────────────────────────────────────────────────────────────
@@ -123,7 +130,7 @@ let dragPaintValue = 1;
 let isPainting = false;
 
 let startGrid: boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(false));
-let endGrid:   boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(false));
+let endGrid:   boolean[][] = Array.from({ length: SH }, () => new Array(SW).fill(true));
 let shapeDragValue = false;
 let shapeDragTarget: 'start' | 'end' | null = null;
 
@@ -166,6 +173,10 @@ let playBtn: HTMLButtonElement;
 let loopBtn: HTMLButtonElement;
 let speedLabel: HTMLElement;
 let reelInput: HTMLInputElement;
+let fpsInput!: HTMLInputElement;
+let fpsField!: HTMLElement;
+let syncStartInput!: HTMLInputElement;
+let syncStartField!: HTMLElement;
 let startShapeCanvas!: HTMLCanvasElement;
 let startShapeCtx!: CanvasRenderingContext2D;
 let endShapeCanvas!: HTMLCanvasElement;
@@ -178,6 +189,19 @@ let endCharCtx!: CanvasRenderingContext2D;
 let sourceSelect!: HTMLSelectElement;
 
 // ── Shape helpers ─────────────────────────────────────────────────────────────
+
+function toShiftedPixelArt(grid: (string | boolean)[][], reel: string[], offset = 2): PixelArtTarget {
+    const defaultOn = reel.find(c => c !== ' ') ?? reel[0];
+    const shifted = grid.map(row =>
+        row.map(cell => {
+            const ch = cell === true ? defaultOn : cell === false ? ' ' : cell as string;
+            const idx = reel.indexOf(ch);
+            return idx === -1 ? ch : reel[(idx + offset) % reel.length];
+        })
+    );
+    return new PixelArtTarget(shifted, ' ');
+}
+
 function gridToPixelArt(grid: boolean[][]): PixelArtTarget {
     return new PixelArtTarget(grid.map(row => row.map(v => v as unknown as Colour)), false as unknown as Colour);
 }
@@ -191,6 +215,18 @@ function renderShapeCanvas(ctx: CanvasRenderingContext2D, grid: boolean[][]) {
             ctx.fillRect(x, y, SHAPE_CELL - 1, SHAPE_CELL - 1);
         }
     }
+}
+
+const SHAPE_ON_CHAR = 'd';
+
+function syncCharFromShape(which: 'start' | 'end') {
+    const shapeGrid = which === 'start' ? startGrid : endGrid;
+    const charGrid  = which === 'start' ? startCharGrid : endCharGrid;
+    const charCtx   = which === 'start' ? startCharCtx : endCharCtx;
+    for (let r = 0; r < SH; r++)
+        for (let c = 0; c < SW; c++)
+            charGrid[r][c] = shapeGrid[r][c] ? SHAPE_ON_CHAR : ' ';
+    renderCharCanvas(charCtx, charGrid, null);
 }
 
 function shapeCanvasCellAt(e: MouseEvent, canvas: HTMLCanvasElement): [number, number] | null {
@@ -218,6 +254,8 @@ function buildShapeCanvases() {
 
     renderShapeCanvas(startShapeCtx, startGrid);
     renderShapeCanvas(endShapeCtx, endGrid);
+    syncCharFromShape('start');
+    syncCharFromShape('end');
 
     function attachListeners(canvas: HTMLCanvasElement, which: 'start' | 'end') {
         const grid = () => which === 'start' ? startGrid : endGrid;
@@ -232,6 +270,7 @@ function buildShapeCanvases() {
             shapeDragTarget = which;
             grid()[row][col] = shapeDragValue;
             renderShapeCanvas(ctx(), grid());
+            syncCharFromShape(which);
         });
         canvas.addEventListener('mousemove', e => {
             if (shapeDragTarget !== which) return;
@@ -240,6 +279,7 @@ function buildShapeCanvases() {
             const [col, row] = cell;
             grid()[row][col] = shapeDragValue;
             renderShapeCanvas(ctx(), grid());
+            syncCharFromShape(which);
         });
         canvas.addEventListener('mouseup', () => { shapeDragTarget = null; });
         canvas.addEventListener('mouseleave', () => { shapeDragTarget = null; });
@@ -252,27 +292,33 @@ function buildShapeCanvases() {
     document.getElementById('start-clear-btn')!.addEventListener('click', () => {
         startGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
         renderShapeCanvas(startShapeCtx, startGrid);
+        syncCharFromShape('start');
     });
     document.getElementById('start-fill-btn')!.addEventListener('click', () => {
         startGrid = Array.from({ length: SH }, () => new Array(SW).fill(true));
         renderShapeCanvas(startShapeCtx, startGrid);
+        syncCharFromShape('start');
     });
     document.getElementById('end-clear-btn')!.addEventListener('click', () => {
         endGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
         renderShapeCanvas(endShapeCtx, endGrid);
+        syncCharFromShape('end');
     });
     document.getElementById('end-fill-btn')!.addEventListener('click', () => {
         endGrid = Array.from({ length: SH }, () => new Array(SW).fill(true));
         renderShapeCanvas(endShapeCtx, endGrid);
+        syncCharFromShape('end');
     });
 
     document.getElementById('start-text-input')!.addEventListener('input', e => {
         startGrid = textToGrid((e.target as HTMLInputElement).value);
         renderShapeCanvas(startShapeCtx, startGrid);
+        syncCharFromShape('start');
     });
     document.getElementById('end-text-input')!.addEventListener('input', e => {
         endGrid = textToGrid((e.target as HTMLInputElement).value);
         renderShapeCanvas(endShapeCtx, endGrid);
+        syncCharFromShape('end');
     });
 }
 
@@ -539,6 +585,8 @@ function generateAndPlay() {
     const text = textInput.value || 'hello';
     const order = orderDef.create(text);
     const transition = transDef.create(order);
+    if (transDef.needsFlipsPerSecond) (transition as any).flipsPerSecond = fpsInput ? parseFloat(fpsInput.value) || 3 : 3;
+    if (transDef.needsSyncStart)      (transition as any).synchronizedStart = syncStartInput ? syncStartInput.checked : true;
 
     const t = Math.max(1, parseInt(durationInput.value) || 200);
     const scale = parseFloat(scaleInput.value) || 1;
@@ -561,6 +609,11 @@ function generateAndPlay() {
         });
         groupActions = transition.generateGroupActions(o1, o2, t, hw);
         groupActions = expandForFlipCounts(groupActions, flipCounts);
+    } else if (transDef.needsOnChar) {
+        const emptyGrid = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+        o1 = new PixelArtTarget(emptyGrid, ' ');
+        o2 = toShiftedPixelArt(endCharGrid, REEL);
+        groupActions = transition.generateGroupActions(o1, o2, t, hw);
     } else {
         o1 = gridToPixelArt(startGrid);
         o2 = gridToPixelArt(endGrid);
@@ -745,8 +798,10 @@ function buildComposerUI() {
 
     transitionSelect.addEventListener('change', () => {
         selectedTransitionIdx = parseInt(transitionSelect.value);
-        const needsOrder = TRANSITION_DEFS[selectedTransitionIdx].needsOrder;
-        orderField.style.display = needsOrder ? '' : 'none';
+        const def = TRANSITION_DEFS[selectedTransitionIdx];
+        orderField.style.display     = def.needsOrder          ? '' : 'none';
+        fpsField.style.display       = def.needsFlipsPerSecond ? '' : 'none';
+        syncStartField.style.display = def.needsSyncStart      ? '' : 'none';
     });
 
     // Orders
@@ -1035,6 +1090,11 @@ function init() {
     loopBtn         = document.getElementById('loop-btn') as HTMLButtonElement;
     speedLabel      = document.getElementById('speed-label')!;
     reelInput         = document.getElementById('reel-input') as HTMLInputElement;
+    fpsInput          = document.getElementById('fps-input') as HTMLInputElement;
+    fpsField          = document.getElementById('fps-field')!;
+    syncStartInput    = document.getElementById('sync-start-input') as HTMLInputElement;
+    syncStartField    = document.getElementById('sync-start-field')!;
+
     startShapeCanvas  = document.getElementById('start-shape-canvas') as HTMLCanvasElement;
     startShapeCtx     = startShapeCanvas.getContext('2d')!;
     endShapeCanvas    = document.getElementById('end-shape-canvas') as HTMLCanvasElement;

@@ -1,6 +1,7 @@
 // this is just chatgpt
 import * as THREE from "three";
 import { Colour } from "./language2";
+import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 export class MinPriorityQueue<T> {
   private heap: { item: T; priority: number }[] = [];
 
@@ -499,4 +500,78 @@ export class Perlin {
 
     return this.lerp(x1, x2, v); // range ≈ [-1,1]
   }
+}
+
+
+
+export function generateSplitflapState(h: number, w: number, msg: string, position?: [number, number]) {
+    let rows = msg.split("\n");
+    let states = rows.map(r => r.split(""));
+    let rowStart = position ? position[1] : Math.round((h - rows.length)/2);
+
+    // let states = rows.map(r => r.split("").map(c => new SplitflapState(c)));
+
+    let bank = ALPHABET_WITH_EXCLAMATION.split("");
+    // cipher it...
+    states = states.map(r => r.map(c => {
+        let idx = bank.findIndex(t => t == c);
+        if (idx == -1) {
+            throw new Error("message can't be parsed")
+        }
+        return bank[(idx+2) % bank.length]
+    }))
+    console.log(states);
+
+    let finalState = [...new Array(h)].map(r => [...new Array(w)].map(c => "b"));
+    // let finalState = [...new Array(h)].map(r => [...new Array(w)].map(c => " "));
+    for (let ri = 0; ri < rows.length; ri++) {
+        let row = rows[ri];
+        let colStart = position ? position[0] : Math.round((w - row.length) / 2);
+        for (let ci = 0; ci < row.length; ci++) {
+            finalState[ri + rowStart][ci + colStart] = states[ri][ci];
+        }
+    }
+    console.log(finalState)
+    return finalState
+}
+
+export function computeFlips(frames: number[][]): number[][] {
+    const flips: number[][] = [];
+
+    if (frames.length === 0) return flips;
+
+    // Convert frame arrays to sets for fast lookup
+    const frameSets = frames.map(f => new Set(f));
+
+    // --- Frame 1: always flip all lights that are ON ---
+    flips.push([...frameSets[0]]);
+
+    // --- Later frames: flip indices that changed state ---
+    for (let i = 1; i < frameSets.length; i++) {
+        const prev = frameSets[i - 1];
+        const curr = frameSets[i];
+
+        const changes: number[] = [];
+
+        // Get all lights seen in either frame
+        const allIndices = new Set([...prev, ...curr]);
+
+        for (const light of allIndices) {
+            const wasOn = prev.has(light);
+            const isOn = curr.has(light);
+
+            if (wasOn !== isOn) {
+                changes.push(light);
+            }
+        }
+
+        flips.push(changes);
+    }
+
+    // --- Final extra frame: flip everything OFF ---
+    const lastFrame = frameSets[frameSets.length - 1];
+    const finalFlips = [...lastFrame]; // all currently ON lights must flip OFF
+    flips.push(finalFlips);
+
+    return flips;
 }

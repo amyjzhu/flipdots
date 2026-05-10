@@ -300,6 +300,18 @@
           <label>Reel</label>
           <input type="text" id="reel-input" value=" abcdefghijklmnopqrstuvwxyz!?*">
         </div>
+        <div class="field" id="fps-field" style="display:none">
+          <label>Flips/sec</label>
+          <input type="number" id="fps-input" value="1" min="0.1" max="100" step="0.1">
+        </div>
+        <div class="field" id="sync-start-field" style="display:none">
+          <label>Sync start</label>
+          <input type="checkbox" id="sync-start-input" checked>
+        </div>
+        <div class="field" id="on-char-field" style="display:none">
+          <label>On char</label>
+          <input type="text" id="on-char-input" value="d" maxlength="1" style="width:36px">
+        </div>
         <div class="field">
           <label>Source</label>
           <select id="source-select">

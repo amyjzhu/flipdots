@@ -3,7 +3,7 @@ import { ALPHABET_WITH_EXCLAMATION } from "./constants";
 import { GroupAction, Time, FlipdotSimHardware, Action, BrixelSimHardware, SplitflapHardware, SplitflapState, SplitflapUnit, scheduleConstantSpeed, scheduleDirectional, scheduleSyncEnd, buildTimeline, delayGroupActions, scaleGroupActions } from "./hardware";
 import { CircleTarget, LineBoil, LineTarget, parseToGroupAction, PixelArtTarget, RectangleTarget } from "./language2";
 import { AllAtOnce, BackAndForth, BottomLeftWildfire, BottomUp, CentrePulse, Diagonal, GrowFromCentre, GrowFromPoint, LeftToRight, LineDiagonal, MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong, RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow } from "./order";
-import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo, LayerForeBackTransition } from "./transitions";
+import { RotateRevealTransition, OverrotateRevealTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd, MotionImage, CascadeImage, SnapTransition, WaveTransition, OneByOne, OneByOneKeepFlipping, WaveTransition3D, AndThenFlipTo, LayerForeBackTransition, TextOrder, textToPixelCoords } from "./transitions";
 import { getImages } from "./util";
 
 if (typeof window != 'undefined') {
@@ -413,7 +413,9 @@ smallSfhw.compile(scaleGroupActions(textAnim, 0.5));
 
 }
 
-function generateSplitflapState(h: number, w: number, msg: string, position?: [number, number]) {
+
+
+export function generateSplitflapState(h: number, w: number, msg: string, position?: [number, number]) {
     let rows = msg.split("\n");
     let states = rows.map(r => r.split(""));
     let rowStart = position ? position[1] : Math.round((h - rows.length)/2);
@@ -442,48 +444,6 @@ function generateSplitflapState(h: number, w: number, msg: string, position?: [n
     }
     console.log(finalState)
     return finalState
-}
-
-
-export function computeFlips(frames: number[][]): number[][] {
-    const flips: number[][] = [];
-
-    if (frames.length === 0) return flips;
-
-    // Convert frame arrays to sets for fast lookup
-    const frameSets = frames.map(f => new Set(f));
-
-    // --- Frame 1: always flip all lights that are ON ---
-    flips.push([...frameSets[0]]);
-
-    // --- Later frames: flip indices that changed state ---
-    for (let i = 1; i < frameSets.length; i++) {
-        const prev = frameSets[i - 1];
-        const curr = frameSets[i];
-
-        const changes: number[] = [];
-
-        // Get all lights seen in either frame
-        const allIndices = new Set([...prev, ...curr]);
-
-        for (const light of allIndices) {
-            const wasOn = prev.has(light);
-            const isOn = curr.has(light);
-
-            if (wasOn !== isOn) {
-                changes.push(light);
-            }
-        }
-
-        flips.push(changes);
-    }
-
-    // --- Final extra frame: flip everything OFF ---
-    const lastFrame = frameSets[frameSets.length - 1];
-    const finalFlips = [...lastFrame]; // all currently ON lights must flip OFF
-    flips.push(finalFlips);
-
-    return flips;
 }
 
 
