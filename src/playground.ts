@@ -571,6 +571,88 @@ function stopAnimation() {
     if (animTimer !== null) { clearInterval(animTimer); animTimer = null; }
 }
 
+// ── URL state ─────────────────────────────────────────────────────────────────
+function packBoolGrid(grid: boolean[][]): string {
+    const flat = grid.flat();
+    const bytes = new Uint8Array(Math.ceil(flat.length / 8));
+    for (let i = 0; i < flat.length; i++)
+        if (flat[i]) bytes[i >> 3] |= (1 << (7 - (i & 7)));
+    return btoa(String.fromCharCode(...bytes));
+}
+
+function unpackBoolGrid(s: string, rows: number, cols: number): boolean[][] {
+    try {
+        const bytes = Uint8Array.from(atob(s), c => c.charCodeAt(0));
+        const grid: boolean[][] = [];
+        let i = 0;
+        for (let r = 0; r < rows; r++) {
+            const row: boolean[] = [];
+            for (let c = 0; c < cols; c++, i++)
+                row.push(!!(bytes[i >> 3] & (1 << (7 - (i & 7)))));
+            grid.push(row);
+        }
+        return grid;
+    } catch { return Array.from({ length: rows }, () => new Array(cols).fill(false)); }
+}
+
+function updateURL() {
+    const params = new URLSearchParams();
+    params.set('tr',    TRANSITION_DEFS[selectedTransitionIdx].name);
+    params.set('or',    ORDER_DEFS[selectedOrderIdx].name);
+    params.set('s',     packBoolGrid(startGrid));
+    params.set('e',     packBoolGrid(endGrid));
+    params.set('dur',   durationInput.value);
+    params.set('scale', scaleInput.value);
+    params.set('reel',  reelInput.value);
+    params.set('text',  textInput.value);
+    if (fpsInput)       params.set('fps',  fpsInput.value);
+    if (syncStartInput) params.set('sync', syncStartInput.checked ? '1' : '0');
+    history.replaceState(null, '', '?' + params.toString());
+}
+
+function loadFromURL() {
+    const params = new URLSearchParams(location.search);
+    if (!params.has('tr') && !params.has('e')) return;
+
+    const trName = params.get('tr');
+    if (trName) {
+        const idx = TRANSITION_DEFS.findIndex(d => d.name === trName);
+        if (idx !== -1) {
+            selectedTransitionIdx = idx;
+            transitionSelect.value = String(idx);
+            const def = TRANSITION_DEFS[idx];
+            orderField.style.display     = def.needsOrder          ? '' : 'none';
+            fpsField.style.display       = def.needsFlipsPerSecond ? '' : 'none';
+            syncStartField.style.display = def.needsSyncStart      ? '' : 'none';
+        }
+    }
+
+    const orName = params.get('or');
+    if (orName) {
+        const idx = ORDER_DEFS.findIndex(d => d.name === orName);
+        if (idx !== -1) {
+            selectedOrderIdx = idx;
+            orderSelect.value = String(idx);
+            const def = ORDER_DEFS[idx];
+            textField.style.display      = def.needsText  ? '' : 'none';
+            painterSection.style.display = def.isPainter  ? '' : 'none';
+        }
+    }
+
+    const s = params.get('s');
+    if (s) { startGrid = unpackBoolGrid(s, SH, SW); renderShapeCanvas(startShapeCtx, startGrid); syncCharFromShape('start'); }
+
+    const e = params.get('e');
+    if (e) { endGrid = unpackBoolGrid(e, SH, SW); renderShapeCanvas(endShapeCtx, endGrid); syncCharFromShape('end'); }
+
+    if (params.has('dur'))   durationInput.value = params.get('dur')!;
+    if (params.has('scale')) scaleInput.value    = params.get('scale')!;
+    if (params.has('reel'))  { reelInput.value = params.get('reel')!; REEL = reelInput.value.split(''); }
+    if (params.has('text'))  textInput.value  = params.get('text')!;
+    if (params.has('fps')  && fpsInput)       fpsInput.value          = params.get('fps')!;
+    if (params.has('sync') && syncStartInput) syncStartInput.checked  = params.get('sync') === '1';
+}
+
 // ── Generate & play ────────────────────────────────────────────────────────────
 function generateAndPlay() {
     const newReel = reelInput.value.length >= 1 ? reelInput.value.split('') : REEL;
@@ -635,6 +717,7 @@ function generateAndPlay() {
     currentTick = 0;
 
     renderMaskViz(o1, o2, order);
+    updateURL();
 
     stopAnimation();
     if (simulatedFrames.length === 0) return;
@@ -1032,6 +1115,7 @@ function buildPreviewControls() {
 // ── Reset all state ────────────────────────────────────────────────────────────
 function resetAll() {
     stopAnimation();
+    history.replaceState(null, '', location.pathname);
 
     startGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
     endGrid   = Array.from({ length: SH }, () => new Array(SW).fill(false));
@@ -1120,6 +1204,12 @@ function init() {
 
     document.getElementById('reset-btn')!.addEventListener('click', resetAll);
 
+    document.getElementById('copy-link-btn')!.addEventListener('click', () => {
+        updateURL();
+        navigator.clipboard.writeText(location.href);
+    });
+
+    loadFromURL();
     generateAndPlay();
 }
 
