@@ -1,4 +1,4 @@
-import { Action, GroupAction, SplitflapHardware, SplitflapState, scaleGroupActions } from './hardware';
+import { Action, GroupAction, SplitflapHardware, SplitflapState, SplitflapUnit, scaleGroupActions, delayGroupActions } from './hardware';
 import * as OrderModule from './order';
 import { GridOrder, GrowFromCentre } from './order';
 import {
@@ -7,7 +7,7 @@ import {
     StaggeredRateTransition, textToPixelCoords, Transition,
     VerticalDriftRateTransition, WaveTransition,
 } from './transitions';
-import { Colour, PixelArtTarget, Target } from './language2';
+import { Colour, PixelArtTarget } from './language2';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
 import { frameDisplay } from './util';
 
@@ -123,6 +123,41 @@ const TRANSITION_DEFS: TransitionDef[] = [
     { name: 'FlipSyncEnd',          description: 'Units speed-match so all finish at the same time',     needsOrder: false, needsFlipsPerSecond: true, needsSyncStart: true, needsOnChar: true, create: _o => new FlipSyncEnd() },
 ];
 
+// ── Sequence nodes ────────────────────────────────────────────────────────────
+interface PlaygroundNode {
+    startGrid:       boolean[][];
+    endGrid:         boolean[][];
+    startCharGrid?:  string[][];
+    endCharGrid?:    string[][];
+    transitionIdx:   number;
+    orderIdx:        number;
+    duration:        number;
+    scale:           number;
+    fps:             number;
+    syncStart:       boolean;
+    reel:            string;
+    text:            string;
+}
+
+function makeNode(overrides: Partial<PlaygroundNode> = {}): PlaygroundNode {
+    return {
+        startGrid:     Array.from({ length: SH }, () => new Array(SW).fill(false)),
+        endGrid:       Array.from({ length: SH }, () => new Array(SW).fill(true)),
+        transitionIdx: 0,
+        orderIdx:      0,
+        duration:      200,
+        scale:         1,
+        fps:           3,
+        syncStart:     true,
+        reel:          ' abcdefghijklmnopqrstuvwxyz!?*',
+        text:          '',
+        ...overrides,
+    };
+}
+
+let nodes: PlaygroundNode[] = [makeNode()];
+let selectedNodeIdx = 0;
+
 // ── Mutable state ─────────────────────────────────────────────────────────────
 let painterGrid: number[][] = Array.from({ length: SH }, () => new Array(SW).fill(0));
 let painterMaxValue = 5;
@@ -152,6 +187,12 @@ let currentTick = 0;
 let animTimer: ReturnType<typeof setInterval> | null = null;
 let isLooping = true;
 let speedMs = 100;
+
+let lastNodeActions: GroupAction[] = [];
+let lastSeqActions:  GroupAction[] = [];
+let seqNodeBoundaries: number[] = [];
+let seqNodeEndStates: Array<{ charGrid: string[][], boolGrid: boolean[][] }> = [];
+let timelineMode: 'node' | 'seq' = 'node';
 
 let hw: SplitflapHardware;
 
@@ -187,6 +228,7 @@ let startCharCtx!: CanvasRenderingContext2D;
 let endCharCanvas!: HTMLCanvasElement;
 let endCharCtx!: CanvasRenderingContext2D;
 let sourceSelect!: HTMLSelectElement;
+let timelineCanvas!: HTMLCanvasElement;
 
 // ── Shape helpers ─────────────────────────────────────────────────────────────
 
@@ -566,6 +608,64 @@ function renderPreviewFrame(frame: string[], prevFrame: string[] | null) {
     }
 }
 
+// ── Timeline viewer ───────────────────────────────────────────────────────────
+const TL_CELL = 3;
+const TL_LABEL = 46;
+const TL_ENTRY = TL_CELL * SH + 3;
+const TL_NODE_COLORS = ['#c8a040', '#40a8c8', '#a040c8', '#40c880', '#c84040', '#c8c840'];
+
+function renderTimeline(actions: GroupAction[], nodeBoundaries: number[] = []) {
+    const flipsAtTime = new Map<number, Set<number>>();
+    for (const ga of actions) {
+        const t = Math.round(ga.tPlus);
+        for (const [action, ids] of ga.actions) {
+            if (action !== Action.FLIP) continue;
+            if (!flipsAtTime.has(t)) flipsAtTime.set(t, new Set());
+            for (const id of ids) flipsAtTime.get(t)!.add(id);
+        }
+    }
+    const times = [...flipsAtTime.keys()].sort((a, b) => a - b);
+
+    timelineCanvas.width  = TL_LABEL + SW * TL_CELL;
+    timelineCanvas.height = Math.max(1, times.length * TL_ENTRY);
+
+    const ctx = timelineCanvas.getContext('2d')!;
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, timelineCanvas.width, timelineCanvas.height);
+
+    const nodeAt = (t: number) => {
+        let n = 0;
+        for (let i = 0; i < nodeBoundaries.length; i++) if (t >= nodeBoundaries[i]) n = i;
+        return n;
+    };
+
+    times.forEach((t, i) => {
+        const flipping = flipsAtTime.get(t)!;
+        const y = i * TL_ENTRY;
+        const color = nodeBoundaries.length > 1
+            ? TL_NODE_COLORS[nodeAt(t) % TL_NODE_COLORS.length]
+            : '#c8a040';
+
+        ctx.fillStyle = '#444';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(String(t), TL_LABEL - 3, y + TL_CELL * SH / 2 + 3);
+
+        for (let row = 0; row < SH; row++) {
+            for (let col = 0; col < SW; col++) {
+                const id = row * SW + col;
+                ctx.fillStyle = flipping.has(id) ? color : '#181818';
+                ctx.fillRect(TL_LABEL + col * TL_CELL, y + row * TL_CELL, TL_CELL - 1, TL_CELL - 1);
+            }
+        }
+    });
+}
+
+function updateTimeline() {
+    if (timelineMode === 'node') renderTimeline(lastNodeActions);
+    else                         renderTimeline(lastSeqActions, seqNodeBoundaries);
+}
+
 // ── Animation loop ────────────────────────────────────────────────────────────
 function stopAnimation() {
     if (animTimer !== null) { clearInterval(animTimer); animTimer = null; }
@@ -578,6 +678,17 @@ function packBoolGrid(grid: boolean[][]): string {
     for (let i = 0; i < flat.length; i++)
         if (flat[i]) bytes[i >> 3] |= (1 << (7 - (i & 7)));
     return btoa(String.fromCharCode(...bytes));
+}
+
+function packCharGrid(grid: string[][]): string {
+    return grid.flat().join('');
+}
+
+function unpackCharGrid(s: string, rows: number, cols: number): string[][] {
+    const chars = [...s];
+    return Array.from({ length: rows }, (_, r) =>
+        Array.from({ length: cols }, (_, c) => chars[r * cols + c] ?? ' ')
+    );
 }
 
 function unpackBoolGrid(s: string, rows: number, cols: number): boolean[][] {
@@ -597,64 +708,73 @@ function unpackBoolGrid(s: string, rows: number, cols: number): boolean[][] {
 
 function updateURL() {
     const params = new URLSearchParams();
-    params.set('tr',    TRANSITION_DEFS[selectedTransitionIdx].name);
-    params.set('or',    ORDER_DEFS[selectedOrderIdx].name);
-    params.set('s',     packBoolGrid(startGrid));
-    params.set('e',     packBoolGrid(endGrid));
-    params.set('dur',   durationInput.value);
-    params.set('scale', scaleInput.value);
-    params.set('reel',  reelInput.value);
-    params.set('text',  textInput.value);
-    if (fpsInput)       params.set('fps',  fpsInput.value);
-    if (syncStartInput) params.set('sync', syncStartInput.checked ? '1' : '0');
+    params.set('n',   String(nodes.length));
+    params.set('sel', String(selectedNodeIdx));
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        params.set(`${i}.tr`,    TRANSITION_DEFS[node.transitionIdx]?.name ?? '');
+        params.set(`${i}.or`,    ORDER_DEFS[node.orderIdx]?.name ?? '');
+        params.set(`${i}.s`,     packBoolGrid(node.startGrid));
+        params.set(`${i}.e`,     packBoolGrid(node.endGrid));
+        if (node.startCharGrid) params.set(`${i}.sc`, packCharGrid(node.startCharGrid));
+        if (node.endCharGrid)   params.set(`${i}.ec`, packCharGrid(node.endCharGrid));
+        params.set(`${i}.dur`,   String(node.duration));
+        params.set(`${i}.scale`, String(node.scale));
+        params.set(`${i}.reel`,  node.reel);
+        params.set(`${i}.text`,  node.text);
+        params.set(`${i}.fps`,   String(node.fps));
+        params.set(`${i}.sync`,  node.syncStart ? '1' : '0');
+    }
     history.replaceState(null, '', '?' + params.toString());
+}
+
+function loadNodeFromParams(params: URLSearchParams, prefix: string): PlaygroundNode {
+    const node = makeNode();
+    const trName = params.get(`${prefix}tr`);
+    if (trName) { const idx = TRANSITION_DEFS.findIndex(d => d.name === trName); if (idx !== -1) node.transitionIdx = idx; }
+    const orName = params.get(`${prefix}or`);
+    if (orName) { const idx = ORDER_DEFS.findIndex(d => d.name === orName);      if (idx !== -1) node.orderIdx = idx; }
+    const s = params.get(`${prefix}s`); if (s) node.startGrid = unpackBoolGrid(s, SH, SW);
+    const e = params.get(`${prefix}e`); if (e) node.endGrid   = unpackBoolGrid(e, SH, SW);
+    const sc = params.get(`${prefix}sc`); if (sc) node.startCharGrid = unpackCharGrid(sc, SH, SW);
+    const ec = params.get(`${prefix}ec`); if (ec) node.endCharGrid   = unpackCharGrid(ec, SH, SW);
+    if (params.has(`${prefix}dur`))   node.duration  = parseInt(params.get(`${prefix}dur`)!)   || 200;
+    if (params.has(`${prefix}scale`)) node.scale     = parseFloat(params.get(`${prefix}scale`)!) || 1;
+    if (params.has(`${prefix}reel`))  node.reel      = params.get(`${prefix}reel`)!;
+    if (params.has(`${prefix}text`))  node.text      = params.get(`${prefix}text`)!;
+    if (params.has(`${prefix}fps`))   node.fps       = parseFloat(params.get(`${prefix}fps`)!)  || 3;
+    if (params.has(`${prefix}sync`))  node.syncStart = params.get(`${prefix}sync`) === '1';
+    return node;
 }
 
 function loadFromURL() {
     const params = new URLSearchParams(location.search);
+
+    // ── New multi-node format ──
+    if (params.has('n')) {
+        const count = Math.max(1, parseInt(params.get('n')!) || 1);
+        const sel   = Math.min(Math.max(0, parseInt(params.get('sel') ?? '0') || 0), count - 1);
+        nodes = Array.from({ length: count }, (_, i) => loadNodeFromParams(params, `${i}.`));
+        selectedNodeIdx = sel;
+        applyNode(nodes[selectedNodeIdx]);
+        renderSequencePanel();
+        return;
+    }
+
+    // ── Legacy single-node format ──
     if (!params.has('tr') && !params.has('e')) return;
-
-    const trName = params.get('tr');
-    if (trName) {
-        const idx = TRANSITION_DEFS.findIndex(d => d.name === trName);
-        if (idx !== -1) {
-            selectedTransitionIdx = idx;
-            transitionSelect.value = String(idx);
-            const def = TRANSITION_DEFS[idx];
-            orderField.style.display     = def.needsOrder          ? '' : 'none';
-            fpsField.style.display       = def.needsFlipsPerSecond ? '' : 'none';
-            syncStartField.style.display = def.needsSyncStart      ? '' : 'none';
-        }
-    }
-
-    const orName = params.get('or');
-    if (orName) {
-        const idx = ORDER_DEFS.findIndex(d => d.name === orName);
-        if (idx !== -1) {
-            selectedOrderIdx = idx;
-            orderSelect.value = String(idx);
-            const def = ORDER_DEFS[idx];
-            textField.style.display      = def.needsText  ? '' : 'none';
-            painterSection.style.display = def.isPainter  ? '' : 'none';
-        }
-    }
-
-    const s = params.get('s');
-    if (s) { startGrid = unpackBoolGrid(s, SH, SW); renderShapeCanvas(startShapeCtx, startGrid); syncCharFromShape('start'); }
-
-    const e = params.get('e');
-    if (e) { endGrid = unpackBoolGrid(e, SH, SW); renderShapeCanvas(endShapeCtx, endGrid); syncCharFromShape('end'); }
-
-    if (params.has('dur'))   durationInput.value = params.get('dur')!;
-    if (params.has('scale')) scaleInput.value    = params.get('scale')!;
-    if (params.has('reel'))  { reelInput.value = params.get('reel')!; REEL = reelInput.value.split(''); }
-    if (params.has('text'))  textInput.value  = params.get('text')!;
-    if (params.has('fps')  && fpsInput)       fpsInput.value          = params.get('fps')!;
-    if (params.has('sync') && syncStartInput) syncStartInput.checked  = params.get('sync') === '1';
+    const node = loadNodeFromParams(params, '');
+    nodes = [node];
+    selectedNodeIdx = 0;
+    applyNode(node);
+    renderSequencePanel();
 }
 
 // ── Generate & play ────────────────────────────────────────────────────────────
 function generateAndPlay() {
+    nodes[selectedNodeIdx] = captureNode();
+    renderSequencePanel();
+
     const newReel = reelInput.value.length >= 1 ? reelInput.value.split('') : REEL;
     if (newReel.join('') !== REEL.join('')) {
         REEL = newReel;
@@ -703,6 +823,9 @@ function generateAndPlay() {
     }
 
     if (scale !== 1) groupActions = scaleGroupActions(groupActions, scale);
+
+    lastNodeActions = groupActions;
+    updateTimeline();
 
     if (is3dMode && hw3d) {
         const flipId = (id: number) => (SH - 1 - Math.floor(id / SW)) * SW + (id % SW);
@@ -1042,6 +1165,297 @@ function refreshExportCode() {
     (document.getElementById('export-code') as HTMLTextAreaElement).value = generateExportCode(name);
 }
 
+// ── Sequence panel ────────────────────────────────────────────────────────────
+function captureNode(): PlaygroundNode {
+    return {
+        startGrid:     startGrid.map(r => [...r]),
+        endGrid:       endGrid.map(r => [...r]),
+        startCharGrid: startCharGrid.map(r => [...r]),
+        endCharGrid:   endCharGrid.map(r => [...r]),
+        transitionIdx: selectedTransitionIdx,
+        orderIdx:      selectedOrderIdx,
+        duration:      parseInt(durationInput.value) || 200,
+        scale:         parseFloat(scaleInput.value) || 1,
+        fps:           parseFloat(fpsInput?.value ?? '3') || 3,
+        syncStart:     syncStartInput?.checked ?? true,
+        reel:          reelInput.value,
+        text:          textInput.value,
+    };
+}
+
+function applyNode(node: PlaygroundNode) {
+    startGrid = node.startGrid.map(r => [...r]);
+    endGrid   = node.endGrid.map(r => [...r]);
+    selectedTransitionIdx = node.transitionIdx;
+    selectedOrderIdx      = node.orderIdx;
+
+    transitionSelect.value = String(node.transitionIdx);
+    orderSelect.value      = String(node.orderIdx);
+    durationInput.value    = String(node.duration);
+    scaleInput.value       = String(node.scale);
+    reelInput.value        = node.reel;
+    textInput.value        = node.text;
+    if (fpsInput)       fpsInput.value          = String(node.fps);
+    if (syncStartInput) syncStartInput.checked  = node.syncStart;
+
+    const tDef = TRANSITION_DEFS[node.transitionIdx];
+    const oDef = ORDER_DEFS[node.orderIdx];
+    orderField.style.display     = tDef.needsOrder          ? '' : 'none';
+    fpsField.style.display       = tDef.needsFlipsPerSecond ? '' : 'none';
+    syncStartField.style.display = tDef.needsSyncStart      ? '' : 'none';
+    textField.style.display      = oDef.needsText           ? '' : 'none';
+    painterSection.style.display = oDef.isPainter           ? '' : 'none';
+
+    renderShapeCanvas(startShapeCtx, startGrid);
+    renderShapeCanvas(endShapeCtx, endGrid);
+    if (node.startCharGrid) {
+        startCharGrid = node.startCharGrid.map(r => [...r]);
+        renderCharCanvas(startCharCtx, startCharGrid, null);
+    } else {
+        syncCharFromShape('start');
+    }
+    if (node.endCharGrid) {
+        endCharGrid = node.endCharGrid.map(r => [...r]);
+        renderCharCanvas(endCharCtx, endCharGrid, null);
+    } else {
+        syncCharFromShape('end');
+    }
+}
+
+function createMiniGridCanvas(charGrid: string[][], color: string): HTMLCanvasElement {
+    const cell = 3;
+    const canvas = document.createElement('canvas');
+    canvas.width  = SW * cell;
+    canvas.height = SH * cell;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let row = 0; row < SH; row++)
+        for (let col = 0; col < SW; col++) {
+            const ch = charGrid[row]?.[col];
+            ctx.fillStyle = (ch && ch !== ' ') ? color : '#1c1c1c';
+            ctx.fillRect(col * cell, row * cell, cell - 1, cell - 1);
+        }
+    return canvas;
+}
+
+function makeStateSeparator(charGrid: string[][], color: string): HTMLDivElement {
+    const sep = document.createElement('div');
+    sep.className = 'seq-separator';
+    sep.appendChild(createMiniGridCanvas(charGrid, color));
+    return sep;
+}
+
+function renderSequencePanel() {
+    const list = document.getElementById('sequence-list')!;
+    list.innerHTML = '';
+    nodes.forEach((node, i) => {
+        const tName = TRANSITION_DEFS[node.transitionIdx]?.name ?? '?';
+        const oName = ORDER_DEFS[node.orderIdx]?.name ?? '?';
+        const color = TL_NODE_COLORS[i % TL_NODE_COLORS.length];
+
+        const startCG = node.startCharGrid ?? node.startGrid.map(r => r.map(v => v ? SHAPE_ON_CHAR : ' '));
+        const endCG   = seqNodeEndStates[i]?.charGrid
+                      ?? node.endCharGrid
+                      ?? node.endGrid.map(r => r.map(v => v ? SHAPE_ON_CHAR : ' '));
+
+        if (i === 0) list.appendChild(makeStateSeparator(startCG, color));
+
+        const item = document.createElement('div');
+        item.className = 'seq-item' + (i === selectedNodeIdx ? ' selected' : '');
+        item.innerHTML = `
+            <span class="seq-num">${i + 1}</span>
+            <span class="seq-label">${tName}<span class="seq-sub"> · ${oName}</span></span>
+            <button class="seq-del" title="Delete">✕</button>`;
+
+        item.querySelector('.seq-del')!.addEventListener('click', e => {
+            e.stopPropagation();
+            if (nodes.length === 1) return;
+            nodes[selectedNodeIdx] = captureNode();
+            nodes.splice(i, 1);
+            if (selectedNodeIdx >= nodes.length) selectedNodeIdx = nodes.length - 1;
+            applyNode(nodes[selectedNodeIdx]);
+            renderSequencePanel();
+        });
+
+        item.addEventListener('click', () => {
+            nodes[selectedNodeIdx] = captureNode();
+            selectedNodeIdx = i;
+            applyNode(nodes[i]);
+            renderSequencePanel();
+        });
+
+        list.appendChild(item);
+        list.appendChild(makeStateSeparator(endCG, color));
+    });
+}
+
+function buildSequencePanel() {
+    document.getElementById('seq-add-btn')!.addEventListener('click', () => {
+        nodes[selectedNodeIdx] = captureNode();
+        const prev = nodes[selectedNodeIdx];
+        const prevActions = buildActionsForNode(prev);
+        const { charGrid, boolGrid } = computeEndStateFromActions(prevActions);
+        const next = makeNode({
+            startGrid:     boolGrid,
+            startCharGrid: charGrid,
+            transitionIdx: prev.transitionIdx,
+            orderIdx:      prev.orderIdx,
+            duration:      prev.duration,
+            scale:         prev.scale,
+            fps:           prev.fps,
+            syncStart:     prev.syncStart,
+            reel:          prev.reel,
+        });
+        nodes.push(next);
+        selectedNodeIdx = nodes.length - 1;
+        applyNode(next);
+        renderSequencePanel();
+    });
+
+    document.getElementById('seq-play-btn')!.addEventListener('click', playSequence);
+
+    renderSequencePanel();
+}
+
+// ── Sequence playback ─────────────────────────────────────────────────────────
+function computeEndStateFromActions(actions: GroupAction[]): { charGrid: string[][], boolGrid: boolean[][] } {
+    const simUnits = new Map<number, SplitflapUnit>(
+        hw.units.map(u => [u.id, (u as SplitflapUnit).clone()])
+    );
+    for (const ga of actions) {
+        for (const [action, unitIds] of ga.actions) {
+            for (const unitId of unitIds) {
+                const unit = simUnits.get(unitId)!;
+                const numStates = unit.states.find(s => s[0] === action)![1].length;
+                unit.currentIndex = (unit.currentIndex + 1) % numStates;
+            }
+        }
+    }
+    const charGrid: string[][] = Array.from({ length: SH }, (_, row) =>
+        Array.from({ length: SW }, (_, col) => {
+            const unit = simUnits.get(hw.coordToIndex([col, row]))!;
+            return (unit.states[0][1][unit.currentIndex] as SplitflapState).id;
+        })
+    );
+    const boolGrid = charGrid.map(row => row.map(ch => ch !== ' '));
+    return { charGrid, boolGrid };
+}
+
+function buildActionsForNode(node: PlaygroundNode): GroupAction[] {
+    const orderDef  = ORDER_DEFS[node.orderIdx];
+    const transDef  = TRANSITION_DEFS[node.transitionIdx];
+    const nodeReel  = node.reel.length >= 1 ? node.reel.split('') : REEL;
+    const text      = node.text || 'hello';
+    const order     = orderDef.create(text);
+    const transition = transDef.create(order);
+    if (transDef.needsFlipsPerSecond) (transition as any).flipsPerSecond = node.fps;
+    if (transDef.needsSyncStart)      (transition as any).synchronizedStart = node.syncStart;
+
+    const t = Math.max(1, node.duration);
+
+    let o1: PixelArtTarget;
+    let o2: PixelArtTarget;
+    let actions: GroupAction[];
+
+    const nodeStartCharGrid = node.startCharGrid ?? node.startGrid.map(row => row.map(v => v ? SHAPE_ON_CHAR : ' '));
+    const nodeEndCharGrid   = node.endCharGrid   ?? node.endGrid.map(row => row.map(v => v ? SHAPE_ON_CHAR : ' '));
+
+    if (transDef.needsOnChar) {
+        // Set hw unit indices to the actual starting character state so
+        // computeFlipDistance calculates distances from the real start, not blank.
+        for (let row = 0; row < SH; row++)
+            for (let col = 0; col < SW; col++) {
+                const unit = hw.units.find(u => u.id === hw.coordToIndex([col, row])) as SplitflapUnit;
+                unit.currentIndex = Math.max(0, nodeReel.indexOf(nodeStartCharGrid[row][col]));
+            }
+
+        const emptyGrid = Array.from({ length: SH }, () => new Array(SW).fill(' '));
+        o1 = new PixelArtTarget(emptyGrid, ' ');
+        o2 = toShiftedPixelArt(nodeEndCharGrid, nodeReel);
+        actions = transition.generateGroupActions(o1, o2, t, hw);
+
+        // Reset hw units back to default so other callers start from blank.
+        for (const unit of hw.units) (unit as SplitflapUnit).currentIndex = 0;
+    } else {
+        o1 = gridToPixelArt(node.startGrid);
+        o2 = gridToPixelArt(node.endGrid);
+        actions = transition.generateGroupActions(o1, o2, t, hw);
+    }
+
+    if (node.scale !== 1) actions = scaleGroupActions(actions, node.scale);
+    return actions;
+}
+
+function playSequence() {
+    nodes[selectedNodeIdx] = captureNode();
+    renderSequencePanel();
+
+    seqNodeBoundaries = [];
+    seqNodeEndStates = [];
+    let allActions: GroupAction[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const timeOffset = allActions.length > 0
+            ? Math.ceil(Math.max(...allActions.map(ga => ga.tPlus))) + 1
+            : 0;
+        seqNodeBoundaries.push(timeOffset);
+        const nodeActions = buildActionsForNode(node);
+        const delayed = timeOffset > 0 ? delayGroupActions(nodeActions, timeOffset) : nodeActions;
+        allActions = [...allActions, ...delayed];
+        const endState = computeEndStateFromActions(allActions);
+        seqNodeEndStates.push(endState);
+        if (i + 1 < nodes.length) {
+            nodes[i + 1].startGrid     = endState.boolGrid;
+            nodes[i + 1].startCharGrid = endState.charGrid;
+        }
+    }
+    renderSequencePanel();
+
+    lastSeqActions = allActions;
+    updateTimeline();
+
+    if (is3dMode && hw3d) {
+        const flipId = (id: number) => (SH - 1 - Math.floor(id / SW)) * SW + (id % SW);
+        hw3d.compile(allActions.map(ga => new GroupAction(
+            ga.tPlus,
+            ga.actions.map(([action, ids]) => [action, ids.map(flipId)] as [Action, number[]])
+        )));
+    }
+
+    simulatedFrames = simulate(allActions);
+    currentTick = 0;
+
+    stopAnimation();
+    if (simulatedFrames.length === 0) return;
+
+    renderPreviewFrame(simulatedFrames[0], null);
+    tickCounter.textContent = `tick 0 / ${simulatedFrames.length - 1}`;
+
+    playBtn.textContent = '⏸ Pause';
+    animTimer = setInterval(() => {
+        const prev = currentTick > 0 ? simulatedFrames[currentTick - 1] : null;
+        renderPreviewFrame(simulatedFrames[currentTick], prev);
+        tickCounter.textContent = `tick ${currentTick} / ${simulatedFrames.length - 1}`;
+        currentTick++;
+        if (currentTick >= simulatedFrames.length) {
+            if (isLooping) { currentTick = 0; }
+            else { stopAnimation(); playBtn.textContent = '▶ Play'; }
+        }
+    }, speedMs) as ReturnType<typeof setInterval>;
+}
+
+function buildTimelinePanel() {
+    timelineCanvas = document.getElementById('timeline-canvas') as HTMLCanvasElement;
+    document.querySelectorAll<HTMLButtonElement>('.tl-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            timelineMode = btn.dataset['tl'] as 'node' | 'seq';
+            document.querySelectorAll('.tl-tab').forEach(b => b.classList.toggle('active', b === btn));
+            updateTimeline();
+        });
+    });
+}
+
 function buildExportModal() {
     document.getElementById('export-classname')!.addEventListener('input', refreshExportCode);
     document.getElementById('export-copy-btn')!.addEventListener('click', () => {
@@ -1196,6 +1610,8 @@ function init() {
     buildPainter();
     buildShapeCanvases();
     buildCharCanvases();
+    buildSequencePanel();
+    buildTimelinePanel();
     buildExportModal();
 
     sourceSelect.addEventListener('change', () => {
@@ -1205,6 +1621,7 @@ function init() {
     document.getElementById('reset-btn')!.addEventListener('click', resetAll);
 
     document.getElementById('copy-link-btn')!.addEventListener('click', () => {
+        nodes[selectedNodeIdx] = captureNode();
         updateURL();
         navigator.clipboard.writeText(location.href);
     });

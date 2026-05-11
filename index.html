@@ -135,6 +135,61 @@
     }
     #generate-btn:hover { background: #203878; }
 
+    /* ── Sequence ── */
+    #sequence-section { min-width: 180px; }
+
+    #sequence-list { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+
+    .seq-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 7px;
+      background: #1a1a1a; border: 1px solid #2a2a2a;
+      cursor: pointer; border-radius: 2px;
+    }
+    .seq-item:hover { background: #222; border-color: #444; }
+    .seq-item.selected { background: #1a2a1a; border-color: #3a7a3a; }
+
+    .seq-num  { color: #666; font-size: 10px; min-width: 14px; }
+    .seq-label { font-size: 11px; color: #ccc; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .seq-sub  { color: #666; }
+    .seq-del  { background: none; border: none; color: #664444; cursor: pointer; font-size: 11px; padding: 0 2px; line-height: 1; }
+    .seq-del:hover { color: #cc6666; }
+
+    .seq-separator {
+      display: flex; justify-content: center; align-items: center;
+      padding: 2px 0; opacity: 0.75;
+    }
+    .seq-separator canvas { display: block; image-rendering: pixelated; }
+
+    #seq-add-btn {
+      background: #1a2a1a; color: #6a9a6a; border: 1px solid #2a5a2a;
+      padding: 3px 10px; cursor: pointer; font-family: monospace; font-size: 11px; width: 100%;
+    }
+    #seq-add-btn:hover { background: #1e321e; }
+
+    #seq-play-btn {
+      background: #1a3060; color: #7ab4ff; border: 1px solid #3060a0;
+      padding: 3px 10px; cursor: pointer; font-family: monospace; font-size: 11px; width: 100%; margin-top: 4px;
+    }
+    #seq-play-btn:hover { background: #203878; }
+
+    /* ── Timeline ── */
+    #timeline-section { min-width: 160px; }
+
+    .tl-tabs { display: flex; gap: 3px; margin-bottom: 5px; }
+    .tl-tab {
+      background: #1a1a1a; color: #666; border: 1px solid #333;
+      padding: 2px 8px; cursor: pointer; font-family: monospace; font-size: 10px;
+    }
+    .tl-tab.active { background: #111; color: #ccc; border-color: #3a7aff; }
+    .tl-tab:hover { color: #ccc; }
+
+    #timeline-view {
+      overflow-y: auto; max-height: 320px;
+      border: 1px solid #2a2a2a; background: #0d0d0d;
+    }
+    #timeline-canvas { display: block; }
+
     /* ── Painter ── */
     #painter-section {
       min-width: 200px;
@@ -275,6 +330,13 @@
 
     <!-- Composer + Painter -->
     <div id="work-section">
+      <div id="sequence-section">
+        <h2>Sequence</h2>
+        <div id="sequence-list"></div>
+        <button id="seq-add-btn">+ Add Node</button>
+        <button id="seq-play-btn">▶ Play Sequence</button>
+      </div>
+
       <div id="composer">
         <h2>Composer</h2>
         <div class="field">
@@ -361,6 +423,17 @@
             </div>
             <canvas id="end-char-canvas" style="display:block; border:1px solid #444; cursor:text; outline:none;"></canvas>
           </div>
+        </div>
+      </div>
+
+      <div id="timeline-section">
+        <h2>Timeline</h2>
+        <div class="tl-tabs">
+          <button class="tl-tab active" data-tl="node">Node</button>
+          <button class="tl-tab" data-tl="seq">Sequence</button>
+        </div>
+        <div id="timeline-view">
+          <canvas id="timeline-canvas"></canvas>
         </div>
       </div>
 
