@@ -1473,6 +1473,72 @@ export function buildTimeline(
         );
 }
 
+export class CascadeSpinEnd implements Transition {
+    order: GridOrder;
+
+    constructor(order: GridOrder) {
+        this.order = order;
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        // Active = end-shape (o2 "on") units; they spin at half the background rate.
+        const b = o2.draw();
+        const activeIds: UnitId[] = [];
+        for (let r = 0; r < b.length; r++)
+            for (let c = 0; c < (b[r]?.length ?? 0); c++)
+                if (b[r][c]) activeIds.push(h.coordToIndex([c, r]));
+
+        if (activeIds.length === 0) return [];
+
+        const activeSet = new Set(activeIds);
+        const backgroundUnits = h.units.map(u => u.id).filter(id => !activeSet.has(id));
+
+        const [mask, x, y] = generateMaskFromCoords(activeIds, h) as [boolean[][], number, number];
+        const [maskTime] = this.order.applyMask(mask);
+        const rows = maskTime.length;
+        const cols = maskTime[0]?.length ?? 0;
+
+        const frameMap = new Map<number, UnitId[]>();
+        for (let r = 0; r < rows; r++)
+            for (let c = 0; c < cols; c++) {
+                const frame = maskTime[r][c];
+                if (!frameMap.has(frame)) frameMap.set(frame, []);
+                frameMap.get(frame)!.push(h.coordToIndex([c + x, r + y]));
+            }
+
+        const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
+        const flipTime = h.actionDurations.get(Action.FLIP)! * 3;
+        let currentTime: Time = 0;
+        let result: GroupAction[] = [];
+
+        for (const frame of allFrames) {
+            const frameActive = new Set(frameMap.get(frame)!);
+            for (let tick = 0; tick < 4; tick++) {
+                const actions: [Action, UnitId[]][] = [];
+                if (backgroundUnits.length > 0)
+                    actions.push([Action.FLIP, backgroundUnits]);
+                if ((tick === 0 || tick === 2) && frameActive.size > 0)
+                    actions.push([Action.FLIP, Array.from(frameActive)]);
+                result.push(new GroupAction(currentTime, actions));
+                currentTime += flipTime;
+            }
+        }
+
+        const period = currentTime;
+        if (period > 0) {
+            const firstPass = [...result];
+            let offset = period;
+            while (offset < t) {
+                result.push(...delayGroupActions(firstPass, offset));
+                offset += period;
+            }
+            result = result.filter(ga => ga.tPlus < t);
+        }
+
+        return result;
+    }
+}
+
 export class FlipConstantSpeed implements Transition {
     flipsPerSecond: number = 1;
     maxSimultaneousFinishes: number = Infinity;

@@ -2,7 +2,7 @@ import { Action, GroupAction, SplitflapHardware, SplitflapState, SplitflapUnit, 
 import * as OrderModule from './order';
 import { GridOrder, GrowFromCentre } from './order';
 import {
-    CascadeImage, diffIndices, EvenOddRhythmTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
+    CascadeImage, CascadeSpinEnd, diffIndices, EvenOddRhythmTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
     generateMaskFromCoords, OneByOne, OneByOneKeepFlipping, SnapTransition,
     StaggeredRateTransition, textToPixelCoords, Transition,
     VerticalDriftRateTransition, WaveTransition,
@@ -121,6 +121,7 @@ const TRANSITION_DEFS: TransitionDef[] = [
     { name: 'FlipConstantSpeed',    description: 'Each unit flips at a fixed rate to reach its target',  needsOrder: false, needsFlipsPerSecond: true, needsOnChar: true, create: _o => new FlipConstantSpeed() },
     { name: 'FlipDirectional',      description: 'Units flip in order direction, sync or staggered',     needsOrder: true,  needsFlipsPerSecond: true, needsSyncStart: true, needsOnChar: true, create: o => new FlipDirectional(o) },
     { name: 'FlipSyncEnd',          description: 'Units speed-match so all finish at the same time',     needsOrder: false, needsFlipsPerSecond: true, needsSyncStart: true, needsOnChar: true, create: _o => new FlipSyncEnd() },
+    { name: 'CascadeSpinEnd',       description: 'End-shape units spin at half rate against fast background, tiled to fill duration', needsOrder: true, create: o => new CascadeSpinEnd(o) },
 ];
 
 // ── Sequence nodes ────────────────────────────────────────────────────────────
