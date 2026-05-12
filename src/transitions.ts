@@ -984,43 +984,59 @@ export class OneByOneKeepFlipping implements Transition {
 
 export class OneByOneFlipAll implements Transition {
     order: GridOrder;
+    // When true: only diffIndices(o1,o2) units follow the order;
+    // remaining o2-on units (already on) start immediately (AllAtOnce).
+    diffOrderOnly: boolean = false;
 
     constructor(order: GridOrder) {
         this.order = order;
     }
 
-    generateGroupActions = (_o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
-        let b = o2.draw();
-        let flip: number[] = [];
-        for (let r = 0; r < b.length; r++) {
-            for (let c = 0; c < b[r].length; c++) {
-                if (b[r][c]) flip.push(h.coordToIndex([c, r]));
-            }
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        const b = o2.draw();
+        const allOnIds: UnitId[] = [];
+        for (let r = 0; r < b.length; r++)
+            for (let c = 0; c < b[r].length; c++)
+                if (b[r][c]) allOnIds.push(h.coordToIndex([c, r]));
+
+        let orderedIds: UnitId[];
+        let immediateIds: UnitId[];
+
+        if (this.diffOrderOnly) {
+            const diffSet = new Set(diffIndices(o1, o2, h));
+            orderedIds   = allOnIds.filter(id =>  diffSet.has(id));
+            immediateIds = allOnIds.filter(id => !diffSet.has(id));
+        } else {
+            orderedIds   = allOnIds;
+            immediateIds = [];
         }
 
-        let [mask, x, y] = generateMaskFromCoords(flip, h);
-        let [maskTime, _times] = this.order.applyMask(mask as boolean[][]);
-
-        let result = [];
-        const rows = maskTime.length;
-        const cols = maskTime[0].length;
-
         const frameMap = new Map<number, UnitId[]>();
-
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                const frame = maskTime[r][c];
-                let id = h.coordToIndex([c + (x as number), r + (y as number)]);
-                if (!frameMap.has(frame)) frameMap.set(frame, []);
-                frameMap.get(frame)!.push(id);
-            }
+        if (orderedIds.length > 0) {
+            const [mask, x, y] = generateMaskFromCoords(orderedIds, h) as [boolean[][], number, number];
+            const [maskTime] = this.order.applyMask(mask);
+            const rows = maskTime.length;
+            const cols = maskTime[0]?.length ?? 0;
+            for (let r = 0; r < rows; r++)
+                for (let c = 0; c < cols; c++) {
+                    const frame = maskTime[r][c];
+                    const id = h.coordToIndex([c + x, r + y]);
+                    if (!frameMap.has(frame)) frameMap.set(frame, []);
+                    frameMap.get(frame)!.push(id);
+                }
         }
 
         const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
-
-        let flipTime = h.actionDurations.get(Action.FLIP)!;
+        const flipTime = h.actionDurations.get(Action.FLIP)!;
         let currentTime: Time = 0;
         let prevFlips: UnitId[] = [];
+        const result: GroupAction[] = [];
+
+        if (immediateIds.length > 0) {
+            currentTime += flipTime;
+            result.push(new GroupAction(currentTime, [[Action.FLIP, immediateIds]]));
+            prevFlips = [...immediateIds];
+        }
 
         for (const frame of allFrames) {
             if (frame === -1 || frame === undefined) continue;

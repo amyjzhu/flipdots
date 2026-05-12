@@ -105,13 +105,14 @@ interface TransitionDef {
     needsOrder: boolean;
     needsFlipsPerSecond?: boolean;
     needsSyncStart?: boolean;
+    needsDiffOrderOnly?: boolean;
     needsOnChar?: boolean;
     create: (order: GridOrder) => Transition;
 }
 
 const TRANSITION_DEFS: TransitionDef[] = [
     { name: 'OneByOneKeepFlipping', description: 'Units activate in order, all keep flipping', needsOrder: true,  create: o => new OneByOneKeepFlipping(o) },
-    { name: 'OneByOneFlipAll',      description: 'Units activate in order, all previously active units flip each step', needsOrder: true, create: o => new OneByOneFlipAll(o) },
+    { name: 'OneByOneFlipAll',      description: 'Units activate in order, all previously active units flip each step', needsOrder: true, needsDiffOrderOnly: true, create: o => new OneByOneFlipAll(o) },
     { name: 'CascadeImage',         description: 'Active units flip 2× faster than background', needsOrder: true,  create: o => new CascadeImage(o) },
     { name: 'OneByOne',             description: 'Units flip once, one at a time',               needsOrder: true,  create: o => new OneByOne(o) },
     { name: 'WaveTransition',       description: 'Wave-like sweep of flips',                     needsOrder: true,  create: o => new WaveTransition(o) },
@@ -137,6 +138,7 @@ interface PlaygroundNode {
     scale:           number;
     fps:             number;
     syncStart:       boolean;
+    diffOrderOnly:   boolean;
     reel:            string;
     text:            string;
 }
@@ -151,6 +153,7 @@ function makeNode(overrides: Partial<PlaygroundNode> = {}): PlaygroundNode {
         scale:         1,
         fps:           3,
         syncStart:     true,
+        diffOrderOnly: false,
         reel:          ' abcdefghijklmnopqrstuvwxyz!?*',
         text:          '',
         ...overrides,
@@ -219,6 +222,8 @@ let reelInput: HTMLInputElement;
 let fpsInput!: HTMLInputElement;
 let fpsField!: HTMLElement;
 let syncStartInput!: HTMLInputElement;
+let diffOrderOnlyInput!: HTMLInputElement;
+let diffOrderOnlyField!: HTMLElement;
 let syncStartField!: HTMLElement;
 let startShapeCanvas!: HTMLCanvasElement;
 let startShapeCtx!: CanvasRenderingContext2D;
@@ -725,7 +730,8 @@ function updateURL() {
         params.set(`${i}.reel`,  node.reel);
         params.set(`${i}.text`,  node.text);
         params.set(`${i}.fps`,   String(node.fps));
-        params.set(`${i}.sync`,  node.syncStart ? '1' : '0');
+        params.set(`${i}.sync`,  node.syncStart    ? '1' : '0');
+        params.set(`${i}.doo`,   node.diffOrderOnly ? '1' : '0');
     }
     history.replaceState(null, '', '?' + params.toString());
 }
@@ -745,7 +751,8 @@ function loadNodeFromParams(params: URLSearchParams, prefix: string): Playground
     if (params.has(`${prefix}reel`))  node.reel      = params.get(`${prefix}reel`)!;
     if (params.has(`${prefix}text`))  node.text      = params.get(`${prefix}text`)!;
     if (params.has(`${prefix}fps`))   node.fps       = parseFloat(params.get(`${prefix}fps`)!)  || 3;
-    if (params.has(`${prefix}sync`))  node.syncStart = params.get(`${prefix}sync`) === '1';
+    if (params.has(`${prefix}sync`))  node.syncStart      = params.get(`${prefix}sync`) === '1';
+    if (params.has(`${prefix}doo`))   node.diffOrderOnly  = params.get(`${prefix}doo`)  === '1';
     return node;
 }
 
@@ -789,8 +796,9 @@ function generateAndPlay() {
     const text = textInput.value || 'hello';
     const order = orderDef.create(text);
     const transition = transDef.create(order);
-    if (transDef.needsFlipsPerSecond) (transition as any).flipsPerSecond = fpsInput ? parseFloat(fpsInput.value) || 3 : 3;
+    if (transDef.needsFlipsPerSecond) (transition as any).flipsPerSecond    = fpsInput ? parseFloat(fpsInput.value) || 3 : 3;
     if (transDef.needsSyncStart)      (transition as any).synchronizedStart = syncStartInput ? syncStartInput.checked : true;
+    if (transDef.needsDiffOrderOnly)  (transition as any).diffOrderOnly     = diffOrderOnlyInput ? diffOrderOnlyInput.checked : false;
 
     const t = Math.max(1, parseInt(durationInput.value) || 200);
     const scale = parseFloat(scaleInput.value) || 1;
@@ -1007,9 +1015,10 @@ function buildComposerUI() {
     transitionSelect.addEventListener('change', () => {
         selectedTransitionIdx = parseInt(transitionSelect.value);
         const def = TRANSITION_DEFS[selectedTransitionIdx];
-        orderField.style.display     = def.needsOrder          ? '' : 'none';
-        fpsField.style.display       = def.needsFlipsPerSecond ? '' : 'none';
-        syncStartField.style.display = def.needsSyncStart      ? '' : 'none';
+        orderField.style.display         = def.needsOrder          ? '' : 'none';
+        fpsField.style.display           = def.needsFlipsPerSecond ? '' : 'none';
+        syncStartField.style.display     = def.needsSyncStart      ? '' : 'none';
+        diffOrderOnlyField.style.display = def.needsDiffOrderOnly  ? '' : 'none';
     });
 
     // Orders
@@ -1180,6 +1189,7 @@ function captureNode(): PlaygroundNode {
         scale:         parseFloat(scaleInput.value) || 1,
         fps:           parseFloat(fpsInput?.value ?? '3') || 3,
         syncStart:     syncStartInput?.checked ?? true,
+        diffOrderOnly: diffOrderOnlyInput?.checked ?? false,
         reel:          reelInput.value,
         text:          textInput.value,
     };
@@ -1197,14 +1207,16 @@ function applyNode(node: PlaygroundNode) {
     scaleInput.value       = String(node.scale);
     reelInput.value        = node.reel;
     textInput.value        = node.text;
-    if (fpsInput)       fpsInput.value          = String(node.fps);
-    if (syncStartInput) syncStartInput.checked  = node.syncStart;
+    if (fpsInput)            fpsInput.value             = String(node.fps);
+    if (syncStartInput)      syncStartInput.checked     = node.syncStart;
+    if (diffOrderOnlyInput)  diffOrderOnlyInput.checked = node.diffOrderOnly;
 
     const tDef = TRANSITION_DEFS[node.transitionIdx];
     const oDef = ORDER_DEFS[node.orderIdx];
-    orderField.style.display     = tDef.needsOrder          ? '' : 'none';
-    fpsField.style.display       = tDef.needsFlipsPerSecond ? '' : 'none';
-    syncStartField.style.display = tDef.needsSyncStart      ? '' : 'none';
+    orderField.style.display          = tDef.needsOrder          ? '' : 'none';
+    fpsField.style.display            = tDef.needsFlipsPerSecond ? '' : 'none';
+    syncStartField.style.display      = tDef.needsSyncStart      ? '' : 'none';
+    diffOrderOnlyField.style.display  = tDef.needsDiffOrderOnly  ? '' : 'none';
     textField.style.display      = oDef.needsText           ? '' : 'none';
     painterSection.style.display = oDef.isPainter           ? '' : 'none';
 
@@ -1307,6 +1319,7 @@ function buildSequencePanel() {
             scale:         prev.scale,
             fps:           prev.fps,
             syncStart:     prev.syncStart,
+            diffOrderOnly: prev.diffOrderOnly,
             reel:          prev.reel,
         });
         nodes.push(next);
@@ -1351,8 +1364,9 @@ function buildActionsForNode(node: PlaygroundNode): GroupAction[] {
     const text      = node.text || 'hello';
     const order     = orderDef.create(text);
     const transition = transDef.create(order);
-    if (transDef.needsFlipsPerSecond) (transition as any).flipsPerSecond = node.fps;
+    if (transDef.needsFlipsPerSecond) (transition as any).flipsPerSecond    = node.fps;
     if (transDef.needsSyncStart)      (transition as any).synchronizedStart = node.syncStart;
+    if (transDef.needsDiffOrderOnly)  (transition as any).diffOrderOnly     = node.diffOrderOnly;
 
     const t = Math.max(1, node.duration);
 
@@ -1399,7 +1413,7 @@ function playSequence() {
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
         const timeOffset = allActions.length > 0
-            ? Math.ceil(Math.max(...allActions.map(ga => ga.tPlus)))
+            ? Math.ceil(Math.max(...allActions.map(ga => ga.tPlus))) + 1
             : 0;
         seqNodeBoundaries.push(timeOffset);
         const nodeActions = buildActionsForNode(node);
@@ -1592,8 +1606,10 @@ function init() {
     reelInput         = document.getElementById('reel-input') as HTMLInputElement;
     fpsInput          = document.getElementById('fps-input') as HTMLInputElement;
     fpsField          = document.getElementById('fps-field')!;
-    syncStartInput    = document.getElementById('sync-start-input') as HTMLInputElement;
-    syncStartField    = document.getElementById('sync-start-field')!;
+    syncStartInput      = document.getElementById('sync-start-input')       as HTMLInputElement;
+    syncStartField      = document.getElementById('sync-start-field')!;
+    diffOrderOnlyInput  = document.getElementById('diff-order-only-input') as HTMLInputElement;
+    diffOrderOnlyField  = document.getElementById('diff-order-only-field')!;
 
     startShapeCanvas  = document.getElementById('start-shape-canvas') as HTMLCanvasElement;
     startShapeCtx     = startShapeCanvas.getContext('2d')!;
