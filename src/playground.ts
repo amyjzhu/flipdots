@@ -3,7 +3,7 @@ import * as OrderModule from './order';
 import { GridOrder, GrowFromCentre } from './order';
 import {
     CascadeImage, CascadeSpinEnd, diffIndices, EvenOddRhythmTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
-    generateMaskFromCoords, OneByOne, OneByOneKeepFlipping, SnapTransition,
+    generateMaskFromCoords, OneByOne, OneByOneFlipAll, OneByOneKeepFlipping, SnapTransition,
     StaggeredRateTransition, textToPixelCoords, Transition,
     VerticalDriftRateTransition, WaveTransition,
 } from './transitions';
@@ -111,6 +111,7 @@ interface TransitionDef {
 
 const TRANSITION_DEFS: TransitionDef[] = [
     { name: 'OneByOneKeepFlipping', description: 'Units activate in order, all keep flipping', needsOrder: true,  create: o => new OneByOneKeepFlipping(o) },
+    { name: 'OneByOneFlipAll',      description: 'Units activate in order, all previously active units flip each step', needsOrder: true, create: o => new OneByOneFlipAll(o) },
     { name: 'CascadeImage',         description: 'Active units flip 2× faster than background', needsOrder: true,  create: o => new CascadeImage(o) },
     { name: 'OneByOne',             description: 'Units flip once, one at a time',               needsOrder: true,  create: o => new OneByOne(o) },
     { name: 'WaveTransition',       description: 'Wave-like sweep of flips',                     needsOrder: true,  create: o => new WaveTransition(o) },
@@ -1398,7 +1399,7 @@ function playSequence() {
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
         const timeOffset = allActions.length > 0
-            ? Math.ceil(Math.max(...allActions.map(ga => ga.tPlus))) + 1
+            ? Math.ceil(Math.max(...allActions.map(ga => ga.tPlus)))
             : 0;
         seqNodeBoundaries.push(timeOffset);
         const nodeActions = buildActionsForNode(node);
