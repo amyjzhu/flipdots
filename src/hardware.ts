@@ -211,7 +211,6 @@ export class SplitflapHardware implements HardwareInterface {
 
     }
 
-
     computeFlipDistance(unit: SplitflapUnit, target: SplitflapState): number {
         const states = unit.states[0][1];
         const start = unit.currentIndex;

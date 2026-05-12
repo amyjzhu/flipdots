@@ -299,6 +299,68 @@
       border: 1px solid #2a5a2a;
     }
     .ref-item-canvas { display: block; margin-top: 4px; }
+
+    /* ── Custom Transition Editor ── */
+    #ct-header-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 2px;
+      padding-left: 2px;
+    }
+    #ct-header-row span { font-size: 10px; color: #555; }
+
+    .ct-group-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 5px;
+      flex-wrap: wrap;
+    }
+
+    .ct-label {
+      min-width: 68px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .ct-own-settings {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .ct-linked-indicator {
+      font-size: 11px;
+      color: #777;
+      font-style: italic;
+    }
+
+    .ct-select-sm {
+      background: #1e1e1e; color: #ccc; border: 1px solid #444;
+      padding: 2px 4px; font-family: monospace; font-size: 11px; width: 78px;
+    }
+    .ct-select-itype {
+      background: #1e1e1e; color: #ccc; border: 1px solid #444;
+      padding: 2px 4px; font-family: monospace; font-size: 11px; width: 90px;
+    }
+    .ct-select-order {
+      background: #1e1e1e; color: #ccc; border: 1px solid #444;
+      padding: 2px 4px; font-family: monospace; font-size: 11px; width: 110px;
+    }
+    .ct-num-input {
+      background: #1e1e1e; color: #ccc; border: 1px solid #444;
+      padding: 2px 4px; width: 48px; font-family: monospace; font-size: 11px;
+    }
+    .ct-numline { border: 1px solid #444; cursor: crosshair; display: block; }
+
+    #ct-generate-btn {
+      margin-top: 8px;
+      background: #1a3060; color: #7ab4ff; border: 1px solid #3060a0;
+      padding: 5px 14px; cursor: pointer; font-family: monospace; font-size: 12px;
+    }
+    #ct-generate-btn:hover { background: #203878; }
   </style>
 </head>
 <body>
@@ -383,6 +445,25 @@
           </select>
         </div>
         <button id="generate-btn">Generate &amp; Play</button>
+
+        <div id="custom-transition-editor" style="display:none; margin-top:10px; border-top:1px solid #2a2a2a; padding-top:8px;">
+          <div id="ct-header-row">
+            <span style="min-width:68px"></span>
+            <span style="min-width:82px; font-size:10px; color:#555">link to</span>
+            <span style="min-width:94px; font-size:10px; color:#555">intervals</span>
+            <span style="min-width:52px; font-size:10px; color:#555">count</span>
+            <span style="min-width:154px; font-size:10px; color:#555">points [0…1]</span>
+          </div>
+          <div id="ct-rows"></div>
+          <div class="field" style="margin-top:6px">
+            <label>Start order</label>
+            <select id="ct-start-order" class="ct-select-order"></select>
+          </div>
+          <div class="field">
+            <label>End order</label>
+            <select id="ct-end-order" class="ct-select-order"></select>
+          </div>
+        </div>
       </div>
 
       <div id="shape-section">

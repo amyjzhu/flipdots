@@ -1,6 +1,7 @@
 import { Action, GroupAction, SplitflapHardware, SplitflapState, SplitflapUnit, scaleGroupActions, delayGroupActions } from './hardware';
 import * as OrderModule from './order';
 import { GridOrder, GrowFromCentre } from './order';
+import { CustomTransition } from './transitioneditor';
 import {
     CascadeImage, CascadeSpinEnd, diffIndices, EvenOddRhythmTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
     generateMaskFromCoords, OneByOne, OneByOneFlipAll, OneByOneKeepFlipping, SnapTransition,
@@ -107,6 +108,7 @@ interface TransitionDef {
     needsSyncStart?: boolean;
     needsDiffOrderOnly?: boolean;
     needsOnChar?: boolean;
+    isCustom?: true;
     create: (order: GridOrder) => Transition;
 }
 
@@ -124,9 +126,16 @@ const TRANSITION_DEFS: TransitionDef[] = [
     { name: 'FlipDirectional',      description: 'Units flip in order direction, sync or staggered',     needsOrder: true,  needsFlipsPerSecond: true, needsSyncStart: true, needsOnChar: true, create: o => new FlipDirectional(o) },
     { name: 'FlipSyncEnd',          description: 'Units speed-match so all finish at the same time',     needsOrder: false, needsFlipsPerSecond: true, needsSyncStart: true, needsOnChar: true, create: _o => new FlipSyncEnd() },
     { name: 'CascadeSpinEnd',       description: 'End-shape units spin at half rate against fast background, tiled to fill duration', needsOrder: true, create: o => new CascadeSpinEnd(o) },
+    { name: 'CustomTransition',     description: 'Custom 4-group transition — configure in the editor below', needsOrder: false, isCustom: true, create: _o => null as unknown as Transition },
 ];
 
 // ── Sequence nodes ────────────────────────────────────────────────────────────
+interface CTGroupState { linkTo: string; intervalType: string; count: number; points: number[] }
+interface CTSerializedState {
+    diff: CTGroupState; stable: CTGroupState; background: CTGroupState;
+    startOrder: string; endOrder: string;
+}
+
 interface PlaygroundNode {
     startGrid:       boolean[][];
     endGrid:         boolean[][];
@@ -141,6 +150,7 @@ interface PlaygroundNode {
     diffOrderOnly:   boolean;
     reel:            string;
     text:            string;
+    ctState?:        CTSerializedState;
 }
 
 function makeNode(overrides: Partial<PlaygroundNode> = {}): PlaygroundNode {
@@ -195,6 +205,9 @@ let speedMs = 100;
 
 let lastNodeActions: GroupAction[] = [];
 let lastSeqActions:  GroupAction[] = [];
+let ctBuildActions:   ((t: number) => GroupAction[])           | null = null;
+let ctGetState:       (() => CTSerializedState)               | null = null;
+let ctRestoreState:   ((data: CTSerializedState) => void)     | null = null;
 let seqNodeBoundaries: number[] = [];
 let seqNodeEndStates: Array<{ charGrid: string[][], boolGrid: boolean[][] }> = [];
 let timelineMode: 'node' | 'seq' = 'node';
@@ -235,7 +248,27 @@ let startCharCtx!: CanvasRenderingContext2D;
 let endCharCanvas!: HTMLCanvasElement;
 let endCharCtx!: CanvasRenderingContext2D;
 let sourceSelect!: HTMLSelectElement;
+let ctEditorEl: HTMLElement | null = null;
 let timelineCanvas!: HTMLCanvasElement;
+
+function applyTransitionDef(def: TransitionDef) {
+    orderField.style.display         = def.needsOrder && !def.isCustom ? '' : 'none';
+    fpsField.style.display           = def.needsFlipsPerSecond         ? '' : 'none';
+    syncStartField.style.display     = def.needsSyncStart              ? '' : 'none';
+    diffOrderOnlyField.style.display = def.needsDiffOrderOnly          ? '' : 'none';
+    if (ctEditorEl) ctEditorEl.style.display = def.isCustom ? 'block' : 'none';
+    if (def.isCustom) {
+        const allSpaces = (g: string[][]) => g.every(row => row.every(c => c === ' '));
+        if (allSpaces(startCharGrid)) syncCharFromShape('start');
+        if (allSpaces(endCharGrid))   syncCharFromShape('end');
+        sourceSelect.value    = 'characters';
+        sourceSelect.disabled = true;
+        useCharSource = true;
+    } else {
+        sourceSelect.disabled = false;
+        useCharSource = sourceSelect.value === 'characters';
+    }
+}
 
 // ── Shape helpers ─────────────────────────────────────────────────────────────
 
@@ -732,6 +765,7 @@ function updateURL() {
         params.set(`${i}.fps`,   String(node.fps));
         params.set(`${i}.sync`,  node.syncStart    ? '1' : '0');
         params.set(`${i}.doo`,   node.diffOrderOnly ? '1' : '0');
+        if (node.ctState) params.set(`${i}.ct`, JSON.stringify(node.ctState));
     }
     history.replaceState(null, '', '?' + params.toString());
 }
@@ -753,6 +787,8 @@ function loadNodeFromParams(params: URLSearchParams, prefix: string): Playground
     if (params.has(`${prefix}fps`))   node.fps       = parseFloat(params.get(`${prefix}fps`)!)  || 3;
     if (params.has(`${prefix}sync`))  node.syncStart      = params.get(`${prefix}sync`) === '1';
     if (params.has(`${prefix}doo`))   node.diffOrderOnly  = params.get(`${prefix}doo`)  === '1';
+    const ct = params.get(`${prefix}ct`);
+    if (ct) { try { node.ctState = JSON.parse(ct) as CTSerializedState; } catch {} }
     return node;
 }
 
@@ -808,7 +844,17 @@ function generateAndPlay() {
     let groupActions: GroupAction[];
     let initialState: number[] | undefined;
 
-    if (useCharSource) {
+    if (transDef.isCustom) {
+        if (!ctBuildActions) return;
+        o1 = new PixelArtTarget(startCharGrid, ' ');
+        o2 = new PixelArtTarget(endCharGrid, ' ');
+        try {
+            groupActions = ctBuildActions(t);
+        } catch (err) {
+            console.error('CustomTransition error:', err);
+            return;
+        }
+    } else if (useCharSource) {
         const flipCounts = computeFlipCounts(startCharGrid, endCharGrid);
         const o2Grid: boolean[][] = Array.from({ length: SH }, (_, row) =>
             Array.from({ length: SW }, (_, col) => flipCounts[row * SW + col] > 0)
@@ -1012,13 +1058,11 @@ function buildComposerUI() {
         transitionSelect.appendChild(opt);
     });
 
+    ctEditorEl = document.getElementById('custom-transition-editor');
+
     transitionSelect.addEventListener('change', () => {
         selectedTransitionIdx = parseInt(transitionSelect.value);
-        const def = TRANSITION_DEFS[selectedTransitionIdx];
-        orderField.style.display         = def.needsOrder          ? '' : 'none';
-        fpsField.style.display           = def.needsFlipsPerSecond ? '' : 'none';
-        syncStartField.style.display     = def.needsSyncStart      ? '' : 'none';
-        diffOrderOnlyField.style.display = def.needsDiffOrderOnly  ? '' : 'none';
+        applyTransitionDef(TRANSITION_DEFS[selectedTransitionIdx]);
     });
 
     // Orders
@@ -1082,8 +1126,7 @@ function buildReferencePanel() {
         item.addEventListener('click', () => {
             selectedTransitionIdx = i;
             transitionSelect.value = String(i);
-            const needsOrder = def.needsOrder;
-            orderField.style.display = needsOrder ? '' : 'none';
+            applyTransitionDef(def);
             document.querySelectorAll('#transitions-pane .ref-item').forEach((el, j) => {
                 el.classList.toggle('selected', j === i);
             });
@@ -1178,6 +1221,7 @@ function refreshExportCode() {
 
 // ── Sequence panel ────────────────────────────────────────────────────────────
 function captureNode(): PlaygroundNode {
+    const tDef = TRANSITION_DEFS[selectedTransitionIdx];
     return {
         startGrid:     startGrid.map(r => [...r]),
         endGrid:       endGrid.map(r => [...r]),
@@ -1192,6 +1236,7 @@ function captureNode(): PlaygroundNode {
         diffOrderOnly: diffOrderOnlyInput?.checked ?? false,
         reel:          reelInput.value,
         text:          textInput.value,
+        ctState:       tDef?.isCustom ? ctGetState?.() : undefined,
     };
 }
 
@@ -1213,12 +1258,10 @@ function applyNode(node: PlaygroundNode) {
 
     const tDef = TRANSITION_DEFS[node.transitionIdx];
     const oDef = ORDER_DEFS[node.orderIdx];
-    orderField.style.display          = tDef.needsOrder          ? '' : 'none';
-    fpsField.style.display            = tDef.needsFlipsPerSecond ? '' : 'none';
-    syncStartField.style.display      = tDef.needsSyncStart      ? '' : 'none';
-    diffOrderOnlyField.style.display  = tDef.needsDiffOrderOnly  ? '' : 'none';
-    textField.style.display      = oDef.needsText           ? '' : 'none';
-    painterSection.style.display = oDef.isPainter           ? '' : 'none';
+    applyTransitionDef(tDef);
+    if (tDef?.isCustom && node.ctState && ctRestoreState) ctRestoreState(node.ctState);
+    textField.style.display      = oDef.needsText  ? '' : 'none';
+    painterSection.style.display = oDef.isPainter  ? '' : 'none';
 
     renderShapeCanvas(startShapeCtx, startGrid);
     renderShapeCanvas(endShapeCtx, endGrid);
@@ -1547,6 +1590,10 @@ function resetAll() {
     stopAnimation();
     history.replaceState(null, '', location.pathname);
 
+    nodes = [makeNode()];
+    selectedNodeIdx = 0;
+    renderSequencePanel();
+
     startGrid = Array.from({ length: SH }, () => new Array(SW).fill(false));
     endGrid   = Array.from({ length: SH }, () => new Array(SW).fill(false));
     renderShapeCanvas(startShapeCtx, startGrid);
@@ -1558,7 +1605,8 @@ function resetAll() {
     endCharGrid   = Array.from({ length: SH }, () => new Array(SW).fill(' '));
     renderCharCanvas(startCharCtx, startCharGrid, null);
     renderCharCanvas(endCharCtx, endCharGrid, null);
-    sourceSelect.value = 'shapes';
+    sourceSelect.disabled = false;
+    sourceSelect.value    = 'shapes';
     useCharSource = false;
 
     painterGrid = Array.from({ length: SH }, () => new Array(SW).fill(0));
@@ -1571,6 +1619,257 @@ function resetAll() {
     playBtn.textContent = '▶ Play';
 
     rebuildHardware();
+}
+
+// ── Custom Transition Editor ───────────────────────────────────────────────────
+function buildCustomTransitionEditor() {
+    const NL_W = 150, NL_H = 22;
+
+    const GROUPS = [
+        { key: 'diff'       as const, label: 'diff',   color: '#c8a040' },
+        { key: 'stable'     as const, label: 'stable', color: '#40c880' },
+        { key: 'background' as const, label: 'bg',     color: '#9a70cc' },
+    ];
+    type GroupKey = typeof GROUPS[number]['key'];
+
+    interface GroupState {
+        linkTo: GroupKey | '';
+        intervalType: 'off' | 'exact' | 'count' | 'list';
+        count: number;
+        points: number[];
+    }
+
+    const state: Record<GroupKey, GroupState> = {
+        diff:       { linkTo: '', intervalType: 'exact', count: 1, points: [] },
+        stable:     { linkTo: '', intervalType: 'off',   count: 0, points: [] },
+        background: { linkTo: '', intervalType: 'off',   count: 0, points: [] },
+    };
+
+    // Order list: AllAtOnce first, Painter excluded
+    const ctOrderDefs = ORDER_DEFS.filter(d => !d.isPainter);
+    const aaoIdx = ctOrderDefs.findIndex(d => d.name === 'AllAtOnce');
+    if (aaoIdx > 0) ctOrderDefs.unshift(...ctOrderDefs.splice(aaoIdx, 1));
+
+    interface GroupDom {
+        linkSel: HTMLSelectElement;
+        ownSettings: HTMLElement;
+        linkedIndicator: HTMLElement;
+        itypeSel: HTMLSelectElement;
+        countInput: HTMLInputElement;
+        numlineCanvas: HTMLCanvasElement;
+    }
+    const doms = {} as Record<GroupKey, GroupDom>;
+
+    function resolve(key: GroupKey): GroupKey {
+        const seen = new Set<GroupKey>();
+        let cur = key;
+        while (state[cur].linkTo !== '') {
+            if (seen.has(cur)) return key;
+            seen.add(cur);
+            cur = state[cur].linkTo as GroupKey;
+        }
+        return cur;
+    }
+
+    function renderNumline(key: GroupKey) {
+        const src = resolve(key);
+        const canvas = doms[key].numlineCanvas;
+        const ctx = canvas.getContext('2d')!;
+        const pts = state[src].points;
+        const color = GROUPS.find(g => g.key === src)!.color;
+
+        ctx.fillStyle = '#141414';
+        ctx.fillRect(0, 0, NL_W, NL_H);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0.5, 0.5, NL_W - 1, NL_H - 1);
+
+        ctx.strokeStyle = '#2a2a2a';
+        for (const frac of [0.25, 0.5, 0.75]) {
+            const x = Math.round(frac * (NL_W - 1)) + 0.5;
+            ctx.beginPath(); ctx.moveTo(x, 1); ctx.lineTo(x, NL_H - 1); ctx.stroke();
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        for (const p of pts) {
+            const x = Math.round(p * (NL_W - 1)) + 0.5;
+            ctx.beginPath(); ctx.moveTo(x, 2); ctx.lineTo(x, NL_H - 2); ctx.stroke();
+        }
+    }
+
+    function updateGroupUI(key: GroupKey) {
+        const s = state[key];
+        const dom = doms[key];
+        const linked = s.linkTo !== '';
+        dom.ownSettings.style.display = linked ? 'none' : '';
+        dom.linkedIndicator.style.display = linked ? '' : 'none';
+        if (linked) {
+            const srcLabel = GROUPS.find(g => g.key === resolve(key))!.label;
+            dom.linkedIndicator.textContent = `→ ${srcLabel}`;
+        }
+        const src = resolve(key);
+        const itype = state[src].intervalType;
+        dom.countInput.style.display    = itype === 'count' ? '' : 'none';
+        dom.numlineCanvas.style.display = itype === 'list'  ? '' : 'none';
+        renderNumline(key);
+    }
+
+    const rowsEl = document.getElementById('ct-rows')!;
+
+    for (const group of GROUPS) {
+        const key = group.key;
+        const row = document.createElement('div');
+        row.className = 'ct-group-row';
+
+        const label = document.createElement('span');
+        label.className = 'ct-label';
+        label.style.color = group.color;
+        label.textContent = group.label;
+        row.appendChild(label);
+
+        const linkSel = document.createElement('select');
+        linkSel.className = 'ct-select-sm';
+        const ownOpt = document.createElement('option');
+        ownOpt.value = ''; ownOpt.textContent = '— own —';
+        linkSel.appendChild(ownOpt);
+        for (const g of GROUPS) {
+            if (g.key === key) continue;
+            const opt = document.createElement('option');
+            opt.value = g.key; opt.textContent = g.label;
+            linkSel.appendChild(opt);
+        }
+        row.appendChild(linkSel);
+
+        const ownSettings = document.createElement('div');
+        ownSettings.className = 'ct-own-settings';
+
+        const itypeSel = document.createElement('select');
+        itypeSel.className = 'ct-select-itype';
+        for (const [val, text] of [['off','off (0)'],['exact','exact flips'],['count','count'],['list','list']] as const) {
+            const opt = document.createElement('option');
+            opt.value = val; opt.textContent = text;
+            itypeSel.appendChild(opt);
+        }
+        itypeSel.value = state[key].intervalType;
+        ownSettings.appendChild(itypeSel);
+
+        const countInput = document.createElement('input');
+        countInput.type = 'number'; countInput.className = 'ct-num-input';
+        countInput.value = String(state[key].count); countInput.min = '0';
+        ownSettings.appendChild(countInput);
+
+        const numlineCanvas = document.createElement('canvas');
+        numlineCanvas.className = 'ct-numline';
+        numlineCanvas.width = NL_W; numlineCanvas.height = NL_H;
+        ownSettings.appendChild(numlineCanvas);
+
+        row.appendChild(ownSettings);
+
+        const linkedIndicator = document.createElement('span');
+        linkedIndicator.className = 'ct-linked-indicator';
+        linkedIndicator.style.display = 'none';
+        row.appendChild(linkedIndicator);
+
+        rowsEl.appendChild(row);
+        doms[key] = { linkSel, ownSettings, linkedIndicator, itypeSel, countInput, numlineCanvas };
+    }
+
+    // Event listeners
+    for (const group of GROUPS) {
+        const key = group.key;
+        const dom = doms[key];
+
+        dom.linkSel.addEventListener('change', () => {
+            state[key].linkTo = dom.linkSel.value as (GroupKey | '');
+            for (const g of GROUPS) updateGroupUI(g.key);
+        });
+        dom.itypeSel.addEventListener('change', () => {
+            state[key].intervalType = dom.itypeSel.value as GroupState['intervalType'];
+            updateGroupUI(key);
+        });
+        dom.countInput.addEventListener('input', () => {
+            state[key].count = parseInt(dom.countInput.value) || 0;
+        });
+        dom.numlineCanvas.addEventListener('click', e => {
+            const src = resolve(key);
+            const rect = dom.numlineCanvas.getBoundingClientRect();
+            const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const EPS = 0.02;
+            const idx = state[src].points.findIndex(p => Math.abs(p - x) < EPS);
+            if (idx !== -1) state[src].points.splice(idx, 1);
+            else { state[src].points.push(x); state[src].points.sort((a, b) => a - b); }
+            renderNumline(key);
+        });
+    }
+
+    for (const g of GROUPS) updateGroupUI(g.key);
+
+    // Shared start/end order selects
+    const ctStartSel = document.getElementById('ct-start-order') as HTMLSelectElement;
+    const ctEndSel   = document.getElementById('ct-end-order')   as HTMLSelectElement;
+    for (const def of ctOrderDefs) {
+        for (const sel of [ctStartSel, ctEndSel]) {
+            const opt = document.createElement('option');
+            opt.value = def.name; opt.textContent = def.name;
+            sel.appendChild(opt);
+        }
+    }
+
+    function getSharedOrder(which: 'start' | 'end'): GridOrder | null {
+        const name = (which === 'start' ? ctStartSel : ctEndSel).value;
+        if (name === 'AllAtOnce') return null;
+        return ctOrderDefs.find(d => d.name === name)?.create() ?? null;
+    }
+
+    function getIntervals(key: GroupKey): number[] | number | true {
+        const s = state[resolve(key)];
+        if (s.intervalType === 'off')   return 0;
+        if (s.intervalType === 'exact') return true;
+        if (s.intervalType === 'count') return s.count;
+        return [...s.points];
+    }
+
+    // Expose action builder so generateAndPlay can use it when CT is selected
+    ctBuildActions = (t: number): GroupAction[] => {
+        const o1 = new PixelArtTarget(startCharGrid, ' ');
+        const o2 = new PixelArtTarget(endCharGrid, ' ');
+        const ct = new CustomTransition(o1, o2, t, hw);
+        ct.stableIntervals     = getIntervals('stable');
+        ct.diffIntervals       = getIntervals('diff');
+        ct.backgroundIntervals = getIntervals('background');
+        const so = getSharedOrder('start');
+        const eo = getSharedOrder('end');
+        if (so) ct.startOrder = so;
+        if (eo) ct.endOrder   = eo;
+        return ct.generateGroupActions(o1, o2, t, hw);
+    };
+
+    ctGetState = (): CTSerializedState => ({
+        diff:       { ...state.diff,       points: [...state.diff.points]       },
+        stable:     { ...state.stable,     points: [...state.stable.points]     },
+        background: { ...state.background, points: [...state.background.points] },
+        startOrder: ctStartSel.value,
+        endOrder:   ctEndSel.value,
+    });
+
+    ctRestoreState = (data: CTSerializedState) => {
+        for (const key of ['diff', 'stable', 'background'] as const) {
+            const gs = data[key];
+            if (!gs) continue;
+            state[key].linkTo       = (gs.linkTo ?? '')   as (GroupKey | '');
+            state[key].intervalType = (gs.intervalType ?? 'off') as GroupState['intervalType'];
+            state[key].count        = gs.count  ?? 0;
+            state[key].points       = [...(gs.points ?? [])];
+            doms[key].linkSel.value    = state[key].linkTo;
+            doms[key].itypeSel.value   = state[key].intervalType;
+            doms[key].countInput.value = String(state[key].count);
+        }
+        if (data.startOrder) ctStartSel.value = data.startOrder;
+        if (data.endOrder)   ctEndSel.value   = data.endOrder;
+        for (const g of GROUPS) updateGroupUI(g.key);
+    };
+
 }
 
 // ── Rebuild hardware when reel changes ────────────────────────────────────────
@@ -1631,6 +1930,7 @@ function init() {
     buildSequencePanel();
     buildTimelinePanel();
     buildExportModal();
+    buildCustomTransitionEditor();
 
     sourceSelect.addEventListener('change', () => {
         useCharSource = sourceSelect.value === 'characters';
