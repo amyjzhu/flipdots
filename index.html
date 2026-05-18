@@ -354,6 +354,12 @@
       padding: 2px 4px; width: 48px; font-family: monospace; font-size: 11px;
     }
     .ct-numline { border: 1px solid #444; cursor: crosshair; display: block; }
+    #ct-pseudocode {
+      margin: 8px 0 0; padding: 7px 10px;
+      background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 3px;
+      font-family: monospace; font-size: 11px; color: #888; line-height: 1.65;
+      white-space: pre; user-select: all;
+    }
 
     #ct-generate-btn {
       margin-top: 8px;
@@ -463,6 +469,7 @@
             <label>End order</label>
             <select id="ct-end-order" class="ct-select-order"></select>
           </div>
+          <pre id="ct-pseudocode"></pre>
         </div>
       </div>
 

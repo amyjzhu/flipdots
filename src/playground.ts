@@ -1783,13 +1783,16 @@ function buildCustomTransitionEditor() {
         dom.linkSel.addEventListener('change', () => {
             state[key].linkTo = dom.linkSel.value as (GroupKey | '');
             for (const g of GROUPS) updateGroupUI(g.key);
+            renderPseudocode();
         });
         dom.itypeSel.addEventListener('change', () => {
             state[key].intervalType = dom.itypeSel.value as GroupState['intervalType'];
             updateGroupUI(key);
+            renderPseudocode();
         });
         dom.countInput.addEventListener('input', () => {
             state[key].count = parseInt(dom.countInput.value) || 0;
+            renderPseudocode();
         });
         dom.numlineCanvas.addEventListener('click', e => {
             const src = resolve(key);
@@ -1800,6 +1803,7 @@ function buildCustomTransitionEditor() {
             if (idx !== -1) state[src].points.splice(idx, 1);
             else { state[src].points.push(x); state[src].points.sort((a, b) => a - b); }
             renderNumline(key);
+            renderPseudocode();
         });
     }
 
@@ -1820,6 +1824,59 @@ function buildCustomTransitionEditor() {
         const name = (which === 'start' ? ctStartSel : ctEndSel).value;
         if (name === 'AllAtOnce') return null;
         return ctOrderDefs.find(d => d.name === name)?.create() ?? null;
+    }
+
+    const pseudocodeEl = document.getElementById('ct-pseudocode') as HTMLElement;
+
+    function renderPseudocode() {
+        const startOrd = ctStartSel.value;
+        const endOrd   = ctEndSel.value;
+        const hasOrder = startOrd !== 'AllAtOnce' || endOrd !== 'AllAtOnce';
+        const lines: string[] = [];
+
+        for (const group of GROUPS) {
+            const key = group.key;
+            const src = resolve(key);
+            const s   = state[src];
+            const linked = src !== key ? `  // → same as ${GROUPS.find(g => g.key === src)!.label}` : '';
+
+            if (s.intervalType === 'off') {
+                lines.push(`${group.label}: (off)${linked}`);
+                continue;
+            }
+
+            lines.push(`for u in ${group.label}:${linked}`);
+
+            if (s.intervalType === 'exact') {
+                lines.push(`  flips[u] = computeFlipDistance(o1[u], o2[u])`);
+            } else if (s.intervalType === 'count') {
+                lines.push(`  flips[u] = ${s.count}`);
+            }
+
+            if (hasOrder) {
+                const nStr = startOrd === 'AllAtOnce' ? '0'  : `open(u, ${startOrd})`;
+                const mStr = endOrd   === 'AllAtOnce' ? 'T'  : `close(u, ${endOrd})`;
+                lines.push(`  [N, M][u] = [${nStr}, ${mStr}]`);
+            }
+
+            const win = hasOrder ? '[N, M][u]' : '[0, T]';
+            if (s.intervalType === 'exact' || s.intervalType === 'count') {
+                lines.push(`  times[u] = evenlySpaced(flips[u], ${win})`);
+            } else {
+                const pts = s.points.length > 0
+                    ? `[${s.points.map(p => p.toFixed(2)).join(', ')}]·T`
+                    : `[]`;
+                lines.push(`  times[u] = ${pts} ∩ ${win}`);
+            }
+
+            lines.push('');
+        }
+
+        while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+        lines.push('');
+        lines.push('→ merge(all times) → GroupActions');
+
+        pseudocodeEl.textContent = lines.join('\n');
     }
 
     function getIntervals(key: GroupKey): number[] | number | true {
@@ -1868,7 +1925,13 @@ function buildCustomTransitionEditor() {
         if (data.startOrder) ctStartSel.value = data.startOrder;
         if (data.endOrder)   ctEndSel.value   = data.endOrder;
         for (const g of GROUPS) updateGroupUI(g.key);
+        renderPseudocode();
     };
+
+    ctStartSel.addEventListener('change', renderPseudocode);
+    ctEndSel.addEventListener('change', renderPseudocode);
+
+    renderPseudocode();
 
 }
 
