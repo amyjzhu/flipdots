@@ -172,6 +172,7 @@ function makeNode(overrides: Partial<PlaygroundNode> = {}): PlaygroundNode {
 
 let nodes: PlaygroundNode[] = [makeNode()];
 let selectedNodeIdx = 0;
+let dragSrcIdx: number | null = null;
 
 // ── Mutable state ─────────────────────────────────────────────────────────────
 let painterGrid: number[][] = Array.from({ length: SH }, () => new Array(SW).fill(0));
@@ -193,7 +194,7 @@ let useCharSource = false;
 let selectedOrderIdx = 0;
 let selectedTransitionIdx = 0;
 
-let is3dMode = false;
+let is3dMode = true;
 let hw3d: SplitflapHardware | null = null;
 let simContainer: HTMLElement;
 
@@ -1320,7 +1321,9 @@ function renderSequencePanel() {
 
         const item = document.createElement('div');
         item.className = 'seq-item' + (i === selectedNodeIdx ? ' selected' : '');
+        item.draggable = true;
         item.innerHTML = `
+            <span class="seq-drag" title="Drag to reorder">⠿</span>
             <span class="seq-num">${i + 1}</span>
             <span class="seq-label">${tName}<span class="seq-sub"> · ${oName}</span></span>
             <button class="seq-del" title="Delete">✕</button>`;
@@ -1339,6 +1342,50 @@ function renderSequencePanel() {
             nodes[selectedNodeIdx] = captureNode();
             selectedNodeIdx = i;
             applyNode(nodes[i]);
+            renderSequencePanel();
+        });
+
+        item.addEventListener('dragstart', e => {
+            dragSrcIdx = i;
+            item.classList.add('dragging');
+            e.dataTransfer!.effectAllowed = 'move';
+            e.dataTransfer!.setData('text/plain', String(i));
+        });
+
+        item.addEventListener('dragend', () => {
+            dragSrcIdx = null;
+            document.querySelectorAll('.seq-item.dragging, .seq-item.drag-over')
+                    .forEach(el => el.classList.remove('dragging', 'drag-over'));
+        });
+
+        item.addEventListener('dragover', e => {
+            if (dragSrcIdx === null || dragSrcIdx === i) return;
+            e.preventDefault();
+            e.dataTransfer!.dropEffect = 'move';
+            document.querySelectorAll('.seq-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+            item.classList.add('drag-over');
+        });
+
+        item.addEventListener('dragleave', () => {
+            item.classList.remove('drag-over');
+        });
+
+        item.addEventListener('drop', e => {
+            e.preventDefault();
+            item.classList.remove('drag-over');
+            if (dragSrcIdx === null || dragSrcIdx === i) return;
+            nodes[selectedNodeIdx] = captureNode();
+            const [moved] = nodes.splice(dragSrcIdx, 1);
+            const dest = dragSrcIdx < i ? i - 1 : i;
+            nodes.splice(dest, 0, moved);
+            if (selectedNodeIdx === dragSrcIdx) {
+                selectedNodeIdx = dest;
+            } else if (dragSrcIdx < selectedNodeIdx && dest >= selectedNodeIdx) {
+                selectedNodeIdx--;
+            } else if (dragSrcIdx > selectedNodeIdx && dest <= selectedNodeIdx) {
+                selectedNodeIdx++;
+            }
+            dragSrcIdx = null;
             renderSequencePanel();
         });
 
@@ -1562,10 +1609,15 @@ function buildPreviewControls() {
 
     const sim3dBtn = document.getElementById('sim3d-btn') as HTMLButtonElement;
     simContainer = document.getElementById('sim-container') as HTMLElement;
+    sim3dBtn.classList.add('active');
+    simContainer.style.display = 'block';
+    previewCanvas.style.display = 'none';
+    hw3d = SplitflapHardware.Rectangular(SW, SH, (_x, _y) => REEL.map(s => new SplitflapState(s)), simContainer);
     sim3dBtn.addEventListener('click', () => {
         is3dMode = !is3dMode;
         sim3dBtn.classList.toggle('active', is3dMode);
         simContainer.style.display = is3dMode ? 'block' : 'none';
+        previewCanvas.style.display = is3dMode ? 'none' : 'block';
         if (is3dMode && hw3d === null) {
             hw3d = SplitflapHardware.Rectangular(SW, SH, (_x, _y) => REEL.map(s => new SplitflapState(s)), simContainer);
         }
@@ -1872,6 +1924,104 @@ function buildCustomTransitionEditor() {
 
 }
 
+// ── Layout Palette ────────────────────────────────────────────────────────────
+interface LayoutEntry {
+    label: string;
+    grid:     boolean[][];
+    charGrid: string[][];
+}
+
+let layouts: LayoutEntry[] = [];
+
+function loadLayoutsFromStorage() {
+    try {
+        const raw = localStorage.getItem('flipdot-layouts-v2');
+        if (raw) layouts = (JSON.parse(raw) as LayoutEntry[]).filter(e => e.grid && e.charGrid);
+    } catch { layouts = []; }
+}
+
+function saveLayoutsToStorage() {
+    localStorage.setItem('flipdot-layouts-v2', JSON.stringify(layouts));
+}
+
+function renderLayoutPalette() {
+    const container = document.getElementById('layout-palette')!;
+    container.innerHTML = '';
+    if (layouts.length === 0) {
+        container.innerHTML = '<span style="font-size:11px; color:#555;">No saved layouts</span>';
+        return;
+    }
+    layouts.forEach((entry, i) => {
+        const item = document.createElement('div');
+        item.className = 'palette-item';
+
+        item.appendChild(createMiniGridCanvas(entry.charGrid, '#c8a040'));
+
+        const label = document.createElement('span');
+        label.className = 'palette-label';
+        label.textContent = entry.label;
+        item.appendChild(label);
+
+        const loadStart = document.createElement('button');
+        loadStart.className = 'palette-load-btn';
+        loadStart.textContent = '→ Start';
+        loadStart.addEventListener('click', e => {
+            e.stopPropagation();
+            startGrid     = entry.grid.map(r => [...r]);
+            startCharGrid = entry.charGrid.map(r => [...r]);
+            renderShapeCanvas(startShapeCtx, startGrid);
+            renderCharCanvas(startCharCtx, startCharGrid, null);
+        });
+        item.appendChild(loadStart);
+
+        const loadEnd = document.createElement('button');
+        loadEnd.className = 'palette-load-btn';
+        loadEnd.textContent = '→ End';
+        loadEnd.addEventListener('click', e => {
+            e.stopPropagation();
+            endGrid     = entry.grid.map(r => [...r]);
+            endCharGrid = entry.charGrid.map(r => [...r]);
+            renderShapeCanvas(endShapeCtx, endGrid);
+            renderCharCanvas(endCharCtx, endCharGrid, null);
+        });
+        item.appendChild(loadEnd);
+
+        const del = document.createElement('button');
+        del.className = 'palette-del';
+        del.textContent = '✕';
+        del.title = 'Delete';
+        del.addEventListener('click', e => {
+            e.stopPropagation();
+            layouts.splice(i, 1);
+            saveLayoutsToStorage();
+            renderLayoutPalette();
+        });
+        item.appendChild(del);
+
+        container.appendChild(item);
+    });
+}
+
+function saveGridToLayout(which: 'start' | 'end') {
+    const n = layouts.length + 1;
+    const grid     = which === 'start' ? startGrid     : endGrid;
+    const charGrid = which === 'start' ? startCharGrid : endCharGrid;
+    layouts.push({
+        label:    `${which[0].toUpperCase()}${n}`,
+        grid:     grid.map(r => [...r]),
+        charGrid: charGrid.map(r => [...r]),
+    });
+    saveLayoutsToStorage();
+    renderLayoutPalette();
+}
+
+function buildLayoutPalette() {
+    loadLayoutsFromStorage();
+    renderLayoutPalette();
+    document.getElementById('save-start-btn')!.addEventListener('click', () => saveGridToLayout('start'));
+    document.getElementById('save-end-btn')!.addEventListener('click',   () => saveGridToLayout('end'));
+}
+
 // ── Rebuild hardware when reel changes ────────────────────────────────────────
 function rebuildHardware() {
     hw = SplitflapHardware.Headless(SW, SH, (_x, _y) => REEL.map(s => new SplitflapState(s)));
@@ -1931,6 +2081,7 @@ function init() {
     buildTimelinePanel();
     buildExportModal();
     buildCustomTransitionEditor();
+    buildLayoutPalette();
 
     sourceSelect.addEventListener('change', () => {
         useCharSource = sourceSelect.value === 'characters';

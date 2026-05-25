@@ -148,7 +148,11 @@
     }
     .seq-item:hover { background: #222; border-color: #444; }
     .seq-item.selected { background: #1a2a1a; border-color: #3a7a3a; }
+    .seq-item.dragging { opacity: 0.35; }
+    .seq-item.drag-over { border-color: #6a9a6a; background: #1e3a1e; }
 
+    .seq-drag { color: #444; font-size: 13px; cursor: grab; padding-right: 2px; user-select: none; }
+    .seq-drag:hover { color: #888; }
     .seq-num  { color: #666; font-size: 10px; min-width: 14px; }
     .seq-label { font-size: 11px; color: #ccc; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .seq-sub  { color: #666; }
@@ -173,8 +177,58 @@
     }
     #seq-play-btn:hover { background: #203878; }
 
-    /* ── Timeline ── */
-    #timeline-section { min-width: 160px; }
+    /* ── Layout Palette ── */
+    #layout-palette { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .palette-item {
+      display: flex; align-items: center; gap: 4px;
+      padding: 5px 7px; background: #1a1a1a; border: 1px solid #2a2a2a;
+      border-radius: 2px; cursor: pointer;
+    }
+    .palette-item:hover { background: #222; border-color: #444; }
+
+    .palette-arrow { font-size: 10px; color: #444; }
+    .palette-label { font-size: 10px; color: #555; white-space: nowrap; padding: 0 2px; }
+    .palette-del {
+      background: none; border: none; color: #664444; cursor: pointer;
+      font-size: 10px; padding: 0 2px; line-height: 1;
+    }
+    .palette-del:hover { color: #cc6666; }
+
+    .save-layout-btn {
+      background: #1a2a1a; color: #6a9a6a; border: 1px solid #2a5a2a;
+      padding: 2px 8px; cursor: pointer; font-family: monospace; font-size: 11px;
+    }
+    .save-layout-btn:hover { background: #1e321e; }
+
+    .palette-load-btn {
+      background: #1a1a2a; color: #7a9acc; border: 1px solid #2a3a5a;
+      padding: 2px 5px; cursor: pointer; font-family: monospace; font-size: 10px;
+      white-space: nowrap;
+    }
+    .palette-load-btn:hover { background: #1e2a3e; }
+
+    /* ── Timeline / Mask Result collapsibles ── */
+    #timeline-section,
+    #mask-viz-section {
+      min-width: 160px;
+    }
+
+    #timeline-section > summary,
+    #mask-viz-section > summary {
+      font-size: 13px; font-weight: bold; color: #aaa;
+      text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 8px; cursor: pointer; user-select: none;
+      list-style: none; display: flex; align-items: center; gap: 6px;
+    }
+    #timeline-section > summary::-webkit-details-marker,
+    #mask-viz-section > summary::-webkit-details-marker { display: none; }
+    #timeline-section > summary::before,
+    #mask-viz-section > summary::before {
+      content: '▶'; font-size: 9px; color: #555;
+    }
+    #timeline-section[open] > summary::before,
+    #mask-viz-section[open] > summary::before { content: '▼'; }
 
     .tl-tabs { display: flex; gap: 3px; margin-bottom: 5px; }
     .tl-tab {
@@ -376,6 +430,7 @@
     <div id="preview-section">
       <div id="preview-wrap">
         <canvas id="preview-canvas"></canvas>
+        <div id="sim-container" style="display:none; width:640px; height:300px; border:1px solid #444;"></div>
         <div id="preview-controls">
           <button id="play-btn">▶ Play</button>
           <button id="loop-btn" class="active">⟳ Loop</button>
@@ -387,132 +442,149 @@
           </div>
         </div>
       </div>
-      <div id="sim-container" style="display:none; width:640px; height:300px; border:1px solid #444; margin-top:8px;"></div>
     </div>
 
-    <!-- Composer + Painter -->
+    <!-- Work area -->
     <div id="work-section">
-      <div id="sequence-section">
-        <h2>Sequence</h2>
-        <div id="sequence-list"></div>
-        <button id="seq-add-btn">+ Add Node</button>
-        <button id="seq-play-btn">▶ Play Sequence</button>
+
+      <!-- Row 1: Shapes + Characters -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; width:100%; align-items:flex-start;">
+        <div id="shape-section">
+          <h2>Shapes</h2>
+          <div style="display:flex; gap:16px; align-items:flex-start;">
+            <div>
+              <h3>Start</h3>
+              <div style="display:flex; gap:6px; margin-bottom:4px;">
+                <button class="shape-btn" id="start-clear-btn">Clear</button>
+                <button class="shape-btn" id="start-fill-btn">Fill</button>
+              </div>
+              <canvas id="start-shape-canvas" style="display:block; border:1px solid #444; cursor:crosshair;"></canvas>
+              <input type="text" id="start-text-input" placeholder="text…" style="margin-top:4px; width:100%; background:#1e1e1e; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
+            </div>
+            <div>
+              <h3>End</h3>
+              <div style="display:flex; gap:6px; margin-bottom:4px;">
+                <button class="shape-btn" id="end-clear-btn">Clear</button>
+                <button class="shape-btn" id="end-fill-btn">Fill</button>
+              </div>
+              <canvas id="end-shape-canvas" style="display:block; border:1px solid #444; cursor:crosshair;"></canvas>
+              <input type="text" id="end-text-input" placeholder="text…" style="margin-top:4px; width:100%; background:#1e1e1e; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
+            </div>
+          </div>
+        </div>
+
+        <div id="char-section">
+          <h2>Characters</h2>
+          <p style="font-size:10px; color:#666; margin-bottom:6px;">Click a cell · type to set · arrows to navigate · Esc to deselect · set Source = Characters to use</p>
+          <div style="display:flex; gap:16px; align-items:flex-start;">
+            <div>
+              <h3>Start</h3>
+              <div style="display:flex; gap:6px; margin-bottom:4px;">
+                <button class="shape-btn" id="char-start-clear-btn">Clear</button>
+              </div>
+              <canvas id="start-char-canvas" style="display:block; border:1px solid #444; cursor:text; outline:none;"></canvas>
+            </div>
+            <div>
+              <h3>End</h3>
+              <div style="display:flex; gap:6px; margin-bottom:4px;">
+                <button class="shape-btn" id="char-end-clear-btn">Clear</button>
+              </div>
+              <canvas id="end-char-canvas" style="display:block; border:1px solid #444; cursor:text; outline:none;"></canvas>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div id="composer">
-        <h2>Composer</h2>
-        <div class="field">
-          <label>Transition</label>
-          <select id="transition-select"></select>
+      <!-- Layout Palette -->
+      <div style="width:100%;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <h2 style="margin-bottom:0">Layouts</h2>
+          <button id="save-start-btn" class="save-layout-btn">Save Start</button>
+          <button id="save-end-btn" class="save-layout-btn">Save End</button>
         </div>
-        <div class="field" id="order-field">
-          <label>Order</label>
-          <select id="order-select"></select>
-        </div>
-        <div class="field" id="text-field" style="display:none">
-          <label>Text</label>
-          <input type="text" id="text-input" value="hello">
-        </div>
-        <div class="field">
-          <label>Duration (t)</label>
-          <input type="number" id="duration-input" value="200" min="1" max="2000">
-        </div>
-        <div class="field">
-          <label>Speed scale</label>
-          <input type="number" id="scale-input" value="1" min="0.05" max="10" step="0.05">
-        </div>
-        <div class="field">
-          <label>Reel</label>
-          <input type="text" id="reel-input" value=" abcdefghijklmnopqrstuvwxyz!?*">
-        </div>
-        <div class="field" id="fps-field" style="display:none">
-          <label>Flips/sec</label>
-          <input type="number" id="fps-input" value="1" min="0.1" max="100" step="0.1">
-        </div>
-        <div class="field" id="sync-start-field" style="display:none">
-          <label>Sync start</label>
-          <input type="checkbox" id="sync-start-input" checked>
-        </div>
-        <div class="field" id="diff-order-only-field" style="display:none">
-          <label>Diff order only</label>
-          <input type="checkbox" id="diff-order-only-input">
-        </div>
-        <div class="field">
-          <label>Source</label>
-          <select id="source-select">
-            <option value="shapes">Shapes</option>
-            <option value="characters">Characters</option>
-          </select>
-        </div>
-        <button id="generate-btn">Generate &amp; Play</button>
+        <div id="layout-palette"><span style="font-size:11px; color:#555;">No saved layouts</span></div>
+      </div>
 
-        <div id="custom-transition-editor" style="display:none; margin-top:10px; border-top:1px solid #2a2a2a; padding-top:8px;">
-          <div id="ct-header-row">
-            <span style="min-width:68px"></span>
-            <span style="min-width:82px; font-size:10px; color:#555">link to</span>
-            <span style="min-width:94px; font-size:10px; color:#555">intervals</span>
-            <span style="min-width:52px; font-size:10px; color:#555">count</span>
-            <span style="min-width:154px; font-size:10px; color:#555">points [0…1]</span>
+      <!-- Row 2: Sequence + Composer -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; width:100%; align-items:flex-start;">
+        <div id="sequence-section">
+          <h2>Sequence</h2>
+          <div id="sequence-list"></div>
+          <button id="seq-add-btn">+ Add Node</button>
+          <button id="seq-play-btn">▶ Play Sequence</button>
+        </div>
+
+        <div id="composer">
+          <h2>Composer</h2>
+          <div class="field">
+            <label>Transition</label>
+            <select id="transition-select"></select>
           </div>
-          <div id="ct-rows"></div>
-          <div class="field" style="margin-top:6px">
-            <label>Start order</label>
-            <select id="ct-start-order" class="ct-select-order"></select>
+          <div class="field" id="order-field">
+            <label>Order</label>
+            <select id="order-select"></select>
+          </div>
+          <div class="field" id="text-field" style="display:none">
+            <label>Text</label>
+            <input type="text" id="text-input" value="hello">
           </div>
           <div class="field">
-            <label>End order</label>
-            <select id="ct-end-order" class="ct-select-order"></select>
+            <label>Duration (t)</label>
+            <input type="number" id="duration-input" value="200" min="1" max="2000">
+          </div>
+          <div class="field">
+            <label>Speed scale</label>
+            <input type="number" id="scale-input" value="1" min="0.05" max="10" step="0.05">
+          </div>
+          <div class="field">
+            <label>Reel</label>
+            <input type="text" id="reel-input" value=" abcdefghijklmnopqrstuvwxyz!?*">
+          </div>
+          <div class="field" id="fps-field" style="display:none">
+            <label>Flips/sec</label>
+            <input type="number" id="fps-input" value="1" min="0.1" max="100" step="0.1">
+          </div>
+          <div class="field" id="sync-start-field" style="display:none">
+            <label>Sync start</label>
+            <input type="checkbox" id="sync-start-input" checked>
+          </div>
+          <div class="field" id="diff-order-only-field" style="display:none">
+            <label>Diff order only</label>
+            <input type="checkbox" id="diff-order-only-input">
+          </div>
+          <div class="field">
+            <label>Source</label>
+            <select id="source-select">
+              <option value="shapes">Shapes</option>
+              <option value="characters">Characters</option>
+            </select>
+          </div>
+          <button id="generate-btn">Generate &amp; Play</button>
+
+          <div id="custom-transition-editor" style="display:none; margin-top:10px; border-top:1px solid #2a2a2a; padding-top:8px;">
+            <div id="ct-header-row">
+              <span style="min-width:68px"></span>
+              <span style="min-width:82px; font-size:10px; color:#555">link to</span>
+              <span style="min-width:94px; font-size:10px; color:#555">intervals</span>
+              <span style="min-width:52px; font-size:10px; color:#555">count</span>
+              <span style="min-width:154px; font-size:10px; color:#555">points [0…1]</span>
+            </div>
+            <div id="ct-rows"></div>
+            <div class="field" style="margin-top:6px">
+              <label>Start order</label>
+              <select id="ct-start-order" class="ct-select-order"></select>
+            </div>
+            <div class="field">
+              <label>End order</label>
+              <select id="ct-end-order" class="ct-select-order"></select>
+            </div>
           </div>
         </div>
       </div>
 
-      <div id="shape-section">
-        <h2>Shapes</h2>
-        <div style="display:flex; gap:16px; align-items:flex-start;">
-          <div>
-            <h3>Start</h3>
-            <div style="display:flex; gap:6px; margin-bottom:4px;">
-              <button class="shape-btn" id="start-clear-btn">Clear</button>
-              <button class="shape-btn" id="start-fill-btn">Fill</button>
-            </div>
-            <canvas id="start-shape-canvas" style="display:block; border:1px solid #444; cursor:crosshair;"></canvas>
-            <input type="text" id="start-text-input" placeholder="text…" style="margin-top:4px; width:100%; background:#1e1e1e; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
-          </div>
-          <div>
-            <h3>End</h3>
-            <div style="display:flex; gap:6px; margin-bottom:4px;">
-              <button class="shape-btn" id="end-clear-btn">Clear</button>
-              <button class="shape-btn" id="end-fill-btn">Fill</button>
-            </div>
-            <canvas id="end-shape-canvas" style="display:block; border:1px solid #444; cursor:crosshair;"></canvas>
-            <input type="text" id="end-text-input" placeholder="text…" style="margin-top:4px; width:100%; background:#1e1e1e; color:#ccc; border:1px solid #444; padding:3px 6px; font-family:monospace; font-size:12px;">
-          </div>
-        </div>
-      </div>
-
-      <div id="char-section">
-        <h2>Characters</h2>
-        <p style="font-size:10px; color:#666; margin-bottom:6px;">Click a cell · type to set · arrows to navigate · Esc to deselect · set Source = Characters to use</p>
-        <div style="display:flex; gap:16px; align-items:flex-start;">
-          <div>
-            <h3>Start</h3>
-            <div style="display:flex; gap:6px; margin-bottom:4px;">
-              <button class="shape-btn" id="char-start-clear-btn">Clear</button>
-            </div>
-            <canvas id="start-char-canvas" style="display:block; border:1px solid #444; cursor:text; outline:none;"></canvas>
-          </div>
-          <div>
-            <h3>End</h3>
-            <div style="display:flex; gap:6px; margin-bottom:4px;">
-              <button class="shape-btn" id="char-end-clear-btn">Clear</button>
-            </div>
-            <canvas id="end-char-canvas" style="display:block; border:1px solid #444; cursor:text; outline:none;"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <div id="timeline-section">
-        <h2>Timeline</h2>
+      <!-- Collapsible: Timeline -->
+      <details id="timeline-section">
+        <summary>Timeline</summary>
         <div class="tl-tabs">
           <button class="tl-tab active" data-tl="node">Node</button>
           <button class="tl-tab" data-tl="seq">Sequence</button>
@@ -520,13 +592,14 @@
         <div id="timeline-view">
           <canvas id="timeline-canvas"></canvas>
         </div>
-      </div>
+      </details>
 
-      <div id="mask-viz-section">
-        <h2>Mask Result</h2>
+      <!-- Collapsible: Mask Result -->
+      <details id="mask-viz-section">
+        <summary>Mask Result</summary>
         <p style="font-size:10px; color:#666; margin-bottom:4px;">Shape cells colored by frame · gap cells in bounding box shown purple · outside = black</p>
         <canvas id="mask-viz-canvas" style="display:block; border:1px solid #444;"></canvas>
-      </div>
+      </details>
 
       <div id="painter-section" style="display:none">
         <h2>Grid Painter</h2>
