@@ -3,8 +3,9 @@
 // instead, maybe we should have just one split flap, and load the texture of the front and back at the right time.
 // then just simulate it falling down
 import * as THREE from 'three';
-// need to figure out what to do for the type defns 
+// need to figure out what to do for the type defns
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Recorder } from './recorder';
 import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
 import { mergeGeometries, mergeGroups } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ALPHABET_WITH_EXCLAMATION, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING, SPLIT_FLAP_CYCLE_LENGTH } from './constants';
@@ -45,9 +46,11 @@ export class SplitFlapDisplay {
     numFramesRotating = NUM_FRAMES_ROTATING;
     splitFlapCycleLength = SPLIT_FLAP_CYCLE_LENGTH;
 
-    // this should be just the offsets 
+    // this should be just the offsets
     perPixelPauses: (number | undefined)[] = [];
     perPixelCycleLength: (number | undefined)[] = [];
+
+    recorder: Recorder | undefined;
     reel: string[] = [];
 
     constructor(width: number, height: number, numFramesRotating?: number, splitFlapCycleLength?: number, container?: HTMLElement, reel?: string[]) {
@@ -76,9 +79,7 @@ export class SplitFlapDisplay {
         // where to put the camera? depends... 
         // not really sure how to automatically calculate z...
         this.camera.position.z = 300;
-        this.renderer = new THREE.WebGLRenderer();
-
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
         this.renderer.setSize(targetW, targetH);
 
         // ENABLE SHADOWS
@@ -552,6 +553,7 @@ export class SplitFlapDisplay {
         }
 
         this.renderer.render(this.scene, this.camera);
+        this.recorder?.tick();
 
     }
 }

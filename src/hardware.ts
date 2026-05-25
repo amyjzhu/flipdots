@@ -3,7 +3,7 @@ import { RowOfDiscs } from './flipdisc';
 import { BrixelDisplay } from './brixel';
 import { SplitFlapDisplay } from './splitflap';
 import { getImages } from './util';
-import { ALPHABET_WITH_EXCLAMATION } from './constants';
+import { ALPHABET_WITH_EXCLAMATION, FULL_CYCLE_LENGTH } from './constants';
 import { start } from 'repl';
 import { generateDirection } from './transitions';
 import { parseToGroupAction, Target, CircleTarget } from './language2';
@@ -161,6 +161,7 @@ export class SplitflapHardware implements HardwareInterface {
     dirsToTime: Map<string, (t: Time) => number[]> = new Map();
     idsToStates: Map<UnitId, State>;
     sim: SplitFlapDisplay | null;
+    estimatedDurationMs: number = 0;
 
     constructor(units: SplitflapUnit[], indexToCoord: Map<number, [number, number]>, unitAdjacency: (toCheck: UnitId) => UnitId[], sim: SplitFlapDisplay | null) {
         this.units = units;
@@ -524,6 +525,10 @@ export class SplitflapHardware implements HardwareInterface {
                 return [undefined, 0];
             };
         };
+
+        // Estimate wall-clock duration: last logical end time × framesPerMs ticks/unit ÷ 60fps
+        const maxLogicalEnd = Math.max(...[...scheduled.values()].map(([, lastEnd]) => lastEnd), 0);
+        this.estimatedDurationMs = (maxLogicalEnd * framesPerMs + this.sim!.numFramesRotating * 2) / 60 * 1000;
 
         this.sim.resetAnimation(schedule);
 
@@ -947,6 +952,7 @@ export class FlipdotSimHardware implements HardwareInterface {
 
     dirsToTime: Map<string, (t: Time) => number[]> = new Map();
     meshLocationStr: string = "";
+    estimatedDurationMs: number = 0;
 
     getRealTiming(time: Time): number {
         if (typeof time == "number") {
@@ -1207,6 +1213,9 @@ export class FlipdotSimHardware implements HardwareInterface {
             lastTime = time;
 
         }
+
+        // Estimate wall-clock duration: totalNumFrames flip-cycles × FULL_CYCLE_LENGTH RAF frames ÷ 60fps
+        this.estimatedDurationMs = this.totalNumFrames * FULL_CYCLE_LENGTH / 60 * 1000;
     }
 
 

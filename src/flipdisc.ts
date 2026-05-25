@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-// need to figure out what to do for the type defns 
+// need to figure out what to do for the type defns
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { Recorder } from './recorder';
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
@@ -49,6 +50,8 @@ export class RowOfDiscs {
     mesh: THREE.Mesh | undefined;
     units: THREE.Vector3[] | undefined
 
+    recorder: Recorder | undefined;
+
     constructor(width: number, height: number, flat: boolean = true, meshPath?: string) {
 
         this.width = width;
@@ -64,7 +67,7 @@ export class RowOfDiscs {
         // where to put the camera? depends... 
         // not really sure how to automatically calculate z...
         this.camera.position.z = CAMERA_DISTANCE;
-        this.renderer = new THREE.WebGLRenderer();
+        this.renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true });
         this.renderer.setSize(window.innerWidth / RENDERER_SIZE_SCALEDOWN, window.innerHeight / RENDERER_SIZE_SCALEDOWN);
         this.renderer.setAnimationLoop(this.animate);
         document.getElementById("render")!.appendChild(this.renderer.domElement);
@@ -976,6 +979,7 @@ varying vec3 vColor;
 
 
         this.renderer.render(this.scene, this.camera);
+        this.recorder?.tick();
 
     }
 
