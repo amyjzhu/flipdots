@@ -256,7 +256,7 @@ export class TracePath implements DerivedEffect {
         let allFrames: Target[] = [];
 
         console.log(referenceFrames)
-        for (let i = 0; i < numFrames; i++) {
+        for (let i = 1; i <= numFrames; i++) {
             allFrames.push(new Merged(referenceFrames.slice(0, i)))
         }
         return allFrames;

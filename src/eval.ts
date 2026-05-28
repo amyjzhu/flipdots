@@ -135,6 +135,8 @@ export class EvalRunner {
             hw.compile(result);
         }
 
+        console.log(`[eval] running: ${c.name}`);
+
         if (c.capture) {
             const sim = getSimulation(hw);
             if (!sim) {
@@ -142,20 +144,30 @@ export class EvalRunner {
                 return;
             }
             const captureSpec = c.capture ?? {};
-            const durationMs = captureSpec.durationMs ?? hw.estimatedDurationMs * 1.15;
+            const durationMs = (captureSpec.durationMs ?? hw.estimatedDurationMs * 1.15) * 1.1;
             if (durationMs <= 0) {
                 console.warn(`[eval] ${c.name}: estimated duration is 0 — skipping capture`);
                 return;
             }
             console.log(`[eval] ${c.name}: recording for ${Math.round(durationMs)}ms`);
             sim.recorder = new Recorder(sim.renderer);
-            sim.recorder.start({
-                ...captureSpec,
-                durationMs,
-                onDone: () => console.log(`[eval] ${c.name}: capture done`),
+            await new Promise<void>(resolve => {
+                sim.recorder!.start({
+                    ...captureSpec,
+                    durationMs,
+                    name: c.name,
+                    onDone: () => {
+                        console.log(`[eval] ${c.name}: capture done`);
+                        resolve();
+                    },
+                });
             });
-        }
 
-        console.log(`[eval] running: ${c.name}`);
+            // Tear down before the next case so canvases don't accumulate.
+            sim.recorder = undefined;
+            sim.renderer.setAnimationLoop(null);
+            sim.renderer.domElement.remove();
+            sim.renderer.dispose();
+        }
     }
 }

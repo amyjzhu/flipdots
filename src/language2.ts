@@ -452,7 +452,7 @@ export class Merged implements DerivedTarget {
         let result = allTargets[0].map(row => row.map(c => c));
         for (let i = 0; i < allTargets[0].length; i++) {
             for (let j = 0; j < allTargets[0][0].length; j++) {
-                result[i][j] = allTargets.every(target => target[i][j])
+                result[i][j] = allTargets.some(target => target[i][j])
             }
         }
         return result;
@@ -1151,7 +1151,7 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
         let emptyFrame: Target = new PixelArtTarget(object[0].draw().map(r => r.map(c => false)), false);
         // TODO: this is not right, it should start at the first frame
         let initialAppearance = new SnapTransition().generateGroupActions(emptyFrame, object[0], 0, h);
-        // hmmm... 
+        // hmmm...
         // console.log("delaying initial appearance by ", transitionTiming[frameNum])
         actions = actions.concat(delayGroupActions(initialAppearance, frameNum == 0 ? 1 : transitionTiming[frameNum -1]));
 
@@ -1167,17 +1167,21 @@ let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: num
             // timing issue - subtract the duration
             let prev = frameNum == 0 ? 1 : transitionTiming[frameNum - 1]
             console.log(prev)
-            // oh, we're only allowed to have one flip... 
-            // when should I have flip? 
+            // oh, we're only allowed to have one flip...
+            // when should I have flip?
             let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, transitionTiming[frameNum] - prev)
             // let fullObjects = o.effect.generateGroupActions(transitionTiming[frameNum] - prev, 1)
             // console.log(fullObjects.map(o => o.draw()))
             // console.log(fullObjects(h))
             let objs = fullObjects(h);
-            console.log(objs)
-            
+
             objs.forEach(o => o.tPlus = o.tPlus + prev)
-            console.log(objs)
+
+            // --- per-line GroupAction logging ---
+            const lineTag = o.debugTag ?? '(untagged)';
+            console.log(`[line:${lineTag} frame:${frameNum}] GroupActions (${objs.length}):`,
+                objs.map(ga => ({ tPlus: ga.tPlus, actions: ga.actions })));
+            // ------------------------------------
 
             actions = actions.concat(objs)
             console.log(transitionTiming[frameNum])
@@ -1913,6 +1917,9 @@ let parseGraph = async (files: string[], effects: string[], names: Map<string, s
                     endTarget!.debugTag = endObj + ":" + effect;
                     console.log("setting enframe", endFrame)
                     perFrameObjs.set(endFrame, endTarget!);
+                    // Default disappear: overwritten if another instruction starts from this frame
+                    const gone = new PixelArtTarget(endTarget!.draw().map(r => r.map(() => false)), false);
+                    endTarget!.effect = new Instantaneous(endTarget!, gone, EffectType.Complete);
                 }
 
 

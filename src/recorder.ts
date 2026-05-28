@@ -8,6 +8,8 @@ export interface RecorderOptions {
     pngIntervalMs?: number;
     /** Record video (webm). Default: true. */
     video?: boolean;
+    /** Base name used for downloaded files (no extension). Defaults to 'capture'. */
+    name?: string;
     /** Called when the recording finishes and files have been downloaded. */
     onDone?: () => void;
 }
@@ -29,6 +31,7 @@ export class Recorder {
     private durationMs = 0;
     private pngIntervalMs: number | undefined;
     private doVideo = true;
+    private name = 'capture';
     private onDone: (() => void) | undefined;
 
     private mediaRecorder: MediaRecorder | undefined;
@@ -50,6 +53,7 @@ export class Recorder {
         this.durationMs = options.durationMs;
         this.pngIntervalMs = options.pngIntervalMs;
         this.doVideo = options.video ?? true;
+        this.name = options.name ?? 'capture';
         this.onDone = options.onDone;
 
         this.pngFrames = [];
@@ -109,7 +113,7 @@ export class Recorder {
                 else resolve();
             });
             const blob = new Blob(this.videoChunks, { type: 'video/webm' });
-            this.download(URL.createObjectURL(blob), 'capture.webm', true);
+            this.download(URL.createObjectURL(blob), `${this.name}.webm`, true);
         }
 
         if (this.pngFrames.length > 0) {
@@ -123,7 +127,7 @@ export class Recorder {
                 files[name] = bytes;
             }
             zip(files, (err, data) => {
-                if (!err) this.download(URL.createObjectURL(new Blob([data as BlobPart])), 'frames.zip', true);
+                if (!err) this.download(URL.createObjectURL(new Blob([data as BlobPart])), `${this.name}-frames.zip`, true);
             });
         }
 
