@@ -3,20 +3,24 @@ import { PixelArtTarget, RectangleTarget } from './language2';
 import {
     AllAtOnce, BackAndForth, CentrePulse, Diagonal, GridOrder, LeftToRight, LineDiagonal,
     MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong,
-    RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOut, StaggeredRow,
+    RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow,
 } from './order';
 import {
-    AndThenFlipTo, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
-    LayerForeBackTransition, OneByOneKeepFlipping, Transition,
+    AndThenFlipTo, CascadeImage, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
+    LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, SnapTransition,
+    Transition, WaveTransition,
 } from './transitions';
 import { EvalCase, EvalRunner } from './eval';
 import { generateSplitflapState, getImages } from './util';
+
+const BASE = import.meta.env.BASE_URL; // e.g. '/flipdots/' — set in vite.config
 
 const SW = 32;
 const SH = 6;
 
 const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
-const CAPTURE  = { video: true, pngIntervalMs: 100 };
+// const CAPTURE  = { video: true, pngIntervalMs: 100 };
+const CAPTURE  = { video: false, pngIntervalMs: 100 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -93,7 +97,7 @@ const cases: EvalCase[] = [
 // Top-level await: image is fetched before the runner is registered so that
 // hardware dimensions (which must match the image) are known at case-creation time.
 
-const [imgW, imgH, imgRgb] = await getImages(['/animations/thinking.png']);
+const [imgW, imgH, imgRgb] = await getImages([`${BASE}animations/thinking.png`]);
 
 const imgFrameIds: number[] = imgRgb[0].flatMap((row: number[][], i: number) =>
     row.flatMap((px: number[], j: number) =>
@@ -137,8 +141,87 @@ const thinkingCases: EvalCase[] = [
 
 // ── Flipdot DSL cases ─────────────────────────────────────────────────────────
 
-const [golfW, golfH] = await getImages(['/animations/golf-collide1.png']);
-const GOLF_HW = { type: 'flipdot' as const, width: golfW, height: golfH };
+const [logoW, logoH, logoRgb] = await getImages([
+    `${BASE}animations/text-logo1.png`,
+    `${BASE}animations/text-logo2.png`,
+]);
+const [dandelionW, dandelionH, dandelionRgb] = await getImages([
+    `${BASE}animations/dandelion1.png`,
+    `${BASE}animations/dandelion2.png`,
+]);
+const [golfW, golfH]         = await getImages([`${BASE}animations/golf-collide1.png`]);
+
+const LOGO_HW      = { type: 'flipdot' as const, width: logoW,      height: logoH      };
+const DANDELION_HW = { type: 'flipdot' as const, width: dandelionW, height: dandelionH };
+
+// Logo is #000000 on white — any non-white pixel is active.
+function logoGrid(frame: number[][][], w: number, h: number): string[][] {
+    return Array.from({ length: h }, (_, r) =>
+        Array.from({ length: w }, (_, c) => {
+            const [pr, pg, pb] = frame[r][c];
+            return (pr !== 255 || pg !== 255 || pb !== 255) ? 'X' : ' ';
+        })
+    );
+}
+
+const logoSource = new PixelArtTarget(logoGrid(logoRgb[0], logoW, logoH), ' ');
+const logoTarget = new PixelArtTarget(logoGrid(logoRgb[1], logoW, logoH), ' ');
+const GOLF_HW      = { type: 'flipdot' as const, width: golfW,      height: golfH      };
+
+// Build a PixelArtTarget grid from a dandelion frame.
+// head: #222034 = rgb(34,32,52)   stem: #d77bba = rgb(215,123,186)
+// Any pixel matching either colour becomes 'X' (on); everything else is ' ' (off).
+function dandelionGrid(frame: number[][][], w: number, h: number): string[][] {
+    return Array.from({ length: h }, (_, r) =>
+        Array.from({ length: w }, (_, c) => {
+            const [pr, pg, pb] = frame[r][c];
+            const isHead = Math.abs(pr - 34)  < 20 && Math.abs(pg - 32)  < 20 && Math.abs(pb - 52)  < 20;
+            const isStem = Math.abs(pr - 215) < 20 && Math.abs(pg - 123) < 20 && Math.abs(pb - 186) < 20;
+            return isHead || isStem ? 'X' : ' ';
+        })
+    );
+}
+
+const dandelionSource = new PixelArtTarget(dandelionGrid(dandelionRgb[0], dandelionW, dandelionH), ' ');
+const dandelionTarget = new PixelArtTarget(dandelionGrid(dandelionRgb[1], dandelionW, dandelionH), ' ');
+
+function logoCase(name: string, makeTransition: () => Transition): EvalCase {
+    return {
+        name,
+        hardware: LOGO_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            return makeTransition().generateGroupActions(logoSource, logoTarget, 30, hw);
+        },
+    };
+}
+
+const logoCases: EvalCase[] = [
+    // logoCase('logo-snap',          () => new SnapTransition()),
+    // logoCase('logo-wave-ltr',      () => new WaveTransition(new LeftToRight())),
+    // logoCase('logo-wave-diagonal', () => new WaveTransition(new Diagonal())),
+    // logoCase('logo-wave-random',   () => new WaveTransition(new RandomOrder(20))),
+    logoCase('logo-cascade-ltr',      () => new CascadeImage(new AllAtOnce())),
+
+];
+
+function dandelionCase(name: string, makeTransition: () => Transition): EvalCase {
+    return {
+        name,
+        hardware: DANDELION_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            return makeTransition().generateGroupActions(dandelionSource, dandelionTarget, 30, hw);
+        },
+    };
+}
+
+const dandelionCases: EvalCase[] = [
+    // dandelionCase('dandelion-snap',          () => new SnapTransition()),
+    // dandelionCase('dandelion-wave-random',   () => new WaveTransition(new RandomOrder(20))),
+    dandelionCase('dandelion-wave-diagonal', () => new WaveTransition(new SpiralOrder())),
+    // dandelionCase('dandelion-one-by-one',    () => new OneByOne(new RandomOrder(20))),
+];
 
 const flipdotCases: EvalCase[] = [
     {
@@ -149,7 +232,7 @@ const flipdotCases: EvalCase[] = [
             // TODO: collision should be detected at frames 4–5, not 3–4
             await ctx.fromDSL([
                 'timing: [1,2,3,4,5,6,7,8,9]',
-                'filepath: /animations/golf-collide${i}.png',
+                `filepath: ${BASE}animations/golf-collide\${i}.png`,
                 'objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball]',
                 'golfstick 0 ->* instantaneous ->* golfstick 8',
                 'golfer 0 ->* instantaneous ->* golfer 8',
@@ -165,7 +248,7 @@ const flipdotCases: EvalCase[] = [
         async build(_hw, ctx) {
             await ctx.fromDSL([
                 'timing: [4,8,12,16,20,24,28,32,36]',
-                'filepath: /animations/golf-collide${i}.png',
+                `filepath: ${BASE}animations/golf-collide\${i}.png`,
                 'objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball]',
                 'golfstick 0 ->* instantaneous ->* golfstick 8',
                 'golfer 0 ->* instantaneous ->* golfer 8',
@@ -181,7 +264,7 @@ const flipdotCases: EvalCase[] = [
         async build(_hw, ctx) {
             await ctx.fromDSL([
                 'timing: [4,8,12,16,20,24,28,32,36]',
-                'filepath: /animations/golf-collide${i}.png',
+                `filepath: ${BASE}animations/golf-collide\${i}.png`,
                 'objects: [#000000 golfstick] [#5fcde4 golfer] [#5b6ee1 ball]',
                 'golfstick 0 ->* instantaneous ->* golfstick 8',
                 'golfer 0 ->* instantaneous ->* golfer 8',
@@ -190,14 +273,17 @@ const flipdotCases: EvalCase[] = [
             ].join('\n'));
         },
     },
+
 ];
+
 
 // ── Runner ────────────────────────────────────────────────────────────────────
 
-export const runner = new EvalRunner().register(...cases, ...flipdotCases);
+export const runner = new EvalRunner().register(...logoCases);
+// export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
 if (typeof window !== 'undefined') {
-    runner.run('golf-path').catch(err => console.error('[eval] failed:', err));
-    // runner.run().catch(err => console.error('[eval] failed:', err));
+    // runner.run('logo-wipe').catch(err => console.error('[eval] failed:', err));
+    runner.run().catch(err => console.error('[eval] failed:', err));
 }
