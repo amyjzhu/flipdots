@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import { RowOfDiscs } from './flipdisc';
+import { RowOfDiscsAsync } from './flipdisc-3';
 import { BrixelDisplay } from './brixel';
 import { SplitFlapDisplay } from './splitflap';
 import { getImages } from './util';
-import { ALPHABET_WITH_EXCLAMATION, FULL_CYCLE_LENGTH } from './constants';
+import { ALPHABET_WITH_EXCLAMATION, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING } from './constants';
 import { start } from 'repl';
 import { generateDirection } from './transitions';
 import { parseToGroupAction, Target, CircleTarget } from './language2';
@@ -1219,6 +1220,163 @@ export class FlipdotSimHardware implements HardwareInterface {
     }
 
 
+}
+
+// Async counterpart of FlipdotSimHardware. Drives a RowOfDiscsAsync where
+// every disc owns its animation, so we can dispatch flips at any frame
+// rather than aligning to FULL_CYCLE_LENGTH boundaries.
+//
+// `framesPerMs` is the conversion from GroupAction.tPlus to simulation
+// frames. Default of NUM_FRAMES_ROTATING means one tPlus unit equals one
+// flip-rotation duration (≈100ms wall clock at 60fps with the default
+// constants). Lower it to stretch programs out in time, raise it for
+// tighter packing.
+export class FlipdotSimAsyncHardware implements HardwareInterface {
+    framesPerMs: number = NUM_FRAMES_ROTATING;
+    actionDurations: Map<Action, number> = new Map();
+    units: Unit[];
+    unitIdToUnit: Map<UnitId, Unit>;
+    unitAdjacency: (toCheck: UnitId) => UnitId[];
+    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
+    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
+    simulation: RowOfDiscsAsync;
+    indexToCoord: Map<number, [number, number]>;
+    coordToIndex: (coord: [number, number]) => number;
+    timeFrontier: (start: number, dir: [number, number]) => (t: Time) => UnitId[];
+
+    dirsToTime: Map<string, (t: Time) => number[]> = new Map();
+    meshLocationStr: string = "";
+    estimatedDurationMs: number = 0;
+
+    private dims?: [number, number];
+
+    getRealTiming(time: Time): number {
+        if (typeof time == "number") {
+            return time;
+        } else {
+            return time[0] * this.framesPerMs + time[2];
+        }
+    }
+
+    async finalize3D() {
+        this.simulation.makeArbitraryMeshDiscSetup(this.meshLocationStr).catch(_ => {
+            return new Promise(i => i);
+        });
+    }
+
+    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string) {
+        this.actionDurations.set(Action.FLIP, 1);
+
+        if (dimensions != undefined) {
+            this.dims = dimensions;
+            let [height, width] = dimensions;
+            let unitList = [...new Array(height).keys()].map(i => [...new Array(width).keys()].map(j => new FlipdotUnit(i * width + j)).flat()).flat();
+
+            let adj = (i: UnitId) => {
+                let neighbours: UnitId[] = [];
+                let xCoord = i % width;
+                let yCoord = Math.floor(i / width);
+                for (let yPlus of [-1, 0, 1]) {
+                    for (let xPlus of [-1, 0, 1]) {
+                        if (!((xPlus == 0 && yPlus == 0) ||
+                            (xCoord + xPlus >= width || xCoord + xPlus < 0
+                                || yCoord + yPlus < 0 || yCoord + yPlus >= height))) {
+                            neighbours.push(i + yPlus * width + xPlus);
+                        }
+                    }
+                }
+                return neighbours;
+            };
+
+            this.units = unitList;
+            this.indexToCoord = new Map(unitList.map(u => [u.id, [u.id % width, Math.floor(u.id / width)] as [number, number]]));
+            this.unitAdjacency = adj;
+            this.coordToIndex = (n: [number, number]) => n[1] * width + n[0];
+            this.simulation = new RowOfDiscsAsync(width, height);
+        } else {
+            this.units = units;
+            this.unitAdjacency = adjacency;
+            this.simulation = new RowOfDiscsAsync(1, 1, false, meshInput);
+            if (meshInput == undefined) {
+                throw new Error("No mesh input and not flat");
+            }
+            this.meshLocationStr = meshInput;
+            this.coordToIndex = i => i[0];
+            this.indexToCoord = new Map();
+        }
+
+        this.timeFrontier = (start: number, dir: [number, number]): (t: Time) => UnitId[] => {
+            let key = `${start}|${dir[0]}|${dir[1]}`;
+            if (this.dirsToTime.has(key)) {
+                return this.dirsToTime.get(key)!;
+            } else {
+                let fn = generateDirection(start, dir, this);
+                this.dirsToTime.set(key, fn.atTime);
+                return fn.atTime;
+            }
+        };
+
+        this.unitIdToUnit = new Map();
+        for (let u of this.units) {
+            this.unitIdToUnit.set(u.id, u);
+        }
+
+        // Kept for HardwareInterface conformance; the async pipeline pre-builds
+        // its schedule in compile() rather than going through these hooks.
+        this.allowedNextActive = (_action: Action, ids: UnitId[], time: Time) => {
+            let otherIds = [...new Set(this.units.map(r => r.id)).difference(new Set(ids))];
+            return [[otherIds, time as number],
+                    [ids, (time as number) + 1]] as [UnitId[], Time][];
+        };
+
+        this.actionsToHardwareAction = (_action: Action, _ids: UnitId[], _time: Time): [UnitId, State][] => {
+            return [];
+        };
+    }
+
+    compile(groupActions: GroupAction[]) {
+        let sorted = [...groupActions].sort((a, b) => a.tPlus - b.tPlus);
+        let height = this.dims ? this.dims[0] : 1;
+        let width = this.dims ? this.dims[1] : this.units.length;
+
+        // Pre-build the full timeline: frame -> per-row indices to start
+        // flipping at that frame. We snapshot framesPerMs at compile time
+        // so later changes to that property don't retroactively retime
+        // already-scheduled flips.
+        let framesPerMs = this.framesPerMs;
+        let schedule: Map<number, number[][]> = new Map();
+        let lastFrame = 0;
+
+        let emptyRows = (): number[][] => [...Array(height)].map(_ => []);
+
+        for (let ga of sorted) {
+            let frame = Math.round(this.getRealTiming(ga.tPlus) * framesPerMs);
+
+            let entry = schedule.get(frame);
+            if (!entry) {
+                entry = emptyRows();
+                schedule.set(frame, entry);
+            }
+
+            for (let action of ga.actions) {
+                if (action[0] !== Action.FLIP) continue;
+                for (let id of action[1]) {
+                    let row = this.dims ? Math.floor(id / width) : 0;
+                    let col = this.dims ? id % width : id;
+                    entry[row].push(col);
+                }
+            }
+
+            if (frame > lastFrame) lastFrame = frame;
+        }
+
+        this.simulation.resetAnimation((frame: number) => {
+            return schedule.get(frame) ?? emptyRows();
+        });
+
+        // Last scheduled start + a full rotation tail, converted to ms at 60fps.
+        this.estimatedDurationMs = (lastFrame + this.simulation.numFramesRotating) / 60 * 1000;
+    }
 }
 
 export class FlipdotState extends State { }

@@ -1,14 +1,16 @@
-import { Action, GroupAction, SplitflapHardware, delayGroupActions } from './hardware';
+import { Action, FlipdotSimAsyncHardware, GroupAction, SplitflapHardware, delayGroupActions } from './hardware';
 import { PixelArtTarget, RectangleTarget } from './language2';
 import {
-    AllAtOnce, BackAndForth, CentrePulse, Diagonal, GridOrder, LeftToRight, LineDiagonal,
+    AllAtOnce, BackAndForth, CentrePulse, CrescentOrder, Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, LeftToRight, LineDiagonal,
     MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong,
     RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow,
+    TopDown,
 } from './order';
 import {
-    AndThenFlipTo, CascadeImage, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
-    LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, SnapTransition,
-    Transition, WaveTransition,
+    AndThenFlipTo, CascadeImage, EvenOddRhythmTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
+    LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, PulseTransition, SnapTransition,
+    StaggeredRateTransition,
+    StochasticTransition, Transition, VerticalDriftRateTransition, WaveTransition,
 } from './transitions';
 import { EvalCase, EvalRunner } from './eval';
 import { generateSplitflapState, getImages } from './util';
@@ -19,8 +21,9 @@ const SW = 32;
 const SH = 6;
 
 const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
-// const CAPTURE  = { video: true, pngIntervalMs: 100 };
-const CAPTURE  = { video: false, pngIntervalMs: 100 };
+const CAPTURE  = { video: true, pngIntervalMs: 50 };
+// const CAPTURE  = { video: false, pngIntervalMs: 100 };
+// const CAPTURE  = { video: false};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -201,7 +204,8 @@ const logoCases: EvalCase[] = [
     // logoCase('logo-wave-ltr',      () => new WaveTransition(new LeftToRight())),
     // logoCase('logo-wave-diagonal', () => new WaveTransition(new Diagonal())),
     // logoCase('logo-wave-random',   () => new WaveTransition(new RandomOrder(20))),
-    logoCase('logo-cascade-ltr',      () => new CascadeImage(new AllAtOnce())),
+    logoCase('logo-experimental',      () => new CascadeImage(new TopDown())),
+    // logoCase('logo-cascade-ltr',      () => new CascadeImage(new AllAtOnce())),
 
 ];
 
@@ -211,15 +215,20 @@ function dandelionCase(name: string, makeTransition: () => Transition): EvalCase
         hardware: DANDELION_HW,
         capture: CAPTURE,
         build(hw): GroupAction[] {
-            return makeTransition().generateGroupActions(dandelionSource, dandelionTarget, 30, hw);
+            const emptyFrame = new PixelArtTarget(dandelionSource.draw().map(r => r.map(() => ' ')), ' ');
+            const bootstrap = new SnapTransition().generateGroupActions(emptyFrame, dandelionSource, 0, hw);
+            const transition = makeTransition().generateGroupActions(dandelionSource, dandelionTarget, 30, hw);
+            return [...bootstrap, ...delayGroupActions(transition, 1)];
         },
     };
 }
 
 const dandelionCases: EvalCase[] = [
-    // dandelionCase('dandelion-snap',          () => new SnapTransition()),
+    dandelionCase('dandelion-snap',          () => new SnapTransition()),
     // dandelionCase('dandelion-wave-random',   () => new WaveTransition(new RandomOrder(20))),
-    dandelionCase('dandelion-wave-diagonal', () => new WaveTransition(new SpiralOrder())),
+    // dandelionCase('dandelion-crescent',      () => new WaveTransition(new CrescentOrder(0.4))),
+    dandelionCase('dandelion-crescent-stochastic', () => new StochasticTransition(new CrescentOrder(0.4))),
+    // dandelionCase('dandelion-wave-diagonal', () => new WaveTransition(new SpiralOrder())),
     // dandelionCase('dandelion-one-by-one',    () => new OneByOne(new RandomOrder(20))),
 ];
 
@@ -277,9 +286,175 @@ const flipdotCases: EvalCase[] = [
 ];
 
 
+// ── Async flipdot cases ───────────────────────────────────────────────────────
+// FlipdotSimAsyncHardware lets each disc animate independently, so we can
+// schedule flips at any sim frame rather than aligning to FULL_CYCLE_LENGTH
+// boundaries. These cases pin framesPerMs = 1 so GroupAction.tPlus directly
+// addresses an animation frame; the staggering happens within a single
+// flip duration (≈ numFramesRotating frames), which is what makes the
+// motion look continuous rather than stepped.
+
+const ASYNC_W = 20;
+const ASYNC_H = 10;
+const ASYNC_HW = { type: 'flipdot' as const, async: true, width: ASYNC_W, height: ASYNC_H };
+
+function asyncCase(
+    name: string,
+    build: (hw: FlipdotSimAsyncHardware) => GroupAction[],
+): EvalCase {
+    return {
+        name,
+        hardware: ASYNC_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const fhw = hw as FlipdotSimAsyncHardware;
+            fhw.framesPerMs = 1;
+            return build(fhw);
+        },
+    };
+}
+
+// Logo case on async hardware. Transitions like CascadeImage lay out their
+// tPlus values in multiples of actionDurations[FLIP] (= 1 on flipdot hw).
+// The default framesPerMs (NUM_FRAMES_ROTATING = 6) maps one tPlus to one
+// rotation duration; bumping it stretches the schedule and inserts idle
+// frames between rotations, slowing the overall animation.
+const ASYNC_LOGO_HW = { type: 'flipdot' as const, async: true, width: logoW, height: logoH };
+const ASYNC_LOGO_FRAMES_PER_MS = 8; //default is 6
+
+// Both async logo variants use only text-logo-1 (logoSource); text-logo-2
+// has off-white bleed that confuses logoGrid. The "background" effect is
+// produced by inverting logoSource programmatically rather than relying on
+// a second image.
+const blankLogo = () => new PixelArtTarget(
+    logoSource.draw().map(r => r.map(() => ' ')), ' '
+);
+
+const invertedLogo = () => new PixelArtTarget(
+    logoSource.draw().map(r => r.map(c => c === ' ' ? 'X' : ' ')), ' '
+);
+
+// Foreground variant — diff is exactly the text pixels of logoSource, so the
+// letters animate in from a blank display.
+function asyncLogoCase(name: string, makeTransition: () => Transition): EvalCase {
+    return {
+        name,
+        hardware: ASYNC_LOGO_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            (hw as FlipdotSimAsyncHardware).framesPerMs = ASYNC_LOGO_FRAMES_PER_MS;
+            return makeTransition().generateGroupActions(blankLogo(), logoSource, 100, hw);
+        },
+    };
+}
+
+// Background variant — diff is everything in logoSource that ISN'T text, so
+// the negative space fills in around the letters and the text is left as
+// the "hole" through which the unlit display shows.
+function asyncLogoBgCase(name: string, makeTransition: () => Transition): EvalCase {
+    return {
+        name,
+        hardware: ASYNC_LOGO_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            (hw as FlipdotSimAsyncHardware).framesPerMs = ASYNC_LOGO_FRAMES_PER_MS;
+            return makeTransition().generateGroupActions(blankLogo(), invertedLogo(), 100, hw);
+        },
+    };
+}
+
+const ThreeByThreeMatrixCases: EvalCase[] = [
+    // asyncLogoCase('logo-wipe-topdown', () => new WaveTransition(new TopDown())),
+    // asyncLogoCase('logo-wipe-contour-fg', () => new WaveTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
+    // asyncLogoCase('logo-wipe-random', () => new WaveTransition(new RandomOrder())),
+    // asyncLogoCase('logo-wipe-allatonce', () => new WaveTransition(new AllAtOnce())),
+
+
+    // asyncLogoBgCase('logo-pulse-topdown', () => new PulseTransition(new TopDown(), 20)),
+    // asyncLogoCase('logo-pulse-contour-fg', () => new PulseTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]), 20)),
+    // asyncLogoCase('logo-pulse-random', () => new PulseTransition(new RandomOrder(), 200)),
+    // asyncLogoCase('logo-pulse-allatonce', () => new PulseTransition(new AllAtOnce())),
+
+    asyncLogoCase('logo-evenodd-topdown', () => new EvenOddRhythmTransition(new TopDown())),
+    // asyncLogoCase('logo-evenodd-contour-fg', () => new EvenOddRhythmTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
+    // asyncLogoCase('logo-evenodd-random', () => new EvenOddRhythmTransition(new RandomOrder())),
+    // asyncLogoCase('logo-evenodd-allatonce', () => new EvenOddRhythmTransition(new AllAtOnce())),
+
+    // asyncLogoCase('logo-cascade-topdown', () => new CascadeImage(new TopDown())),
+    // asyncLogoCase('logo-cascade-contour-fg', () => new CascadeImage(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
+    // asyncLogoCase('logo-cascade-random', () => new CascadeImage(new RandomOrder())),
+    // asyncLogoCase('logo-cascade-allatonce', () => new CascadeImage(new AllAtOnce())),
+
+/// ====
+    // asyncLogoBgCase('logo-wipe-contour-bg', () => new WaveTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
+    // asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
+    // asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
+
+]
+
+
+const asyncFlipdotCases: EvalCase[] = [
+    asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
+
+    // // Diagonal sweep: every disc flips once at tPlus = x + y, so one diagonal
+    // // stripe starts each frame. Six diagonals end up visibly mid-flip at the
+    // // same time (default numFramesRotating = 6).
+    // asyncCase('async-diagonal-wave', () => {
+    //     const actions: GroupAction[] = [];
+    //     for (let y = 0; y < ASYNC_H; y++) {
+    //         for (let x = 0; x < ASYNC_W; x++) {
+    //             const id = y * ASYNC_W + x;
+    //             actions.push(new GroupAction(x + y, [[Action.FLIP, [id]]]));
+    //         }
+    //     }
+    //     return actions;
+    // }),
+
+    // // Two Manhattan-distance ripples expanding from opposite ends. Each disc
+    // // gets two FLIP events (one per seed), so the second flip lands while
+    // // most of the grid is mid-rotation — gives an interference look that
+    // // the synchronous sim can't produce.
+    // asyncCase('async-interfering-ripples', () => {
+    //     const seeds: [number, number][] = [
+    //         [Math.floor(ASYNC_W * 0.25), Math.floor(ASYNC_H / 2)],
+    //         [Math.floor(ASYNC_W * 0.75), Math.floor(ASYNC_H / 2)],
+    //     ];
+    //     const framesPerStep = 2;
+    //     const actions: GroupAction[] = [];
+    //     for (let y = 0; y < ASYNC_H; y++) {
+    //         for (let x = 0; x < ASYNC_W; x++) {
+    //             const id = y * ASYNC_W + x;
+    //             for (const [sx, sy] of seeds) {
+    //                 const tPlus = (Math.abs(x - sx) + Math.abs(y - sy)) * framesPerStep;
+    //                 actions.push(new GroupAction(tPlus, [[Action.FLIP, [id]]]));
+    //             }
+    //         }
+    //     }
+    //     return actions;
+    // }),
+
+    // // Per-column rain: each column is its own waterfall, with a deterministic
+    // // starting offset per column and `gap` frames between adjacent rows.
+    // // gap = numFramesRotating means within a column each disc finishes
+    // // before the next starts; the inter-column offsets are what produce
+    // // the visible phase difference.
+    // asyncCase('async-rain', hw => {
+    //     const gap = hw.simulation.numFramesRotating;
+    //     const colDelay = (x: number) => (x * 3 + (x * 7) % 11) % (gap * 4);
+    //     const actions: GroupAction[] = [];
+    //     for (let x = 0; x < ASYNC_W; x++) {
+    //         for (let y = 0; y < ASYNC_H; y++) {
+    //             const id = y * ASYNC_W + x;
+    //             actions.push(new GroupAction(colDelay(x) + y * gap, [[Action.FLIP, [id]]]));
+    //         }
+    //     }
+    //     return actions;
+    // }),
+];
+
 // ── Runner ────────────────────────────────────────────────────────────────────
 
-export const runner = new EvalRunner().register(...logoCases);
+export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 

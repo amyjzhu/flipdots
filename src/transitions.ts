@@ -1156,6 +1156,76 @@ export class WaveTransition implements Transition {
     }
 }
 
+// A propagating "pulse" wave: each cell in the diff between o1 and o2 turns
+// on at the time the order assigns it, then turns back off `pulseDuration`
+// ticks later. The pattern loops back-to-back for as long as the duration
+// `t` allows, so the pulse keeps sweeping across the shape.
+//
+// Using the diff (instead of just o2's active cells) routes through
+// `diffIndices`, which compares cells with `!==` — that correctly handles
+// PixelArtTarget grids where every cell holds a truthy string ('X' for
+// foreground, ' ' for default) and a naive `if (row[c])` would treat
+// everything as active.
+export class PulseTransition implements Transition {
+    order: GridOrder;
+    pulseDuration: number;
+
+    constructor(order: GridOrder, pulseDuration: number = 1) {
+        this.order = order;
+        this.pulseDuration = pulseDuration;
+    }
+
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        const activeIds = diffIndices(o1, o2, h);
+        if (activeIds.length === 0) return [];
+
+        // Order acts on the bounding-box mask of the active cells.
+        const [mask, x, y] = generateMaskFromCoords(activeIds, h);
+        const [timeGrid, times] = this.order.applyMask(mask as boolean[][]);
+        if (times.length === 0) return [];
+
+        const xOff = x as number;
+        const yOff = y as number;
+        const maxTime = times[times.length - 1];
+        // One pulse cycle ends when the last cell's off-flip fires. Next
+        // cycle's on-wave starts at exactly that tick, so cycles tile
+        // seamlessly. Guard against degenerate 0-length cycles.
+        const cycleLength = Math.max(1, maxTime + this.pulseDuration);
+
+        // Bucket every (time → unit) event so flips happening at the same
+        // tick across different cells / cycles collapse into one GroupAction.
+        const eventMap = new Map<number, UnitId[]>();
+        const push = (time: number, id: UnitId) => {
+            let bucket = eventMap.get(time);
+            if (!bucket) {
+                bucket = [];
+                eventMap.set(time, bucket);
+            }
+            bucket.push(id);
+        };
+
+        for (let cycleStart = 0; cycleStart < t; cycleStart += cycleLength) {
+            for (let r = 0; r < timeGrid.length; r++) {
+                const row = timeGrid[r];
+                for (let c = 0; c < row.length; c++) {
+                    const cellTime = row[c];
+                    if (cellTime < 0) continue;
+                    const id = h.coordToIndex([c + xOff, r + yOff]);
+                    push(cycleStart + cellTime, id);
+                    push(cycleStart + cellTime + this.pulseDuration, id);
+                }
+            }
+        }
+
+        const actions: GroupAction[] = [];
+        const sortedTimes = [...eventMap.keys()].sort((a, b) => a - b);
+        for (const time of sortedTimes) {
+            actions.push(new GroupAction(time, [[Action.FLIP, eventMap.get(time)!]]));
+        }
+        return actions;
+    }
+}
+
 
 // export class WaveTransitionOld implements Transition {
 //     dir: [number, number];
@@ -1825,14 +1895,15 @@ export class FlipDirectional implements Transition {
 
 
 function flipsFromCount(flips: number, maxFlips: number, dt: number): Time[] {
-    // let's ignore how long it takes to flip
-    let div = maxFlips / flips * dt;
+    if (flips === 0) return [];
+    const endTime = (maxFlips - 1) * dt;
+    if (flips === 1) return [endTime];
+    const spacing = endTime / (flips - 1);
     const times: Time[] = [];
     for (let i = 0; i < flips; i++) {
-        times.push(i * div);
+        times.push(i * spacing);
     }
     return times;
-
 }
 
 export class FlipSyncEnd implements Transition {

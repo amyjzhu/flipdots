@@ -642,14 +642,14 @@ export class SpiralOrder extends GridOrder {
         // hmm... I should just do this?
         let activationSequence = this.spiralGridOrder(shape);
         console.log(activationSequence)
-        let grid = this.generateGrid(shape[0].length, shape[1].length);
+        let grid = this.generateGrid(shape[0].length, shape.length);
 
         for (let i = 0; i < activationSequence.length; i++) {
             let units = activationSequence[i];
             for (let unit of units) {
-                let x: number = unit[0];
-                let y: number = unit[1];
-                grid[y][x] = i;
+                // spiralGridOrder emits [row, col] tuples, so unpack accordingly.
+                let [r, c] = unit;
+                grid[r][c] = i;
             }
         }
 
@@ -776,11 +776,13 @@ export class GrowAlongContour extends GridOrder {
         // hmm... I should just do this?
         let activationSequence = this.activationOrder(shape);
         console.log(activationSequence)
-        let grid = this.generateGrid(shape[0].length, shape[1].length);
+        let grid = this.generateGrid(shape[0].length, shape.length);
 
         for (let i = 0; i < activationSequence.length; i++) {
             let units = activationSequence[i];
             for (let unit of units) {
+                // activationOrder returns [col, row] tuples (it swaps before
+                // returning), so unit[0] is x and unit[1] is y.
                 let x: number = unit[0];
                 let y: number = unit[1];
                 grid[y][x] = i;
@@ -893,7 +895,145 @@ export class GrowAlongContour extends GridOrder {
     }
 }
 
-// what if we had a transformer on the grid ordering 
+// Like GrowAlongContour, but doesn't assume the shape is one connected
+// component. Identifies every 8-connected component up front, picks a per-
+// component seed (the cell closest to `startAt` within that component), and
+// runs one BFS per component in lock-step so every component fills in
+// parallel. Smaller components finish first; larger ones keep going.
+export class GrowAlongContoursParallel extends GridOrder {
+    startAt: [number, number];
+
+    constructor(startAt: [number, number]) {
+        super();
+        this.startAt = startAt;
+    }
+
+    applyMask(shape: boolean[][]): [OrderedGrid, number[]] {
+        let activationSequence = this.activationOrder(shape);
+        let grid = this.generateGrid(shape[0].length, shape.length);
+
+        for (let i = 0; i < activationSequence.length; i++) {
+            for (let unit of activationSequence[i]) {
+                // activationOrder returns [col, row] tuples.
+                let x = unit[0];
+                let y = unit[1];
+                grid[y][x] = i;
+            }
+        }
+
+        let times: number[] = grid.flat().filter(t => t != -1);
+        times.sort((a, b) => a - b);
+        times = [...new Set(times)];
+
+        return [grid, times];
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        return [...new Array(height)].map(_ => [...new Array(width)].map(_ => -1));
+    }
+
+    activationOrder(shape: boolean[][]): [number, number][][] {
+        const rows = shape.length;
+        if (rows === 0) return [];
+        const cols = shape[0].length;
+        const startRow = this.startAt[1];
+        const startCol = this.startAt[0];
+
+        const dirs: [number, number][] = [
+            [-1, 0], [1, 0], [0, -1], [0, 1],
+            [-1, -1], [-1, 1], [1, -1], [1, 1],
+        ];
+
+        const inBounds = (r: number, c: number) =>
+            r >= 0 && r < rows && c >= 0 && c < cols;
+
+        // 1. Flood-fill every 8-connected component.
+        const componentId: number[][] = Array.from({ length: rows }, () =>
+            Array(cols).fill(-1));
+        const components: [number, number][][] = [];
+        for (let r0 = 0; r0 < rows; r0++) {
+            for (let c0 = 0; c0 < cols; c0++) {
+                if (!shape[r0][c0] || componentId[r0][c0] !== -1) continue;
+                const id = components.length;
+                const comp: [number, number][] = [];
+                const stack: [number, number][] = [[r0, c0]];
+                componentId[r0][c0] = id;
+                while (stack.length > 0) {
+                    const [r, c] = stack.pop()!;
+                    comp.push([r, c]);
+                    for (const [dr, dc] of dirs) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (inBounds(nr, nc) && shape[nr][nc] && componentId[nr][nc] === -1) {
+                            componentId[nr][nc] = id;
+                            stack.push([nr, nc]);
+                        }
+                    }
+                }
+                components.push(comp);
+            }
+        }
+
+        if (components.length === 0) return [];
+
+        // 2. Per component, pick the seed cell closest (squared distance) to
+        //    `startAt`. Each component grows from its own seed.
+        const seeds: [number, number][] = components.map(comp => {
+            let best: [number, number] = comp[0];
+            let bestDist = Infinity;
+            for (const [r, c] of comp) {
+                const d = (r - startRow) ** 2 + (c - startCol) ** 2;
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = [r, c];
+                }
+            }
+            return best;
+        });
+
+        // 3. Parallel BFS: each component has its own queue, all queues take
+        //    one BFS step per output layer. Visited is shared but components
+        //    don't overlap, so there's no contention.
+        const visited: boolean[][] = Array.from({ length: rows }, () =>
+            Array(cols).fill(false));
+        const queues: [number, number][][] = seeds.map(seed => {
+            visited[seed[0]][seed[1]] = true;
+            return [seed];
+        });
+
+        const result: [number, number][][] = [];
+        while (true) {
+            let anyAlive = false;
+            const layer: [number, number][] = [];
+
+            for (const queue of queues) {
+                if (queue.length === 0) continue;
+                anyAlive = true;
+                const layerSize = queue.length;
+                for (let i = 0; i < layerSize; i++) {
+                    const [r, c] = queue.shift()!;
+                    layer.push([r, c]);
+                    for (const [dr, dc] of dirs) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (inBounds(nr, nc) && shape[nr][nc] && !visited[nr][nc]) {
+                            visited[nr][nc] = true;
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            }
+
+            if (!anyAlive) break;
+            result.push(layer);
+        }
+
+        // Swap (r, c) → (x, y) to match the convention in applyMask above.
+        return result.map(time => time.map(([r, c]) => [c, r]));
+    }
+}
+
+// what if we had a transformer on the grid ordering
 export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], projection: Projection) => [OrderedGrid, number[]]) => {
     // can it modify the method itself? 
     // 
@@ -982,5 +1122,33 @@ export class BrickOrder extends GridOrder {
             [2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
         ];
+    }
+}
+
+// Sweeps a crescent from the west edge inward toward the east.
+// The sweep front is a circular arc centered on the east edge at refRowFraction of the
+// height (row 0 = south). refRowFraction=0 → reference at NE corner, crescent starts at
+// SW corner; refRowFraction=0.5 → reference at E-midpoint, whole left edge starts at once;
+// refRowFraction=1 → reference at SE corner, crescent starts at NW corner.
+export class CrescentOrder extends GridOrder {
+    constructor(private refRowFraction: number = 0) {
+        super();
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = Array.from({ length: height }, () => Array(width).fill(0));
+        // refRow in grid coords (row 0 = south): 0 means NE corner, height-1 means SE corner
+        const refRow = (height - 1) * (1 - this.refRowFraction);
+        const maxDist = Math.sqrt((width - 1) ** 2 + Math.max(refRow, (height - 1) - refRow) ** 2);
+
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                const dx = width - 1 - j;
+                const dy = refRow - i;
+                grid[i][j] = Math.round(maxDist - Math.sqrt(dx * dx + dy * dy));
+            }
+        }
+
+        return grid;
     }
 }

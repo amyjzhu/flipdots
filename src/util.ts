@@ -368,6 +368,12 @@ export let getImages = async (urls: string[]): Promise<[number, number, [number,
     canvas.height = height;
     let images: [number, number, number][][][] = [];
     for (let imageBitmap of frames) {
+        // Pre-fill with opaque white so transparent regions of the source PNG
+        // come out as (255, 255, 255) in the readback. Otherwise transparent
+        // pixels land as (0, 0, 0), which downstream "non-white = filled"
+        // heuristics misclassify as foreground.
+        context2d.fillStyle = '#ffffff';
+        context2d.fillRect(0, 0, imageBitmap.width, imageBitmap.height);
         context2d.drawImage(imageBitmap, 0, 0, imageBitmap.width, imageBitmap.height);
         let rgba = context2d.getImageData(0, 0, imageBitmap.width, imageBitmap.height).data;
         console.log(rgba)

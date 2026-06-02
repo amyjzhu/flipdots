@@ -1,9 +1,10 @@
-import { FlipdotSimHardware, GroupAction, SplitflapHardware, SplitflapState } from './hardware';
+import { FlipdotSimAsyncHardware, FlipdotSimHardware, GroupAction, SplitflapHardware, SplitflapState } from './hardware';
 import { parseToGroupAction } from './language2';
 import { Recorder } from './recorder';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
 import { getImages } from './util';
 import { RowOfDiscs } from './flipdisc';
+import { RowOfDiscsAsync } from './flipdisc-3';
 import { SplitFlapDisplay } from './splitflap';
 
 // ── Hardware specs ─────────────────────────────────────────────────────────────
@@ -12,6 +13,10 @@ export type FlipdotSpec = {
     type: 'flipdot';
     width: number;
     height: number;
+    // When true, build a FlipdotSimAsyncHardware (RowOfDiscsAsync) instead of
+    // the synchronous variant — each disc animates independently and the
+    // compile() pipeline schedules per-frame rather than per-cycle.
+    async?: boolean;
     // Note: RowOfDiscs always appends to #render in the current implementation.
 };
 
@@ -61,15 +66,18 @@ export interface EvalCase {
      *   2. Call ctx.fromDSL(program) — compile is called inside; return nothing.
      */
     build(
-        hw: FlipdotSimHardware | SplitflapHardware,
+        hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware,
         ctx: EvalContext,
     ): Promise<GroupAction[] | void> | GroupAction[] | void;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-function makeHardware(spec: HardwareSpec): FlipdotSimHardware | SplitflapHardware {
+function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware {
     if (spec.type === 'flipdot') {
+        if (spec.async) {
+            return new FlipdotSimAsyncHardware([], () => [], [spec.height, spec.width]);
+        }
         return new FlipdotSimHardware([], () => [], [spec.height, spec.width]);
     }
     const reel = spec.reel ?? ALPHABET_WITH_EXCLAMATION.split('');
@@ -82,8 +90,9 @@ function makeHardware(spec: HardwareSpec): FlipdotSimHardware | SplitflapHardwar
 }
 
 function getSimulation(
-    hw: FlipdotSimHardware | SplitflapHardware,
-): RowOfDiscs | SplitFlapDisplay | undefined {
+    hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware,
+): RowOfDiscs | RowOfDiscsAsync | SplitFlapDisplay | undefined {
+    if (hw instanceof FlipdotSimAsyncHardware) return hw.simulation;
     if (hw instanceof FlipdotSimHardware) return hw.simulation;
     if (hw instanceof SplitflapHardware)  return hw.sim ?? undefined;
     return undefined;
