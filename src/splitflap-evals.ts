@@ -1,7 +1,7 @@
 import { Action, FlipdotSimAsyncHardware, GroupAction, SplitflapHardware, delayGroupActions } from './hardware';
 import { PixelArtTarget, RectangleTarget } from './language2';
 import {
-    AllAtOnce, BackAndForth, CentrePulse, CrescentOrder, Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, LeftToRight, LineDiagonal,
+    AllAtOnce, BackAndForth, CentrePulse, CrescentOrder, CurvedWave, Diagonal, FastCentrePulse, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre, LeftToRight, LineDiagonal,
     MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong,
     RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow,
     TopDown,
@@ -14,6 +14,7 @@ import {
 } from './transitions';
 import { EvalCase, EvalRunner } from './eval';
 import { generateSplitflapState, getImages } from './util';
+import { GrowWipe } from './effect';
 
 const BASE = import.meta.env.BASE_URL; // e.g. '/flipdots/' — set in vite.config
 
@@ -21,9 +22,9 @@ const SW = 32;
 const SH = 6;
 
 const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
-const CAPTURE  = { video: true, pngIntervalMs: 50 };
+// const CAPTURE  = { video: true, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
-// const CAPTURE  = { video: false};
+const CAPTURE  = { video: true};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -224,12 +225,10 @@ function dandelionCase(name: string, makeTransition: () => Transition): EvalCase
 }
 
 const dandelionCases: EvalCase[] = [
-    dandelionCase('dandelion-snap',          () => new SnapTransition()),
-    // dandelionCase('dandelion-wave-random',   () => new WaveTransition(new RandomOrder(20))),
-    // dandelionCase('dandelion-crescent',      () => new WaveTransition(new CrescentOrder(0.4))),
-    dandelionCase('dandelion-crescent-stochastic', () => new StochasticTransition(new CrescentOrder(0.4))),
-    // dandelionCase('dandelion-wave-diagonal', () => new WaveTransition(new SpiralOrder())),
-    // dandelionCase('dandelion-one-by-one',    () => new OneByOne(new RandomOrder(20))),
+    // dandelionCase('dandelion-snap',          () => new SnapTransition()),
+    // dandelionCase('dandelion-crescent-stochastic', () => new StochasticTransition(new CrescentOrder(0.4))),
+    // dandelionCase('dandelion-centre-stochastic', () => new StochasticTransition(new FastCentrePulse())),
+    
 ];
 
 const flipdotCases: EvalCase[] = [
@@ -366,29 +365,30 @@ function asyncLogoBgCase(name: string, makeTransition: () => Transition): EvalCa
 const ThreeByThreeMatrixCases: EvalCase[] = [
     // asyncLogoCase('logo-wipe-topdown', () => new WaveTransition(new TopDown())),
     // asyncLogoCase('logo-wipe-contour-fg', () => new WaveTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
-    // asyncLogoCase('logo-wipe-random', () => new WaveTransition(new RandomOrder())),
+    // asyncLogoCase('logo-wipe-random', () => new WaveTransition(new RandomOrder(20))), // added 20 for video
     // asyncLogoCase('logo-wipe-allatonce', () => new WaveTransition(new AllAtOnce())),
 
 
     // asyncLogoBgCase('logo-pulse-topdown', () => new PulseTransition(new TopDown(), 20)),
     // asyncLogoCase('logo-pulse-contour-fg', () => new PulseTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]), 20)),
-    // asyncLogoCase('logo-pulse-random', () => new PulseTransition(new RandomOrder(), 200)),
+    // asyncLogoCase('logo-pulse-random', () => new PulseTransition(new RandomOrder(20), 200)),
     // asyncLogoCase('logo-pulse-allatonce', () => new PulseTransition(new AllAtOnce())),
 
-    asyncLogoCase('logo-evenodd-topdown', () => new EvenOddRhythmTransition(new TopDown())),
+    // asyncLogoCase('logo-evenodd-topdown', () => new EvenOddRhythmTransition(new TopDown())),
     // asyncLogoCase('logo-evenodd-contour-fg', () => new EvenOddRhythmTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
-    // asyncLogoCase('logo-evenodd-random', () => new EvenOddRhythmTransition(new RandomOrder())),
+    // asyncLogoCase('logo-evenodd-random', () => new EvenOddRhythmTransition(new RandomOrder(20))),
     // asyncLogoCase('logo-evenodd-allatonce', () => new EvenOddRhythmTransition(new AllAtOnce())),
 
     // asyncLogoCase('logo-cascade-topdown', () => new CascadeImage(new TopDown())),
     // asyncLogoCase('logo-cascade-contour-fg', () => new CascadeImage(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
-    // asyncLogoCase('logo-cascade-random', () => new CascadeImage(new RandomOrder())),
+    // asyncLogoCase('logo-cascade-random', () => new CascadeImage(new RandomOrder(20))),
     // asyncLogoCase('logo-cascade-allatonce', () => new CascadeImage(new AllAtOnce())),
 
 /// ====
     // asyncLogoBgCase('logo-wipe-contour-bg', () => new WaveTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
     // asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
     // asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
+    asyncLogoCase('logo-pulse-allatonce', () => new PulseTransition(new CurvedWave(2))),
 
 ]
 
