@@ -6,13 +6,15 @@
     <style>
       body { margin: 0; background: #111; color: #ccc; font-family: monospace; }
       #interpolation-viz-section,
-      #contour-parallel-viz-section {
+      #contour-parallel-viz-section,
+      #spiral-order-viz-section {
         padding: 16px;
         border-top: 1px solid #2a2a2a;
         margin-top: 16px;
       }
       #interpolation-viz-section h2,
-      #contour-parallel-viz-section h2 {
+      #contour-parallel-viz-section h2,
+      #spiral-order-viz-section h2 {
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 1px;
@@ -20,7 +22,8 @@
         margin: 0 0 4px;
       }
       #interpolation-viz-section p,
-      #contour-parallel-viz-section p {
+      #contour-parallel-viz-section p,
+      #spiral-order-viz-section p {
         font-size: 10px;
         color: #555;
         margin: 0 0 8px;
@@ -39,6 +42,11 @@
       <h2>GrowAlongContoursParallel — logo pixels</h2>
       <p>Each cell colored by its assigned order value: blue (early) → red (late). Dark cells are background.</p>
       <div id="contour-parallel-viz"></div>
+    </div>
+    <div id="spiral-order-viz-section">
+      <h2>SpiralOrder — "E" shape</h2>
+      <p>Each cell colored by its assigned order value: blue (early) → red (late).</p>
+      <div id="spiral-order-viz"></div>
     </div>
   </body>
 </html>

@@ -1,5 +1,5 @@
-import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, SplitflapHardware, delayGroupActions } from './hardware';
-import { CircleTarget, PixelArtTarget, RectangleTarget } from './language2';
+import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, SplitflapHardware, delayGroupActions } from './hardware';
+import { CircleTarget, PixelArtTarget, RectangleTarget, generateAnimationToGroupAction } from './language2';
 import {
 Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre, GrowFromPoint, InterpolationOrder, RightToLeft,
     AllAtOnce, BackAndForth, CentrePulse, CrescentOrder, CurvedWave, FastCentrePulse, LeftToRight, LineDiagonal,
@@ -19,7 +19,7 @@ import {
 } from './transitions';
 import { EvalCase, EvalRunner, HardwareSpec } from './eval';
 import { generateSplitflapState, getImages } from './util';
-import { GrowWipe } from './effect';
+import { EffectType, Instantaneous } from './effect';
 
 const BASE = import.meta.env.BASE_URL; // e.g. '/flipdots/' — set in vite.config
 
@@ -29,7 +29,8 @@ const SH = 6;
 const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
 // const CAPTURE  = { video: true, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
-const CAPTURE  = { video: false, gif: { fps: 15, maxFrames: 200 }};
+// const CAPTURE  = { video: false, gif: { fps: 15, maxFrames: 200 }};
+const CAPTURE  = { video: false};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -160,7 +161,9 @@ const [dandelionW, dandelionH, dandelionRgb] = await getImages([
     `${BASE}animations/dandelion1.png`,
     `${BASE}animations/dandelion2.png`,
 ]);
-const [golfW, golfH]         = await getImages([`${BASE}animations/golf-collide1.png`]);
+const [golfW, golfH, golfRgb] = await getImages(
+    Array.from({ length: 9 }, (_, i) => `${BASE}animations/golf-collide${i + 1}.png`)
+);
 const [waveW, waveH, waveRgb] = await getImages(
     Array.from({ length: 11 }, (_, i) => `${BASE}animations/wave${i + 1}.png`)
 );
@@ -168,6 +171,8 @@ const [waveW, waveH, waveRgb] = await getImages(
 const [moonW, moonH, moonRgb] = await getImages(
     Array.from({ length: 11 }, (_, i) => `${BASE}animations/moon${i + 1}.png`)
 );
+
+const [eW, eH, eRgb] = await getImages([`${BASE}animations/e2.png`]);
 
 const LOGO_HW      = { type: 'flipdot' as const, width: logoW,      height: logoH      };
 const DANDELION_HW = { type: 'flipdot' as const, width: dandelionW, height: dandelionH };
@@ -192,6 +197,24 @@ const logoTarget = new PixelArtTarget(logoGrid(logoRgb[1], logoW, logoH), ' ');
 const waveFrames = waveRgb.map(frame => new PixelArtTarget(logoGrid(frame, waveW, waveH), ' '));
 const moonFrames = moonRgb.map(frame => new PixelArtTarget(logoGrid(frame, moonW, moonH), ' '));
 const GOLF_HW      = { type: 'flipdot' as const, width: golfW,      height: golfH      };
+
+// Extract pixels of a given RGB color from image frames as boolean PixelArtTargets.
+const matchColor = ([r, g, b]: [number, number, number]) =>
+    (frameRgb: number[][][]): boolean[][] =>
+        frameRgb.map(row => row.map(px => px[0] === r && px[1] === g && px[2] === b));
+
+function makeTargets(
+    frames: number[][][][],
+    colorFn: (f: number[][][]) => boolean[][],
+    start: number,
+    end: number,
+): PixelArtTarget[] {
+    return frames.slice(start, end + 1).map((f, i) => {
+        const t = new PixelArtTarget(colorFn(f), false);
+        t.frameId = start + i;
+        return t;
+    });
+}
 
 // Build a PixelArtTarget grid from a dandelion frame.
 // head: #222034 = rgb(34,32,52)   stem: #d77bba = rgb(215,123,186)
@@ -302,6 +325,70 @@ const dandelionCases: EvalCase[] = [
     
 ];
 
+// Frames for a solid box moving diagonally from top-left to bottom-right corner.
+const DIAG_BOX_W = 16, DIAG_BOX_H = 10, DIAG_STEPS = 30;
+const diagonalBoxFrames: PixelArtTarget[] = Array.from({ length: DIAG_STEPS }, (_, i) => {
+    const t = i / (DIAG_STEPS - 1);
+    const bx = Math.round(t * (logoW - DIAG_BOX_W));
+    const by = Math.round(t * (logoH - DIAG_BOX_H));
+    return new PixelArtTarget(
+        Array.from({ length: logoH }, (_, row) =>
+            Array.from({ length: logoW }, (_, col) =>
+                col >= bx && col < bx + DIAG_BOX_W && row >= by && row < by + DIAG_BOX_H ? 'X' : ' '
+            )
+        ),
+        ' ',
+    );
+});
+
+// Noise: single canvas-anchored pattern; box pixels invert it so the full box shape is always distinct.
+// Every pixel the box passes over flips as it enters/exits the box area.
+function applyNoise(frames: PixelArtTarget[]): PixelArtTarget[] {
+    const src0 = frames[0].draw() as string[][];
+    const h = src0.length, w = src0[0].length;
+    const pattern = Array.from({ length: h }, () =>
+        Array.from({ length: w }, () => Math.random() > 0.5)
+    );
+    return frames.map(f =>
+        new PixelArtTarget(
+            (f.draw() as string[][]).map((row, y) =>
+                row.map((cell, x) => (cell !== ' ' ? !pattern[y][x] : pattern[y][x]) ? 'X' : ' ')
+            ),
+            ' ',
+        )
+    );
+}
+
+// MovingNoise: box interior uses a pattern anchored to the box; background uses a separate fixed pattern.
+function applyMovingNoise(frames: PixelArtTarget[]): PixelArtTarget[] {
+    const src0 = frames[0].draw() as string[][];
+    const h = src0.length, w = src0[0].length;
+    const bgPattern = Array.from({ length: h }, () =>
+        Array.from({ length: w }, () => Math.random() > 0.5)
+    );
+    const boxPattern = Array.from({ length: DIAG_BOX_H }, () =>
+        Array.from({ length: DIAG_BOX_W }, () => Math.random() > 0.5)
+    );
+    return frames.map(f => {
+        const src = f.draw() as string[][];
+        let yMin = src.length, xMin = src[0]?.length ?? 0;
+        for (let y = 0; y < src.length; y++)
+            for (let x = 0; x < src[y].length; x++)
+                if (src[y][x] !== ' ') { yMin = Math.min(yMin, y); xMin = Math.min(xMin, x); }
+        return new PixelArtTarget(
+            src.map((row, y) => row.map((cell, x) =>
+                cell !== ' '
+                    ? (boxPattern[y - yMin]?.[x - xMin] ? 'X' : ' ')
+                    : (bgPattern[y][x] ? 'X' : ' ')
+            )),
+            ' ',
+        );
+    });
+}
+
+const diagonalBoxNoiseFrames       = applyNoise(diagonalBoxFrames);
+const diagonalBoxMovingNoiseFrames = applyMovingNoise(diagonalBoxFrames);
+
 const flipdotCases: EvalCase[] = [
     {
         name: 'golf-collision',
@@ -353,6 +440,32 @@ const flipdotCases: EvalCase[] = [
         },
     },
 
+    {
+        name: 'golf-direct',
+        hardware: GOLF_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const golfstick = makeTargets(golfRgb, matchColor([0,   0,   0  ]), 0, 8); // #000000
+            const golfer    = makeTargets(golfRgb, matchColor([95,  205, 228]), 0, 8); // #5fcde4
+            const ball      = makeTargets(golfRgb, matchColor([91,  110, 225]), 4, 8); // #5b6ee1
+
+            const chain = (targets: PixelArtTarget[]) => {
+                for (let i = 0; i < targets.length - 1; i++)
+                    targets[i].effect = new Instantaneous(targets[i], targets[i + 1], EffectType.Complete);
+            };
+            chain(golfstick);
+            chain(golfer);
+            chain(ball);
+
+            const timing = [4, 8, 12, 16, 20, 24, 28, 32, 36];
+            return generateAnimationToGroupAction(
+                [[golfstick[0]], [golfer[0]], [ball[0]]],
+                timing,
+                hw as HardwareInterface,
+            );
+        },
+    },
+
     waveCase('wave'),
     waveCase('wave-inverted', WAVE_HW_INVERTED),
 
@@ -364,7 +477,28 @@ const flipdotCases: EvalCase[] = [
     animationCase('moon-interp', MOON_HW, moonFrames, {
         transition: new WaveTransition(new InterpolationOrder(new RightToLeft())),
         spaceBetween: 3,
-    })
+    }),
+
+    animationCase('diagonal-box', LOGO_HW, diagonalBoxFrames, {
+        transition: new SnapTransition(),
+        spaceBetween: 3,
+        loop: true,
+    }),
+
+    // Noise anchored to canvas — box moves through a fixed static field
+    animationCase('diagonal-box-noise', LOGO_HW, diagonalBoxNoiseFrames, {
+        transition: new SnapTransition(),
+        spaceBetween: 1,
+        loop: true,
+    }),
+
+    // MovingNoise anchored to box — static travels with the box
+    animationCase('diagonal-box-moving-noise', LOGO_HW, diagonalBoxMovingNoiseFrames, {
+        transition: new SnapTransition(),
+        spaceBetween: 1,
+        loop: true,
+    }),
+
 ];
 
 
@@ -501,7 +635,7 @@ const ThreeByThreeMatrixCases: EvalCase[] = [
     // asyncLogoBgCase('logo-wipe-contour-bg', () => new WaveTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]))),
     // asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
     // asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
-    asyncLogoCase('logo-pulse-allatonce', () => new PulseTransition(new CurvedWave(2))),
+    // asyncLogoCase('logo-pulse-allatonce', () => new PulseTransition(new CurvedWave(2))),
 
 ]
 
@@ -615,16 +749,18 @@ const brixelCases: EvalCase[] = [
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 // export const runner = new EvalRunner().register(...thinkingCases);
-export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
+// export const runner = new EvalRunner().register(...brixelCases);
+// export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
 // export const runner = new EvalRunner().register(...asyncFlipdotCases);
-// export const runner = new EvalRunner().register(...flipdotCases);
+export const runner = new EvalRunner().register(...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
 if (typeof window !== 'undefined') {
     // runner.run('beat').catch(err => console.error('[eval] failed:', err));
-    // runner.run('brixel-rotate-reveal').catch(err => console.error('[eval] failed:', err));
-    runner.run().catch(err => console.error('[eval] failed:', err));
+    runner.run('golf-direct').catch(err => console.error('[eval] failed:', err));
+    // runner.run('diagonal-box-moving-noise').catch(err => console.error('[eval] failed:', err));
+    // runner.run().catch(err => console.error('[eval] failed:', err));
 }
 
 // ── GrowAlongContoursParallel heatmap visualization ───────────────────────────
@@ -667,6 +803,57 @@ if (typeof window !== 'undefined') {
 
         const label = document.createElement('div');
         label.textContent = `logo — GrowAlongContoursParallel (seed: centre)`;
+        label.style.cssText = 'color:#888; font-size:11px; margin-bottom:4px; font-family:monospace;';
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
+        wrapper.appendChild(label);
+        wrapper.appendChild(canvas);
+        viz.appendChild(wrapper);
+    }
+}
+
+// ── SpiralOrder "E" shape visualization ──────────────────────────────────────
+
+if (typeof window !== 'undefined') {
+    const viz = document.getElementById('spiral-order-viz');
+    if (viz) {
+        const eShape: boolean[][] = eRgb[0].map(row =>
+            row.map(([r, g, b]) => r !== 255 || g !== 255 || b !== 255)
+        );
+
+        const order = new SpiralOrder();
+        const [timeGrid] = order.applyMask(eShape);
+        const activeVals = timeGrid.flat().filter(v => v >= 0);
+        const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
+        const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
+        const span = maxVal - minVal || 1;
+
+        const CW = 20, CH = 20;
+        const canvas = document.createElement('canvas');
+        canvas.width = eW * CW;
+        canvas.height = eH * CH;
+        canvas.style.cssText = 'display:block; border:1px solid #333; image-rendering:pixelated;';
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let row = 0; row < eH; row++) {
+            for (let col = 0; col < eW; col++) {
+                const val = timeGrid[row][col];
+                if (val < 0) {
+                    ctx.fillStyle = '#111';
+                } else {
+                    const ratio = (val - minVal) / span;
+                    const hue = Math.round(240 - ratio * 240);
+                    ctx.fillStyle = `hsl(${hue}, 85%, 45%)`;
+                }
+                ctx.fillRect(col * CW, row * CH, CW - 2, CH - 2);
+            }
+        }
+
+        const label = document.createElement('div');
+        label.textContent = 'SpiralOrder — "e" (e2.png, spiral from bounding-box centre)';
         label.style.cssText = 'color:#888; font-size:11px; margin-bottom:4px; font-family:monospace;';
 
         const wrapper = document.createElement('div');

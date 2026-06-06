@@ -1,7 +1,7 @@
 import { HardwareInterface, GroupAction } from "./hardware";
 import { Merged, Moved, PixelArtTarget, Target, toWindows } from "./language2";
 import { GrowFromCentre, BottomUp, GrowAlongContour, AllAtOnce } from "./order";
-import { FlipTransition, KeepFlippingTransition, OffsetFlipImage, OneByOneKeepFlipping, SnapTransition, StochasticTransition, WaveTransition } from "./transitions";
+import { FlipTransition, KeepFlippingTransition, OffsetFlipImage, OneByOneKeepFlipping, SnapTransition, StochasticTransition, Transition, WaveTransition } from "./transitions";
 import { inBounds } from "./util";
 
 export enum EffectType {
@@ -333,6 +333,38 @@ export class MotionFlipTo implements Effect {
         };
     }
 
+}
+
+export class GenericEffect implements Effect {
+    from: Target | undefined;
+    to: Target | undefined;
+    type: EffectType;
+    transitionGenerator: () => Transition;
+
+    constructor(from: Target | undefined, to: Target | undefined, transitionGenerator: () => Transition, type: EffectType) {
+        this.from = from;
+        this.to = to;
+        this.type = type;
+        this.transitionGenerator = transitionGenerator;
+    }
+
+    generateDisappearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateAppearingFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateCompleteFrames(numFrames: number): Target[] {
+        throw new Error("Method not implemented.");
+    }
+    generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
+        let frames = this.generateCompleteFrames(flips) 
+        let allFrames: Target[] = [this.from!, ...frames];
+        let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
+        
+        return h => windowFrames.map(w => this.transitionGenerator().generateGroupActions(w[0], w[1], time, h)).flat();
+
+    }
 }
 
 export class Instantaneous implements Effect {

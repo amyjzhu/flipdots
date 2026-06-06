@@ -1140,7 +1140,7 @@ let generateAnimationToGroupAction_old = (objects: Target[][], transitionTiming:
 }
 
 
-let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: number[], h: HardwareInterface): GroupAction[] => {
+export let generateAnimationToGroupAction = (objects: Target[][], transitionTiming: number[], h: HardwareInterface): GroupAction[] => {
     let actions: GroupAction[] = [];
     for (let object of objects) {
         // let frameNum = 0;

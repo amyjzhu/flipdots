@@ -1754,7 +1754,7 @@ export class RotateRevealTransition implements Transition {
             if (coord[0] >= maskTime[0].length || coord[1] >= maskTime.length) return 0
             console.log(coord)
             console.log(maskTime)
-            return maskTime[coord[1]][coord[0]]
+            return maskTime[coord[1]][coord[0]] ?? 0
         }
 
         const startTime = flip.length > 0 ? getTime(flip[0]) : 0;
