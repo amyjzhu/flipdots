@@ -519,6 +519,78 @@ export class CentrePulse extends GridOrder {
     }
 }
 
+/**
+ * A wave front with organic curvature sweeping left-to-right across the canvas.
+ *
+ * Each row's front is offset by a sum of sines, so the leading edge bulges and
+ * curves as it travels — like a water wave rather than a straight vertical sweep.
+ *
+ * All cells on the same curved iso-line fire at the same time, so the number of
+ * time slots = width + 2*amplitude (always small, always fast).
+ *
+ * @param amplitude  Max deviation of the front in cells (default 3).
+ * @param frequency  Cycles of the primary curve across the height (default 1.5).
+ * @param harmonics  Relative amplitude of secondary harmonics — adds organic
+ *                   irregularity without extra parameters (default 0.35).
+ */
+export class CurvedWave extends GridOrder {
+    constructor(
+        private amplitude: number = 3,
+        private frequency: number = 1.5,
+        private harmonics: number = 0.35,
+    ) { super(); }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = Array.from({ length: height }, () => Array(width).fill(0));
+
+        for (let y = 0; y < height; y++) {
+            const t = 2 * Math.PI * this.frequency * y / height;
+            // Primary curve + two harmonics for organic irregularity.
+            const front = this.amplitude * (
+                Math.sin(t) +
+                this.harmonics * Math.sin(2 * t + 0.7) +
+                this.harmonics * 0.4 * Math.sin(3 * t + 1.9)
+            );
+            for (let x = 0; x < width; x++) {
+                grid[y][x] = Math.round(x + front);
+            }
+        }
+
+        // Normalise so the earliest cell starts at 0.
+        const minVal = Math.min(...grid.flat());
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                grid[y][x] -= minVal;
+            }
+        }
+
+        return grid;
+    }
+}
+
+// Faster variant: all cells within the same distance ring share one time slot.
+// ringWidth controls ring thickness — higher = fewer slots = faster compile.
+// CentrePulse assigns one slot per cell; FastCentrePulse assigns one per ring.
+export class FastCentrePulse extends GridOrder {
+    constructor(private ringWidth: number = 1) { super(); }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = Array.from({ length: height }, () => Array(width).fill(0));
+        const cx = (width - 1) / 2;
+        const cy = (height - 1) / 2;
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const dx = x - cx;
+                const dy = y - cy;
+                grid[y][x] = Math.floor(Math.sqrt(dx * dx + dy * dy) / this.ringWidth);
+            }
+        }
+
+        return grid;
+    }
+}
+
 export class OrganicRipple extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {
         let grid = Array.from({ length: height }, () => Array(width).fill(0));
