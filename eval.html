@@ -4,11 +4,41 @@
     <meta charset="utf-8">
     <title>Eval</title>
     <style>
-      body { margin: 0; }
+      body { margin: 0; background: #111; color: #ccc; font-family: monospace; }
+      #interpolation-viz-section,
+      #contour-parallel-viz-section {
+        padding: 16px;
+        border-top: 1px solid #2a2a2a;
+        margin-top: 16px;
+      }
+      #interpolation-viz-section h2,
+      #contour-parallel-viz-section h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #666;
+        margin: 0 0 4px;
+      }
+      #interpolation-viz-section p,
+      #contour-parallel-viz-section p {
+        font-size: 10px;
+        color: #555;
+        margin: 0 0 8px;
+      }
     </style>
   </head>
   <body>
     <script type="module" src="/src/splitflap-evals.ts"></script>
     <div id="render"></div>
+    <div id="interpolation-viz-section">
+      <h2>InterpolationOrder(LeftToRight) — wave frame diffs</h2>
+      <p>Each cell colored by its assigned order value: blue (early) → red (late). Dark cells are outside the diff.</p>
+      <div id="interpolation-viz"></div>
+    </div>
+    <div id="contour-parallel-viz-section">
+      <h2>GrowAlongContoursParallel — logo pixels</h2>
+      <p>Each cell colored by its assigned order value: blue (early) → red (late). Dark cells are background.</p>
+      <div id="contour-parallel-viz"></div>
+    </div>
   </body>
 </html>

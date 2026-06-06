@@ -1,18 +1,22 @@
-import { Action, FlipdotSimAsyncHardware, GroupAction, SplitflapHardware, delayGroupActions } from './hardware';
-import { PixelArtTarget, RectangleTarget } from './language2';
+import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, SplitflapHardware, delayGroupActions } from './hardware';
+import { CircleTarget, PixelArtTarget, RectangleTarget } from './language2';
 import {
-    AllAtOnce, BackAndForth, CentrePulse, CrescentOrder, Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, LeftToRight, LineDiagonal,
+    AllAtOnce, BackAndForth, CentrePulse, CrescentOrder, Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre, GrowFromPoint, InterpolationOrder, LeftToRight, LineDiagonal, RightToLeft,
     MatrixDown, MiddleOutDiagonal, OrganicRipple, OutFromCentre, PingPong,
+    PropagateFromObject,
     RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow,
     TopDown,
 } from './order';
 import {
-    AndThenFlipTo, CascadeImage, EvenOddRhythmTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
-    LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, PulseTransition, SnapTransition,
+    AcceleratingCascadeTransition,
+    AlternatingFlapTransition, AndThenFlipTo, BeatTransition, CascadeImage, EvenOddRhythmTransition, FittedWaveTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
+    FlipSyncLastFlipTogether,
+    LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, PulseTransition, RotateRevealTransition, SnapTransition,
     StaggeredRateTransition,
-    StochasticTransition, Transition, VerticalDriftRateTransition, WaveTransition,
+    StochasticTransition, Transition, VerticalDriftRateTransition,
+    WaveTransition,
 } from './transitions';
-import { EvalCase, EvalRunner } from './eval';
+import { EvalCase, EvalRunner, HardwareSpec } from './eval';
 import { generateSplitflapState, getImages } from './util';
 
 const BASE = import.meta.env.BASE_URL; // e.g. '/flipdots/' — set in vite.config
@@ -21,9 +25,9 @@ const SW = 32;
 const SH = 6;
 
 const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
-const CAPTURE  = { video: true, pngIntervalMs: 50 };
+// const CAPTURE  = { video: true, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
-// const CAPTURE  = { video: false};
+const CAPTURE  = { video: false, gif: { fps: 15, maxFrames: 200 }};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -76,6 +80,7 @@ const cases: EvalCase[] = [
     sfCase('middle-out-diagonal', keepFlipping(new MiddleOutDiagonal())),
     sfCase('shallow-diagonal',    keepFlipping(new ShallowDiagonal())),
     sfCase('line-diagonal',       keepFlipping(new LineDiagonal(), 200)),
+    sfCase('top-down',            keepFlipping(new TopDown(), 200)),
 
     sfCase('and-then-flip-to', (sfhw, rect) => {
         const flipAnim = new OneByOneKeepFlipping(new LineDiagonal())
@@ -137,9 +142,10 @@ function thinkingCase(name: string, makeTransition: () => Transition): EvalCase 
 }
 
 const thinkingCases: EvalCase[] = [
-    thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
-    thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
-    thinkingCase('thinking-flip-sync-end',        () => new FlipSyncEnd()),
+    // thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
+    // thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
+    // thinkingCase('thinking-flip-sync-end',        () => new FlipSyncEnd()),
+    thinkingCase('thinking-flip-sync-end',        () => new FlipSyncLastFlipTogether()),
 ];
 
 // ── Flipdot DSL cases ─────────────────────────────────────────────────────────
@@ -153,9 +159,20 @@ const [dandelionW, dandelionH, dandelionRgb] = await getImages([
     `${BASE}animations/dandelion2.png`,
 ]);
 const [golfW, golfH]         = await getImages([`${BASE}animations/golf-collide1.png`]);
+const [waveW, waveH, waveRgb] = await getImages(
+    Array.from({ length: 11 }, (_, i) => `${BASE}animations/wave${i + 1}.png`)
+);
+
+const [moonW, moonH, moonRgb] = await getImages(
+    Array.from({ length: 11 }, (_, i) => `${BASE}animations/moon${i + 1}.png`)
+);
 
 const LOGO_HW      = { type: 'flipdot' as const, width: logoW,      height: logoH      };
 const DANDELION_HW = { type: 'flipdot' as const, width: dandelionW, height: dandelionH };
+const WAVE_HW         = { type: 'flipdot' as const, width: waveW, height: waveH, frontColour: 'white',    backColour: '#137596' };
+// const WAVE_HW         = { type: 'flipdot' as const, width: waveW, height: waveH, frontColour: 'white',    backColour: '#add8e6' };
+const WAVE_HW_INVERTED = { type: 'flipdot' as const, width: waveW, height: waveH, frontColour: '#137596', backColour: 'white'    };
+const MOON_HW = { type: 'flipdot' as const, width: moonW, height: moonH, frontColour: '#137596', backColour: 'white'    };
 
 // Logo is #000000 on white — any non-white pixel is active.
 function logoGrid(frame: number[][][], w: number, h: number): string[][] {
@@ -169,6 +186,9 @@ function logoGrid(frame: number[][][], w: number, h: number): string[][] {
 
 const logoSource = new PixelArtTarget(logoGrid(logoRgb[0], logoW, logoH), ' ');
 const logoTarget = new PixelArtTarget(logoGrid(logoRgb[1], logoW, logoH), ' ');
+
+const waveFrames = waveRgb.map(frame => new PixelArtTarget(logoGrid(frame, waveW, waveH), ' '));
+const moonFrames = moonRgb.map(frame => new PixelArtTarget(logoGrid(frame, moonW, moonH), ' '));
 const GOLF_HW      = { type: 'flipdot' as const, width: golfW,      height: golfH      };
 
 // Build a PixelArtTarget grid from a dandelion frame.
@@ -208,6 +228,56 @@ const logoCases: EvalCase[] = [
     // logoCase('logo-cascade-ltr',      () => new CascadeImage(new AllAtOnce())),
 
 ];
+
+// Plays through `frames` in order, snapping to the first frame then applying
+// `transition` between each consecutive pair. `spaceBetween` is the tick gap
+// between transition start times; `duration` is how many ticks each transition
+// spans (defaults to `spaceBetween` so there's no idle pause between frames).
+// Set `loop` to true to add a final transition back to the first frame.
+function animationCase(
+    name: string,
+    hardware: HardwareSpec,
+    frames: PixelArtTarget[],
+    {
+        transition,
+        spaceBetween = 4,
+        duration,
+        loop = false,
+    }: {
+        transition?: Transition;
+        spaceBetween?: number;
+        duration?: number;
+        loop?: boolean;
+    } = {}
+): EvalCase {
+    const tr = transition ?? new FittedWaveTransition(new InterpolationOrder(new LeftToRight()));
+    const dur = duration ?? spaceBetween;
+    return {
+        name,
+        hardware,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const emptyFrame = new PixelArtTarget(frames[0].draw().map(r => r.map(() => ' ')), ' ');
+            const path = loop ? [...frames, frames[0]] : frames;
+            const result: GroupAction[] = [
+                ...new SnapTransition().generateGroupActions(emptyFrame, path[0], 0, hw),
+            ];
+            for (let i = 0; i < path.length - 1; i++) {
+                result.push(
+                    ...delayGroupActions(
+                        tr.generateGroupActions(path[i], path[i + 1], dur, hw),
+                        (i + 1) * spaceBetween
+                    )
+                );
+            }
+            return result;
+        },
+    };
+}
+
+function waveCase(name: string, hw = WAVE_HW): EvalCase {
+    return animationCase(name, hw, waveFrames, { spaceBetween: 2 });
+}
 
 function dandelionCase(name: string, makeTransition: () => Transition): EvalCase {
     return {
@@ -283,8 +353,50 @@ const flipdotCases: EvalCase[] = [
         },
     },
 
+    waveCase('wave'),
+    waveCase('wave-inverted', WAVE_HW_INVERTED),
+
+    animationCase('moon', MOON_HW, moonFrames, {
+        transition: new SnapTransition(),
+        spaceBetween: 1,
+    }),
+
+    animationCase('moon-interp', MOON_HW, moonFrames, {
+        transition: new WaveTransition(new InterpolationOrder(new RightToLeft())),
+        spaceBetween: 3,
+    })
 ];
 
+
+// ── Fill cases (empty → full grid) ───────────────────────────────────────────
+
+const FILL_W = 20;
+const FILL_H = 10;
+const FILL_HW = { type: 'flipdot' as const, width: FILL_W, height: FILL_H };
+
+const emptyGrid = new PixelArtTarget(Array.from({ length: FILL_H }, () => Array(FILL_W).fill(' ')), ' ');
+const fullGrid  = new PixelArtTarget(Array.from({ length: FILL_H }, () => Array(FILL_W).fill('X')), ' ');
+
+function fillCase(name: string, transition: Transition): EvalCase {
+    return {
+        name,
+        hardware: FILL_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            return transition.generateGroupActions(emptyGrid, fullGrid, 10, hw);
+        },
+    };
+}
+
+const fillCases: EvalCase[] = [
+    // fillCase('fill-wave-ltr',  new WaveTransition(new LeftToRight())),
+    // fillCase('fill-wave-rtl',  new WaveTransition(new RightToLeft())),
+    // OneByOneKeepFlipping = KeepFlippingTransition with order support
+    fillCase('fill-accel-ltr', new AcceleratingCascadeTransition(new LeftToRight())),
+    // fillCase('fill-accel-rtl', new AcceleratingCascadeTransition(new RightToLeft())),
+    // fillCase('fill-keep-ltr',  new OneByOneKeepFlipping(new LeftToRight())),
+    // fillCase('fill-keep-rtl',  new OneByOneKeepFlipping(new RightToLeft())),
+];
 
 // ── Async flipdot cases ───────────────────────────────────────────────────────
 // FlipdotSimAsyncHardware lets each disc animate independently, so we can
@@ -394,7 +506,27 @@ const ThreeByThreeMatrixCases: EvalCase[] = [
 
 
 const asyncFlipdotCases: EvalCase[] = [
-    asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
+    // asyncLogoCase('logo-experimental-async', () => new EvenOddRhythmTransition(new TopDown())),
+    // asyncLogoCase('logo-alternating-flap', () => new AlternatingFlapTransition()),
+    
+    // asyncLogoBgCase('beat', () => new BeatTransition(new TopDown(), [2, 2, 0.5, 1, 1])),
+
+    // lub-DUB lub-DUB: long gap then short gap, clear two-feel
+    asyncLogoBgCase('beat-heartbeat',  () => new BeatTransition(new TopDown(), [6, 2])),
+
+
+    // these next two are just ok
+    // // tresillo (3+3+2): most fundamental syncopated rhythm in Latin music — feels "off" but grooves
+    // asyncLogoBgCase('beat-tresillo',   () => new BeatTransition(new TopDown(), [3, 3, 2])),
+
+    // long pause then three rapid-fire clicks — very ear-catching contrast
+    // asyncLogoBgCase('beat-burst',      () => new BeatTransition(new TopDown(), [8, 1, 1, 1])),
+
+    // jazz shuffle: strict long-short alternation
+    asyncLogoBgCase('beat-swing',      () => new BeatTransition(new TopDown(), [3, 1])),
+
+    // fibonacci: interval doubles each cycle, sounds like natural acceleration
+    asyncLogoBgCase('beat-fibonacci',  () => new BeatTransition(new TopDown(), [1, 1, 2, 3, 5]))
 
     // // Diagonal sweep: every disc flips once at tPlus = x + y, so one diagonal
     // // stripe starts each frame. Six diagonals end up visibly mid-flip at the
@@ -452,13 +584,167 @@ const asyncFlipdotCases: EvalCase[] = [
     // }),
 ];
 
+// ── Brixel cases ─────────────────────────────────────────────────────────────
+
+const BW = 10;
+const BH = 10;
+const BRIXEL_HW = { type: 'brixel' as const, width: BW, height: BH };
+
+const brixelCases: EvalCase[] = [
+    {
+        name: 'brixel-rotate-reveal',
+        hardware: BRIXEL_HW,
+        build(hw): GroupAction[] {
+            const bhw = hw as BrixelSimHardware;
+            const rrt = new RotateRevealTransition();
+            const s  = new CircleTarget(0, [4, 4], [BW, BH]);
+            const t1 = new CircleTarget(1, [4, 4], [BW, BH]);
+            const t2 = new CircleTarget(3, [2, 2], [BW, BH]);
+            const t3 = new CircleTarget(4, [1, 1], [BW, BH]);
+            const dur = 300;
+            return [
+                ...rrt.generateGroupActions(s,  t1, dur, bhw),
+                ...delayGroupActions(rrt.generateGroupActions(t1, t2, dur, bhw), dur),
+                ...delayGroupActions(rrt.generateGroupActions(t2, t3, dur, bhw), dur * 2),
+            ];
+        },
+    },
+];
+
 // ── Runner ────────────────────────────────────────────────────────────────────
 
+// export const runner = new EvalRunner().register(...thinkingCases);
 export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
+// export const runner = new EvalRunner().register(...asyncFlipdotCases);
+// export const runner = new EvalRunner().register(...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
 if (typeof window !== 'undefined') {
-    // runner.run('logo-wipe').catch(err => console.error('[eval] failed:', err));
+    // runner.run('beat').catch(err => console.error('[eval] failed:', err));
+    // runner.run('brixel-rotate-reveal').catch(err => console.error('[eval] failed:', err));
     runner.run().catch(err => console.error('[eval] failed:', err));
 }
+
+// ── GrowAlongContoursParallel heatmap visualization ───────────────────────────
+
+if (typeof window !== 'undefined') {
+    const viz = document.getElementById('contour-parallel-viz');
+    if (viz) {
+        const order = new GrowAlongContoursParallel([Math.floor(logoW / 2), Math.floor(logoH / 2)]);
+        const src = logoSource.draw();
+        const diff: boolean[][] = src.map(row => row.map(cell => cell !== ' '));
+
+        const [timeGrid] = order.applyMask(diff);
+        const activeVals = timeGrid.flat().filter(v => v >= 0);
+        const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
+        const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
+        const span = maxVal - minVal || 1;
+
+        const CW = 10, CH = 10;
+        const canvas = document.createElement('canvas');
+        canvas.width = logoW * CW;
+        canvas.height = logoH * CH;
+        canvas.style.cssText = 'display:block; border:1px solid #333; image-rendering:pixelated;';
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let row = 0; row < logoH; row++) {
+            for (let col = 0; col < logoW; col++) {
+                const val = timeGrid[row][col];
+                if (val < 0) {
+                    ctx.fillStyle = diff[row][col] ? '#2a1a2a' : '#111';
+                } else {
+                    const ratio = (val - minVal) / span;
+                    const hue = Math.round(240 - ratio * 240);
+                    ctx.fillStyle = `hsl(${hue}, 85%, 45%)`;
+                }
+                ctx.fillRect(col * CW, row * CH, CW - 1, CH - 1);
+            }
+        }
+
+        const label = document.createElement('div');
+        label.textContent = `logo — GrowAlongContoursParallel (seed: centre)`;
+        label.style.cssText = 'color:#888; font-size:11px; margin-bottom:4px; font-family:monospace;';
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
+        wrapper.appendChild(label);
+        wrapper.appendChild(canvas);
+        viz.appendChild(wrapper);
+    }
+}
+
+// ── InterpolationOrder heatmap visualization ──────────────────────────────────
+
+// function renderInterpolationHeatmap(
+//     canvas: HTMLCanvasElement,
+//     diff: boolean[][],
+//     order: InterpolationOrder,
+// ): void {
+//     const CW = 10;
+//     const CH = 10;
+//     const height = diff.length;
+//     const width = diff[0]?.length ?? 0;
+
+//     canvas.width = width * CW;
+//     canvas.height = height * CH;
+//     const ctx = canvas.getContext('2d')!;
+
+//     ctx.fillStyle = '#111';
+//     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+//     const [timeGrid] = order.applyMask(diff);
+//     const activeVals = timeGrid.flat().filter(v => v >= 0);
+//     const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
+//     const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
+//     const span = maxVal - minVal || 1;
+
+//     for (let row = 0; row < height; row++) {
+//         for (let col = 0; col < width; col++) {
+//             const val = timeGrid[row][col];
+//             if (val < 0) {
+//                 ctx.fillStyle = diff[row][col] ? '#2a1a2a' : '#111';
+//             } else {
+//                 const ratio = (val - minVal) / span;
+//                 const hue = Math.round(240 - ratio * 240);
+//                 ctx.fillStyle = `hsl(${hue}, 85%, 45%)`;
+//             }
+//             ctx.fillRect(col * CW, row * CH, CW - 1, CH - 1);
+//         }
+//     }
+// }
+
+// if (typeof window !== 'undefined') {
+//     const viz = document.getElementById('interpolation-viz');
+//     if (viz) {
+//         const order = new InterpolationOrder(new LeftToRight());
+
+//         for (let i = 0; i < waveFrames.length - 1; i++) {
+//             const f0 = waveFrames[i].draw();
+//             const f1 = waveFrames[i + 1].draw();
+//             const diff: boolean[][] = f0.map((row, ri) =>
+//                 row.map((cell, ci) => cell !== f1[ri][ci])
+//             );
+//             const anyDiff = diff.some(r => r.some(v => v));
+//             if (!anyDiff) continue;
+
+//             const wrapper = document.createElement('div');
+//             wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
+
+//             const label = document.createElement('div');
+//             label.textContent = `frame ${i} → ${i + 1}`;
+//             label.style.cssText = 'color:#888; font-size:11px; margin-bottom:4px; font-family:monospace;';
+
+//             const canvas = document.createElement('canvas');
+//             canvas.style.cssText = 'display:block; border:1px solid #333; image-rendering:pixelated;';
+
+//             wrapper.appendChild(label);
+//             wrapper.appendChild(canvas);
+//             viz.appendChild(wrapper);
+
+//             renderInterpolationHeatmap(canvas, diff, order);
+//         }
+//     }
+// }

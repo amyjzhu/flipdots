@@ -19,6 +19,7 @@ export class RowOfDiscs {
     camera: THREE.Camera;
     renderer: THREE.WebGLRenderer;
     listener: THREE.AudioListener;
+    audioStream: MediaStream | undefined;
 
     SPACING = 7;
     DEPTH = 0.5;
@@ -52,7 +53,12 @@ export class RowOfDiscs {
 
     recorder: Recorder | undefined;
 
-    constructor(width: number, height: number, flat: boolean = true, meshPath?: string) {
+    frontColourFn: (i: number) => number[];
+    backColourFn: (i: number) => number[];
+
+    constructor(width: number, height: number, flat: boolean = true, meshPath?: string, frontColour?: string, backColour?: string) {
+        this.frontColourFn = frontColour ? (_i) => new THREE.Color(frontColour).toArray() : DISC_FRONT_COLOUR;
+        this.backColourFn  = backColour  ? (_i) => new THREE.Color(backColour).toArray()  : DISC_BACK_COLOUR;
 
         this.width = width;
         this.height = height;
@@ -85,11 +91,17 @@ export class RowOfDiscs {
             this.height = 1;
         }
 
-        // performant takes precedence 
+        // performant takes precedence
         if (PERFORMANT_SOUND_ENABLED) {
             this.addPerformantAudio()
         } else if (SOUND_ENABLED) {
             this.addAudio();
+        }
+
+        if (SOUND_ENABLED || PERFORMANT_SOUND_ENABLED) {
+            const dest = this.listener.context.createMediaStreamDestination();
+            this.listener.gain.connect(dest);
+            this.audioStream = dest.stream;
         }
 
 
@@ -230,12 +242,12 @@ varying vec3 vColor;
         var instanceFrontColours = new Float32Array(count * 3);
 
         for (let i = 0; i < count; i++) {
-            let backColour = DISC_BACK_COLOUR(i);
+            let backColour = this.backColourFn(i);
             instanceBackColours[i * 3] = backColour[0];
             instanceBackColours[i * 3 + 1] = backColour[1];
             instanceBackColours[i * 3 + 2] = backColour[2];
 
-            let frontColour = DISC_FRONT_COLOUR(i);
+            let frontColour = this.frontColourFn(i);
             instanceFrontColours[i * 3] = frontColour[0];
             instanceFrontColours[i * 3 + 1] = frontColour[1];
             instanceFrontColours[i * 3 + 2] = frontColour[2];

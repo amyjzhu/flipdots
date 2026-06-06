@@ -1,4 +1,4 @@
-import { FlipdotSimAsyncHardware, FlipdotSimHardware, GroupAction, SplitflapHardware, SplitflapState } from './hardware';
+import { BrixelSimHardware, FlipdotSimAsyncHardware, FlipdotSimHardware, GroupAction, SplitflapHardware, SplitflapState } from './hardware';
 import { parseToGroupAction } from './language2';
 import { Recorder } from './recorder';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
@@ -18,6 +18,10 @@ export type FlipdotSpec = {
     // compile() pipeline schedules per-frame rather than per-cycle.
     async?: boolean;
     // Note: RowOfDiscs always appends to #render in the current implementation.
+    /** CSS color string for the lit (front) face of each disc. */
+    frontColour?: string;
+    /** CSS color string for the unlit (back) face of each disc. */
+    backColour?: string;
 };
 
 export type SplitflapSpec = {
@@ -28,7 +32,13 @@ export type SplitflapSpec = {
     reel?: string[];
 };
 
-export type HardwareSpec = FlipdotSpec | SplitflapSpec;
+export type BrixelSpec = {
+    type: 'brixel';
+    width: number;
+    height: number;
+};
+
+export type HardwareSpec = FlipdotSpec | SplitflapSpec | BrixelSpec;
 
 // ── Capture spec ───────────────────────────────────────────────────────────────
 
@@ -66,19 +76,22 @@ export interface EvalCase {
      *   2. Call ctx.fromDSL(program) — compile is called inside; return nothing.
      */
     build(
-        hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware,
+        hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware,
         ctx: EvalContext,
     ): Promise<GroupAction[] | void> | GroupAction[] | void;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware {
+function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware {
     if (spec.type === 'flipdot') {
         if (spec.async) {
             return new FlipdotSimAsyncHardware([], () => [], [spec.height, spec.width]);
         }
-        return new FlipdotSimHardware([], () => [], [spec.height, spec.width]);
+        return new FlipdotSimHardware([], () => [], [spec.height, spec.width], undefined, spec.frontColour, spec.backColour);
+    }
+    if (spec.type === 'brixel') {
+        return BrixelSimHardware.Rectangular(spec.width, spec.height);
     }
     const reel = spec.reel ?? ALPHABET_WITH_EXCLAMATION.split('');
     return SplitflapHardware.Rectangular(
@@ -90,7 +103,7 @@ function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncH
 }
 
 function getSimulation(
-    hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware,
+    hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware,
 ): RowOfDiscs | RowOfDiscsAsync | SplitFlapDisplay | undefined {
     if (hw instanceof FlipdotSimAsyncHardware) return hw.simulation;
     if (hw instanceof FlipdotSimHardware) return hw.simulation;
@@ -153,18 +166,21 @@ export class EvalRunner {
                 return;
             }
             const captureSpec = c.capture ?? {};
-            const durationMs = (captureSpec.durationMs ?? hw.estimatedDurationMs * 1.15) * 1.1;
+            const estimatedMs = (hw as { estimatedDurationMs?: number }).estimatedDurationMs ?? 0;
+            const durationMs = (captureSpec.durationMs ?? estimatedMs * 1.15) * 1.1;
             if (durationMs <= 0) {
                 console.warn(`[eval] ${c.name}: estimated duration is 0 — skipping capture`);
                 return;
             }
             console.log(`[eval] ${c.name}: recording for ${Math.round(durationMs)}ms`);
             sim.recorder = new Recorder(sim.renderer);
+            const audioStream = (sim as { audioStream?: MediaStream }).audioStream;
             await new Promise<void>(resolve => {
                 sim.recorder!.start({
                     ...captureSpec,
                     durationMs,
                     name: c.name,
+                    audioStream,
                     onDone: () => {
                         console.log(`[eval] ${c.name}: capture done`);
                         resolve();

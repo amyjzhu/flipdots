@@ -450,7 +450,7 @@ export class SplitflapHardware implements HardwareInterface {
         let tickSchedule = new Map<UnitId, number[]>();
         for (let [i, timeline] of scheduled.entries()) {
             const msPerTick = 1 / framesPerMs;
-            const animationDurationMs = this.sim.numFramesRotating * msPerTick;
+            const animationDurationMs = (this.sim.numFramesRotating + 1) * msPerTick;
 
             let timelineMs = timeline[0];
             // Precompute delays (fail fast if invalid)
@@ -972,7 +972,7 @@ export class FlipdotSimHardware implements HardwareInterface {
 
     }
 
-    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string) {
+    constructor(units: Unit[], adjacency: (toCheck: UnitId) => UnitId[], dimensions?: [number, number], meshInput?: string, frontColour?: string, backColour?: string) {
         this.flipDurationMS = 1;
         this.actionDurations.set(Action.FLIP, this.flipDurationMS);
         console.log(dimensions)
@@ -1015,7 +1015,7 @@ export class FlipdotSimHardware implements HardwareInterface {
                 // return n[0] * width + n[1]
             };
 
-            this.simulation = new RowOfDiscs(width, height);
+            this.simulation = new RowOfDiscs(width, height, true, undefined, frontColour, backColour);
 
 
         } else {

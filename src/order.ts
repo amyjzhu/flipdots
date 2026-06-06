@@ -89,6 +89,16 @@ export class LeftToRight extends GridOrder {
 }
 
 
+export class RightToLeft extends GridOrder {
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = [...new Array(height)].map(_ => [...new Array(width)]);
+        for (let i = 0; i < height; i++)
+            for (let j = 0; j < width; j++)
+                grid[i][j] = width - 1 - j;
+        return grid;
+    }
+}
+
 export class BottomLeftWildfire extends GridOrder {
     generateGrid(width: number, height: number): OrderedGrid {
         let grid = [...new Array(height)].map(_ => [... new Array(width)]);
@@ -1150,5 +1160,139 @@ export class CrescentOrder extends GridOrder {
         }
 
         return grid;
+    }
+}
+
+// Animates the diff (cells passed via applyMask) starting from its outer
+// boundary and propagating inward following the base order. The boundary cell
+// with the lowest base order value anchors at time 1; cells further along in
+// the order's direction get later times.
+export class PropagateFromObject extends GridOrder {
+    constructor(private baseOrder: GridOrder) {
+        super();
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        return Array.from({ length: height }, () => Array(width).fill(-1));
+    }
+
+    applyMask(diff: boolean[][]): [OrderedGrid, number[]] {
+        const height = diff.length;
+        const width = diff[0].length;
+        const base = this.baseOrder.generateGrid(width, height);
+        const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+        // Pareto front seeds: for each row and column, find the diff cell with
+        // the lowest (earliest) base order value. A cell is a seed if it achieves
+        // the minimum in BOTH its row and its column simultaneously.
+        const rowMin = new Array(height).fill(Infinity);
+        const colMin = new Array(width).fill(Infinity);
+        for (let i = 0; i < height; i++)
+            for (let j = 0; j < width; j++)
+                if (diff[i]?.[j]) {
+                    rowMin[i] = Math.min(rowMin[i], base[i][j]);
+                    colMin[j] = Math.min(colMin[j], base[i][j]);
+                }
+
+        // BFS from the pareto front, propagating forward through the order
+        // (only to neighbors with base >= current cell's base).
+        const grid = this.generateGrid(width, height);
+        const queue: [number, number][] = [];
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                if (diff[i]?.[j] && base[i][j] <= rowMin[i] && base[i][j] <= colMin[j]) {
+                    grid[i][j] = 1;
+                    queue.push([i, j]);
+                }
+            }
+        }
+
+        while (queue.length > 0) {
+            const [r, c] = queue.shift()!;
+            for (const [dr, dc] of dirs) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < height && nc >= 0 && nc < width
+                        && diff[nr]?.[nc] && grid[nr][nc] === -1
+                        && base[nr][nc] >= base[r][c]) {
+                    grid[nr][nc] = grid[r][c] + 1;
+                    queue.push([nr, nc]);
+                }
+            }
+        }
+
+        let times: number[] = grid.flat().filter(t => t !== -1);
+        times.sort((a, b) => a - b);
+        times = [...new Set(times)];
+
+        return [grid, times];
+    }
+}
+
+// Assigns order values to diff cells via interpolation between the min and max
+// pareto fronts of the diff under the base order. The min pareto front (cells
+// whose base value is minimum in both their row and column — same logic as
+// PropagateFromObject's seeds) gets t=0; the max pareto front gets t=1; every
+// other diff cell is interpolated by averaging its per-row and per-column
+// normalised positions in the base order (falling back to the global range for
+// isolated cells where neither axis varies).
+export class InterpolationOrder extends GridOrder {
+    constructor(private baseOrder: GridOrder) {
+        super();
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        return Array.from({ length: height }, () => Array(width).fill(-1));
+    }
+
+    applyMask(diff: boolean[][]): [OrderedGrid, number[]] {
+        const height = diff.length;
+        const width = diff[0].length;
+        const base = this.baseOrder.generateGrid(width, height);
+
+        // Per-row, per-column, and global min/max of base values within the diff.
+        const rowMin = new Array(height).fill(Infinity);
+        const rowMax = new Array(height).fill(-Infinity);
+        const colMin = new Array(width).fill(Infinity);
+        const colMax = new Array(width).fill(-Infinity);
+        let vGlobalMin = Infinity, vGlobalMax = -Infinity;
+        for (let i = 0; i < height; i++)
+            for (let j = 0; j < width; j++)
+                if (diff[i]?.[j]) {
+                    const v = base[i][j];
+                    rowMin[i] = Math.min(rowMin[i], v);
+                    rowMax[i] = Math.max(rowMax[i], v);
+                    colMin[j] = Math.min(colMin[j], v);
+                    colMax[j] = Math.max(colMax[j], v);
+                    vGlobalMin = Math.min(vGlobalMin, v);
+                    vGlobalMax = Math.max(vGlobalMax, v);
+                }
+        const vGlobalSpan = Math.max(vGlobalMax - vGlobalMin, 1);
+
+        // t=0 on the min pareto front (base = rowMin AND colMin), t=1 on the max.
+        // Normalise within each row and column separately, then average the two
+        // axes that vary. For isolated cells where neither axis varies, fall back
+        // to the global normalisation so they still land at the right position.
+        const grid = this.generateGrid(width, height);
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+                if (!diff[i]?.[j]) continue;
+                const v = base[i][j];
+                const rSpan = rowMax[i] - rowMin[i];
+                const cSpan = colMax[j] - colMin[j];
+                const tRow = rSpan > 0 ? (v - rowMin[i]) / rSpan : -1;
+                const tCol = cSpan > 0 ? (v - colMin[j]) / cSpan : -1;
+                grid[i][j] =
+                    tRow >= 0 && tCol >= 0 ? (tRow + tCol) / 2 :
+                    tRow >= 0 ? tRow :
+                    tCol >= 0 ? tCol :
+                    (v - vGlobalMin) / vGlobalSpan;
+            }
+        }
+
+        let times: number[] = grid.flat().filter(t => t !== -1);
+        times.sort((a, b) => a - b);
+        times = [...new Set(times)];
+
+        return [grid, times];
     }
 }

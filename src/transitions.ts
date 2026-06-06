@@ -923,62 +923,199 @@ export class OneByOneKeepFlipping implements Transition {
     }
 
     generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
-        // What I should do is: 
-        // establish frames that units are going to start flipping FASTER/SLOWER (let's say slower.)
-        let flip = diffIndices(o1, o2, h);
+        const flip = diffIndices(o1, o2, h);
+        const diffSet = new Set(flip);
         let [mask, x, y] = generateMaskFromCoords(flip, h);
-        let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
+        let [maskTime] = this.order.applyMask(mask as boolean[][]);
 
-        console.log(maskTime)
-        let result = [];
+        const result: GroupAction[] = [];
         const rows = maskTime.length;
         const cols = maskTime[0].length;
 
         const frameMap = new Map<number, UnitId[]>();
-
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const frame = maskTime[r][c];
-
-                let id = h.coordToIndex([c + (x as number), r + (y as number)]);
-
-
-                if (!frameMap.has(frame)) {
-                    frameMap.set(frame, []);
-                }
-
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(frame)) frameMap.set(frame, []);
                 frameMap.get(frame)!.push(id);
             }
         }
 
         const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
-
-        let flipTime = h.actionDurations.get(Action.FLIP)!;
+        const flipTime = h.actionDurations.get(Action.FLIP)!;
         let currentTime: Time = 0;
         let prevFlips: UnitId[] = [];
 
         for (const frame of allFrames) {
             if (frame === -1 || frame === undefined) continue;
             const activeUnits = new Set(frameMap.get(frame)!);
-
             currentTime += flipTime;
-
-            result.push(new GroupAction(currentTime, [[Action.FLIP, [...activeUnits, ...prevFlips]]]))
+            result.push(new GroupAction(currentTime, [[Action.FLIP, [...activeUnits, ...prevFlips]]]));
             prevFlips = prevFlips.concat([...activeUnits]);
-
         }
 
-        console.log(allFrames)
-        console.log(result.map(g => g.actions[0][1].length))
         while (currentTime < t) {
-             currentTime += flipTime;
-
-            result.push(new GroupAction(currentTime, [[Action.FLIP, [...prevFlips]]]))
+            currentTime += flipTime;
+            result.push(new GroupAction(currentTime, [[Action.FLIP, [...prevFlips]]]));
         }
-        
-        return result;
 
+        // Post-process: for each unit, count total flips and remove the last one if parity is wrong.
+        // Diff units must end with an odd count; non-diff units must end with an even count.
+        const unitLastGA = new Map<UnitId, number>(); // unit -> index of its last GroupAction
+        for (let gi = 0; gi < result.length; gi++) {
+            const flipAction = result[gi].actions.find(a => a[0] === Action.FLIP);
+            if (!flipAction) continue;
+            for (const uid of flipAction[1]) unitLastGA.set(uid, gi);
+        }
 
+        const flipCountMap = new Map<UnitId, number>();
+        for (let gi = 0; gi < result.length; gi++) {
+            const flipAction = result[gi].actions.find(a => a[0] === Action.FLIP);
+            if (!flipAction) continue;
+            for (const uid of flipAction[1])
+                flipCountMap.set(uid, (flipCountMap.get(uid) ?? 0) + 1);
+        }
+
+        for (const [uid, count] of flipCountMap) {
+            const wantOdd = diffSet.has(uid);
+            const isOdd = count % 2 === 1;
+            if (wantOdd !== isOdd) {
+                const lastGAIdx = unitLastGA.get(uid)!;
+                const flipAction = result[lastGAIdx].actions.find(a => a[0] === Action.FLIP)!;
+                const idx = flipAction[1].indexOf(uid);
+                if (idx !== -1) flipAction[1].splice(idx, 1);
+            }
+        }
+
+        // Drop any GroupActions whose FLIP list is now empty.
+        return result.filter(ga => ga.actions.some(a => a[0] !== Action.FLIP || a[1].length > 0));
+    }
+}
+
+// Like OneByOneKeepFlipping but the gaps between successive units joining decrease over time
+// (early units have large gaps before the next unit joins; later units join in rapid succession).
+// The easeExponent controls how strongly the acceleration is applied (higher = faster buildup).
+export class AcceleratingCascadeTransition implements Transition {
+    constructor(
+        private readonly order: GridOrder,
+        private readonly easeExponent: number = 1.3,
+    ) {}
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        const flip = diffIndices(o1, o2, h);
+        const diffSet = new Set(flip);
+        const [mask, x, y] = generateMaskFromCoords(flip, h);
+        const [maskTime] = this.order.applyMask(mask as boolean[][]);
+
+        const rows = maskTime.length;
+        const cols = maskTime[0].length;
+        const frameMap = new Map<number, UnitId[]>();
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const frame = maskTime[r][c];
+                if (frame === -1 || frame === undefined) continue;
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(frame)) frameMap.set(frame, []);
+                frameMap.get(frame)!.push(id);
+            }
+        }
+
+        const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
+        const n = allFrames.length;
+        const flipTime = h.actionDurations.get(Action.FLIP)!;
+
+        // Ease-out curve: start times are spread wide early, compressed late.
+        // Frame i's join tick = floor(easeOut(i/(n-1)) * t), rounded to a flip-tick boundary.
+        const joinTicks = allFrames.map((_, i) => {
+            const xNorm = n <= 1 ? 0 : i / (n - 1);
+            const eased = 1 - Math.pow(1 - xNorm, this.easeExponent);
+            const rawTime = eased * t;
+            return Math.max(flipTime, Math.floor(rawTime / flipTime) * flipTime);
+        });
+
+        // For every global flip tick, accumulate all units that have already joined.
+        const timeToUnits = new Map<number, UnitId[]>();
+        for (let i = 0; i < allFrames.length; i++) {
+            const units = frameMap.get(allFrames[i])!;
+            for (let tick = joinTicks[i]; tick <= t; tick += flipTime) {
+                if (!timeToUnits.has(tick)) timeToUnits.set(tick, []);
+                timeToUnits.get(tick)!.push(...units);
+            }
+        }
+
+        const sortedTicks = Array.from(timeToUnits.keys()).sort((a, b) => a - b);
+        const result: GroupAction[] = sortedTicks.map(tick =>
+            new GroupAction(tick, [[Action.FLIP, timeToUnits.get(tick)!]])
+        );
+
+        // Parity fix: diff units must end with an odd total flip count.
+        const unitLastGA = new Map<UnitId, number>();
+        const flipCountMap = new Map<UnitId, number>();
+        for (let gi = 0; gi < result.length; gi++) {
+            const fa = result[gi].actions.find(a => a[0] === Action.FLIP);
+            if (!fa) continue;
+            for (const uid of fa[1]) {
+                unitLastGA.set(uid, gi);
+                flipCountMap.set(uid, (flipCountMap.get(uid) ?? 0) + 1);
+            }
+        }
+        for (const [uid, count] of flipCountMap) {
+            const wantOdd = diffSet.has(uid);
+            if ((count % 2 === 1) !== wantOdd) {
+                const fa = result[unitLastGA.get(uid)!].actions.find(a => a[0] === Action.FLIP)!;
+                const idx = fa[1].indexOf(uid);
+                if (idx !== -1) fa[1].splice(idx, 1);
+            }
+        }
+
+        return result.filter(ga => ga.actions.some(a => a[0] !== Action.FLIP || a[1].length > 0));
+    }
+}
+
+// Flips each order-ranked group according to a repeating beat pattern.
+// beat = interval(s) in ticks between successive groups; a single number is treated as [n].
+// The pattern cycles: group i fires after beat[i % beat.length] ticks from the previous group.
+// The t parameter passed to generateGroupActions is ignored — the beat controls timing.
+export class BeatTransition implements Transition {
+    private readonly pattern: number[];
+
+    constructor(
+        private readonly order: GridOrder,
+        beat: number | number[],
+    ) {
+        this.pattern = Array.isArray(beat) ? beat : [beat];
+    }
+
+    generateGroupActions = (o1: Target, o2: Target, _t: Duration, h: HardwareInterface): GroupAction[] => {
+        const flip = diffIndices(o1, o2, h);
+        if (flip.length === 0) return [];
+        const [mask, x, y] = generateMaskFromCoords(flip, h);
+        const [maskTime] = this.order.applyMask(mask as boolean[][]);
+
+        const rows = maskTime.length;
+        const cols = maskTime[0].length;
+        const frameMap = new Map<number, UnitId[]>();
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const frame = maskTime[r][c];
+                if (frame === -1 || frame === undefined) continue;
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(frame)) frameMap.set(frame, []);
+                frameMap.get(frame)!.push(id);
+            }
+        }
+
+        const allFrames = Array.from(frameMap.keys()).sort((a, b) => a - b);
+
+        let time = 0;
+        return allFrames.map((frame, i) => {
+            const ga = new GroupAction(time, [[Action.FLIP, frameMap.get(frame)!]]);
+            time += this.pattern[i % this.pattern.length];
+            return ga;
+        });
     }
 }
 
@@ -1153,6 +1290,41 @@ export class WaveTransition implements Transition {
         console.log(actions)
         return actions;
 
+    }
+}
+
+// Like WaveTransition but normalizes the order's time values into [0, t]:
+// shifts so the first flip starts at tick 0 and scales so the last flip lands at tick t.
+export class FittedWaveTransition implements Transition {
+    constructor(private order: GridOrder) {}
+
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        const unitsToFlap = new Set(diffIndices(o1, o2, h));
+        const [grid, x, y] = generateMaskFromCoords([...unitsToFlap], h);
+        const [timeGrid, times] = this.order.applyMask(grid as boolean[][]);
+        const timeFunction = this.order.getTimeFunction(timeGrid, i => h.coordToIndex(i));
+
+        if (times.length === 0) return [];
+
+        const minTime = times[0];
+        const maxTime = times[times.length - 1];
+        const span = maxTime - minTime || 1;
+
+        const actions: GroupAction[] = [];
+        let unitsSoFar: Set<UnitId> = new Set();
+
+        for (const time of times) {
+            const scaled = Math.min(Math.floor(((time - minTime) / span) * t), t - 1);
+            const draw = new Set(timeFunction(time));
+            const update = draw.difference(unitsSoFar);
+            unitsSoFar = unitsSoFar.union(update);
+            const updateList = [...update].map(c =>
+                h.coordToIndex([h.indexToCoord.get(c)![0] + (x as number), h.indexToCoord.get(c)![1] + (y as number)])
+            );
+            actions.push(new GroupAction(scaled, [[Action.FLIP, updateList]]));
+        }
+
+        return actions;
     }
 }
 
@@ -1576,19 +1748,20 @@ export class RotateRevealTransition implements Transition {
 
         let [mask, x, y] = generateMaskFromCoords(flip, h);
         let [maskTime, times] = this.order.applyMask(mask as boolean[][]);
-        let getTime = (i: UnitId) => {
-            // when does this unit flip? given any unit.
-            let coord = h.indexToCoord.get(i)!;
+        let getTime = (id: UnitId) => {
+            let coord = h.indexToCoord.get(id);
+            if (!coord) return 0;
             if (coord[0] >= maskTime[0].length || coord[1] >= maskTime.length) return 0
             console.log(coord)
             console.log(maskTime)
             return maskTime[coord[1]][coord[0]]
         }
 
-        // but I can't generate the state.... 
+        const startTime = flip.length > 0 ? getTime(flip[0]) : 0;
+        // but I can't generate the state....
         // I need to generate a movement for each of the ones that will flip.
         // total duration plus.... order...?
-        return [...new Array(180).keys()].map(i => new GroupAction(t / 180 * i + getTime(i), [[Action.INCREMENT, flip]]));
+        return [...new Array(180).keys()].map(i => new GroupAction(t / 180 * i + startTime, [[Action.INCREMENT, flip]]));
 
 
     }
@@ -1906,6 +2079,71 @@ function flipsFromCount(flips: number, maxFlips: number, dt: number): Time[] {
     return times;
 }
 
+export class FlipSyncLastFlipTogether implements Transition {
+    flipsPerSecond: number = 1;
+
+    generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("Cannot flip with this hardware type")
+        }
+
+        // this is going to be the target set, but I need to order it in terms of my units. 
+        let d2: Colour[][] = o2.draw();
+
+        let units = h.units;
+
+        let d2AsUnits: [number, Colour][] = d2.map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour])).flat();
+        let unitOrder: number[] = units.map(u => u.id);
+        d2AsUnits.sort((a: [number, Colour], b: [number, Colour]) => unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0]));
+
+        let relevantUnits = d2AsUnits.filter(a => a[1] != " ");
+        let targets = relevantUnits.map(c => new SplitflapState(`${c[1]}`));
+
+        // each target is going to start spinning right away.
+
+        const required = new Map<UnitId, number>();
+        let maxRequired = 0;
+
+        for (const toSpin of relevantUnits) {
+            let target = new SplitflapState(`${toSpin[1]}`);
+            let unit = units.find(u => toSpin[0] == u.id)!;
+            const flips = h.computeFlipDistance(unit as SplitflapUnit, target) - 1;
+            console.log(flips)
+            required.set(unit.id, flips);
+            maxRequired = Math.max(maxRequired, flips);
+        }
+
+        const dt = 1 / this.flipsPerSecond;
+        const lastFlipTime = maxRequired * dt;
+
+        const schedule = new Map<UnitId, Time[]>();
+        for (const toSpin of relevantUnits) {
+            let unit = units.find(u => toSpin[0] == u.id)!;
+
+            const actualFlips = flipsFromCount(required.get(unit.id)!, maxRequired, dt)
+            // make sure to flip them all into place
+
+            schedule.set(
+                unit.id, actualFlips
+            );
+        }
+
+        for (const toSpin of relevantUnits) {
+            let unit = units.find(u => toSpin[0] == u.id)!;
+            const flips = required.get(unit.id)!;
+            if (flips >= 0) {
+                schedule.set(unit.id, schedule.get(unit.id)!.concat([lastFlipTime + 1]));
+            }
+        }
+
+
+        let acts = buildTimeline(schedule);
+        console.log(acts);
+        return acts;
+
+    }
+}
+
 export class FlipSyncEnd implements Transition {
     flipsPerSecond: number = 1;
     initializationDelay: number = 0;
@@ -1936,6 +2174,7 @@ export class FlipSyncEnd implements Transition {
         );
 
         const endTime = this.initializationDelay + maxFlips * dt;
+        const lastFlipTime = endTime - dt;
 
         for (let i = 0; i < units.length; i++) {
             let unit = units[i]
@@ -1943,9 +2182,10 @@ export class FlipSyncEnd implements Transition {
             const startTime = endTime - flips * dt;
             const times: Time[] = [];
 
-            for (let i = 0; i < flips; i++) {
+            for (let i = 0; i < flips - 1; i++) {
                 times.push(startTime + i * dt);
             }
+            if (flips > 0) times.push(lastFlipTime);
 
             schedule.set(unit.id, times);
         }
@@ -2403,6 +2643,40 @@ export class EvenOddRhythmTransition implements Transition {
     };
 }
 
+
+// Async flipdot transition that alternates two groups of discs out of phase.
+// Foreground (cells active in o2) and background (cells inactive in o2) each
+// flip on a repeating period of 2×flipTime, offset by one flipTime from each
+// other. At any render frame exactly one group is mid-flip and the other is at
+// rest — background flips first, foreground immediately after.
+// No order is involved; o2 determines the partition.
+export class AlternatingFlapTransition implements Transition {
+    generateGroupActions(_o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
+        const flipTime = h.actionDurations.get(Action.FLIP)!;
+        const period = flipTime * 2;
+
+        // Partition cells by their state in o2.
+        const bgColour: Colour = (o2 as any).defaultColour ?? false;
+        const o2Draw = o2.draw();
+        const fg: UnitId[] = [];
+        const bg: UnitId[] = [];
+        for (let row = 0; row < o2Draw.length; row++) {
+            for (let col = 0; col < o2Draw[row].length; col++) {
+                const id = h.coordToIndex([col, row]);
+                (o2Draw[row][col] !== bgColour ? fg : bg).push(id);
+            }
+        }
+
+        const actions: GroupAction[] = [];
+        // Background flips starting at t=0; foreground is offset by one flipTime.
+        for (let time = 0; time <= t; time += period)
+            if (bg.length > 0) actions.push(new GroupAction(time, [[Action.FLIP, bg]]));
+        for (let time = flipTime; time <= t; time += period)
+            if (fg.length > 0) actions.push(new GroupAction(time, [[Action.FLIP, fg]]));
+
+        return actions;
+    }
+}
 
 // An Order where every cell matching a supplied set of [col, row] coordinates
 // gets time 1, and all other cells get time 0.
