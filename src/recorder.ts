@@ -85,16 +85,25 @@ export class Recorder {
         this.pngIndex = 0;
 
         if (this.doVideo) {
-            const stream = this.renderer.domElement.captureStream(60);
-            if (options.audioStream) {
-                for (const track of options.audioStream.getAudioTracks())
-                    stream.addTrack(track);
-            }
+            const canvasStream = this.renderer.domElement.captureStream(60);
+            const audioTracks = options.audioStream?.getAudioTracks() ?? [];
+            console.log('[recorder] audioStream provided:', !!options.audioStream);
+            console.log('[recorder] audio tracks:', audioTracks.map(t => ({
+                id: t.id, label: t.label, enabled: t.enabled,
+                readyState: t.readyState, muted: t.muted,
+            })));
+            const tracks: MediaStreamTrack[] = [
+                ...canvasStream.getVideoTracks(),
+                ...audioTracks,
+            ];
+            console.log('[recorder] total tracks in stream:', tracks.length, tracks.map(t => t.kind));
+            const stream = new MediaStream(tracks);
             const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
                 ? 'video/webm;codecs=vp9,opus'
                 : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
                 ? 'video/webm;codecs=vp9'
                 : 'video/webm';
+            console.log('[recorder] mimeType:', mimeType);
             this.mediaRecorder = new MediaRecorder(stream, { mimeType });
             this.mediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) this.videoChunks.push(e.data);

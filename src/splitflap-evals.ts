@@ -19,7 +19,7 @@ import {
 } from './transitions';
 import { EvalCase, EvalRunner, HardwareSpec } from './eval';
 import { generateSplitflapState, getImages } from './util';
-import { EffectType, Instantaneous } from './effect';
+import { EffectType, GenericEffect, Instantaneous } from './effect';
 
 const BASE = import.meta.env.BASE_URL; // e.g. '/flipdots/' — set in vite.config
 
@@ -30,7 +30,8 @@ const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
 // const CAPTURE  = { video: true, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
 // const CAPTURE  = { video: false, gif: { fps: 15, maxFrames: 200 }};
-const CAPTURE  = { video: false};
+// const CAPTURE  = { video: false};
+const CAPTURE  = { video: true};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -203,6 +204,9 @@ const matchColor = ([r, g, b]: [number, number, number]) =>
     (frameRgb: number[][][]): boolean[][] =>
         frameRgb.map(row => row.map(px => px[0] === r && px[1] === g && px[2] === b));
 
+const matchNonWhite = (frameRgb: number[][][]): boolean[][] =>
+    frameRgb.map(row => row.map(px => px[0] !== 255 || px[1] !== 255 || px[2] !== 255));
+
 function makeTargets(
     frames: number[][][][],
     colorFn: (f: number[][][]) => boolean[][],
@@ -214,6 +218,11 @@ function makeTargets(
         t.frameId = start + i;
         return t;
     });
+}
+
+function chainInstantaneous(targets: PixelArtTarget[]): void {
+    for (let i = 0; i < targets.length - 1; i++)
+        targets[i].effect = new Instantaneous(targets[i], targets[i + 1], EffectType.Complete);
 }
 
 // Build a PixelArtTarget grid from a dandelion frame.
@@ -449,13 +458,9 @@ const flipdotCases: EvalCase[] = [
             const golfer    = makeTargets(golfRgb, matchColor([95,  205, 228]), 0, 8); // #5fcde4
             const ball      = makeTargets(golfRgb, matchColor([91,  110, 225]), 4, 8); // #5b6ee1
 
-            const chain = (targets: PixelArtTarget[]) => {
-                for (let i = 0; i < targets.length - 1; i++)
-                    targets[i].effect = new Instantaneous(targets[i], targets[i + 1], EffectType.Complete);
-            };
-            chain(golfstick);
-            chain(golfer);
-            chain(ball);
+            chainInstantaneous(golfstick);
+            chainInstantaneous(golfer);
+            chainInstantaneous(ball);
 
             const timing = [4, 8, 12, 16, 20, 24, 28, 32, 36];
             return generateAnimationToGroupAction(
@@ -468,6 +473,46 @@ const flipdotCases: EvalCase[] = [
 
     waveCase('wave'),
     waveCase('wave-inverted', WAVE_HW_INVERTED),
+
+    {
+        name: 'wave-direct',
+        hardware: WAVE_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const frames = makeTargets(waveRgb, matchNonWhite, 0, 10);
+            chainInstantaneous(frames);
+            const timing = Array.from({ length: 10 }, (_, i) => (i + 1) * 2);
+            return generateAnimationToGroupAction([[frames[0]]], timing, hw as HardwareInterface);
+        },
+    },
+
+    {
+        name: 'wave-direct-interp',
+        hardware: WAVE_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const frames = makeTargets(waveRgb, matchNonWhite, 0, 10);
+            const tr = () => new FittedWaveTransition(new InterpolationOrder(new LeftToRight()));
+            for (let i = 0; i < frames.length - 1; i++)
+                frames[i].effect = new GenericEffect(frames[i], frames[i + 1], tr, EffectType.Complete);
+            const timing = Array.from({ length: 10 }, (_, i) => (i + 1) * 2);
+            return generateAnimationToGroupAction([[frames[0]]], timing, hw as HardwareInterface);
+        },
+    },
+
+    {
+        name: 'wave-direct-interp-more',
+        hardware: WAVE_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const frames = makeTargets(waveRgb, matchNonWhite, 0, 10);
+            const tr = () => new FittedWaveTransition(new InterpolationOrder(new LeftToRight()));
+            for (let i = 0; i < frames.length - 1; i++)
+                frames[i].effect = new GenericEffect(frames[i], frames[i + 1], tr, EffectType.Complete);
+            const timing = Array.from({ length: 10 }, (_, i) => (i + 1) * 4);
+            return generateAnimationToGroupAction([[frames[0]]], timing, hw as HardwareInterface);
+        },
+    },
 
     animationCase('moon', MOON_HW, moonFrames, {
         transition: new SnapTransition(),
@@ -751,16 +796,16 @@ const brixelCases: EvalCase[] = [
 // export const runner = new EvalRunner().register(...thinkingCases);
 // export const runner = new EvalRunner().register(...brixelCases);
 // export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
-// export const runner = new EvalRunner().register(...asyncFlipdotCases);
-export const runner = new EvalRunner().register(...flipdotCases);
+export const runner = new EvalRunner().register(...asyncFlipdotCases);
+// export const runner = new EvalRunner().register(...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
 if (typeof window !== 'undefined') {
     // runner.run('beat').catch(err => console.error('[eval] failed:', err));
-    runner.run('golf-direct').catch(err => console.error('[eval] failed:', err));
+    // runner.run('wave-direct-interp-more').catch(err => console.error('[eval] failed:', err));
     // runner.run('diagonal-box-moving-noise').catch(err => console.error('[eval] failed:', err));
-    // runner.run().catch(err => console.error('[eval] failed:', err));
+    runner.run().catch(err => console.error('[eval] failed:', err));
 }
 
 // ── GrowAlongContoursParallel heatmap visualization ───────────────────────────

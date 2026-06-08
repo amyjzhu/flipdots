@@ -65,6 +65,7 @@ export class RowOfDiscsAsync {
     units: THREE.Vector3[] | undefined
 
     recorder: Recorder | undefined;
+    audioStream: MediaStream | undefined;
 
     constructor(width: number, height: number, flat: boolean = true, meshPath?: string) {
 
@@ -100,6 +101,12 @@ export class RowOfDiscsAsync {
             this.addPerformantAudio()
         } else if (SOUND_ENABLED) {
             this.addAudio();
+        }
+
+        if (SOUND_ENABLED || PERFORMANT_SOUND_ENABLED) {
+            const dest = this.listener.context.createMediaStreamDestination();
+            this.listener.gain.connect(dest);
+            this.audioStream = dest.stream;
         }
 
         let basic: number[][] = [...Array(this.height)].map(_ => [...Array(this.width)].map((_, i) => i));

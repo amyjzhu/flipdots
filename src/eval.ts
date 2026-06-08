@@ -167,7 +167,7 @@ export class EvalRunner {
             }
             const captureSpec = c.capture ?? {};
             const estimatedMs = (hw as { estimatedDurationMs?: number }).estimatedDurationMs ?? 0;
-            const durationMs = (captureSpec.durationMs ?? estimatedMs * 1.15) * 1.5;
+            const durationMs = (captureSpec.durationMs ?? estimatedMs * 1.15) * 1;
             if (durationMs <= 0) {
                 console.warn(`[eval] ${c.name}: estimated duration is 0 — skipping capture`);
                 return;
@@ -175,6 +175,12 @@ export class EvalRunner {
             console.log(`[eval] ${c.name}: recording for ${Math.round(durationMs)}ms`);
             sim.recorder = new Recorder(sim.renderer);
             const audioStream = (sim as { audioStream?: MediaStream }).audioStream;
+            const audioCtx = (sim as { listener?: { context: AudioContext } }).listener?.context;
+            console.log(`[eval] audioStream:`, audioStream, 'audioCtx state:', audioCtx?.state);
+            if (audioCtx && audioCtx.state !== 'running') {
+                await audioCtx.resume();
+            }
+            console.log(`[eval] audioCtx state after resume:`, audioCtx?.state);
             await new Promise<void>(resolve => {
                 sim.recorder!.start({
                     ...captureSpec,

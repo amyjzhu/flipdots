@@ -450,7 +450,8 @@ export class SplitflapHardware implements HardwareInterface {
         let tickSchedule = new Map<UnitId, number[]>();
         for (let [i, timeline] of scheduled.entries()) {
             const msPerTick = 1 / framesPerMs;
-            const animationDurationMs = (this.sim.numFramesRotating + 1) * msPerTick;
+            // setting this to +1 fixes the thinking sync, but breaks motion animation somehow 
+            const animationDurationMs = (this.sim.numFramesRotating + 0) * msPerTick;
 
             let timelineMs = timeline[0];
             // Precompute delays (fail fast if invalid)

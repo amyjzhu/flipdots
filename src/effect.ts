@@ -355,15 +355,16 @@ export class GenericEffect implements Effect {
         throw new Error("Method not implemented.");
     }
     generateCompleteFrames(numFrames: number): Target[] {
-        throw new Error("Method not implemented.");
+        if (!this.from || !this.to) throw new Error("Effect isn't actually complete");
+        const tp = Math.floor(numFrames / 2);
+        if (tp === 0) return [this.to];
+        return [...Array(tp)].map(_ => this.from!).concat([...Array(numFrames - tp)].map(_ => this.to!));
     }
     generateGroupActions(time: number, flips: number): (h: HardwareInterface) => GroupAction[] {
-        let frames = this.generateCompleteFrames(flips) 
+        let frames = this.generateCompleteFrames(flips);
         let allFrames: Target[] = [this.from!, ...frames];
         let windowFrames: Target[][] = toWindows<Target>(allFrames, 2);
-        
         return h => windowFrames.map(w => this.transitionGenerator().generateGroupActions(w[0], w[1], time, h)).flat();
-
     }
 }
 

@@ -102,6 +102,10 @@ export class RowOfDiscs {
             const dest = this.listener.context.createMediaStreamDestination();
             this.listener.gain.connect(dest);
             this.audioStream = dest.stream;
+            console.log('[audio] dest stream tracks:', dest.stream.getAudioTracks().map(t => ({
+                id: t.id, readyState: t.readyState, enabled: t.enabled, muted: t.muted,
+            })));
+            console.log('[audio] context state:', this.listener.context.state);
         }
 
 
@@ -944,7 +948,11 @@ varying vec3 vColor;
                     } else if (PERFORMANT_SOUND_ENABLED) {
                         // have two sets to give them time to play out.
                         let cutoff = Math.floor(this.audios.length / 2);
-                        for (let i = 0; i < cutoff && i < this.idxToUpdate.reduce((a, b) => a + b.length, 0); i++) {
+                        const toPlay = this.idxToUpdate.reduce((a, b) => a + b.length, 0);
+                        if (toPlay > 0 && this.recorder && this.flipCycles === 1) {
+                            console.log('[audio] playing', Math.min(cutoff, toPlay), 'sounds during recording, ctx state:', this.listener.context.state);
+                        }
+                        for (let i = 0; i < cutoff && i < toPlay; i++) {
                             let audio = this.audios[i + cutoff]
                             if (this.animationFrameCounter % 2 == 0) {
                                 audio = this.audios[i];

@@ -4,7 +4,7 @@ import { BAD_APPLE_STRING_10FPS_32x24 } from './programs';
 
 export let SOUND_ENABLED = false;
 // slightly worse imo but much faster for big, at least works for 32x24 (not 64x48 yet). normal sound enabled is only viable for 5x7
-export let PERFORMANT_SOUND_ENABLED = false;
+export let PERFORMANT_SOUND_ENABLED = true;
 export let USE_X_DISC = false;
 
 export let PERFORMANT_NUM_X_SPEAKERS = 4;

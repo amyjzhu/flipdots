@@ -773,6 +773,7 @@ export class StochasticTransition implements Transition {
 }
 
 export let generateMaskFromCoords = (units: UnitId[], h: HardwareInterface) => {
+    if (units.length === 0) return [[], 0, 0] as [boolean[][], number, number];
     let coords = [...units].map(u => h.indexToCoord.get(u)!);
     console.log(coords)
     console.log(units);
@@ -1300,6 +1301,7 @@ export class FittedWaveTransition implements Transition {
 
     generateGroupActions(o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] {
         const unitsToFlap = new Set(diffIndices(o1, o2, h));
+        if (unitsToFlap.size === 0) return [];
         const [grid, x, y] = generateMaskFromCoords([...unitsToFlap], h);
         const [timeGrid, times] = this.order.applyMask(grid as boolean[][]);
         const timeFunction = this.order.getTimeFunction(timeGrid, i => h.coordToIndex(i));
