@@ -65,6 +65,61 @@ function centeredMsg(msg: string): string[][] {
     return grid;
 }
 
+// ── Menu / signage content ────────────────────────────────────────────────────
+
+const menuSpring = new PixelArtTarget(centeredMsg(
+    'spring specials\n' +
+    'lime cold brew\n' +
+    'matcha tonic\n' +
+    'horchata cold foam\n' +
+    'na dark and stormy\n' +
+    'lavender latte'
+), ' ');
+
+const menuSlogans = new PixelArtTarget(centeredMsg(
+    'drink coffee\n' +
+    'live better\n' +
+    'open your mind\n' +
+    'explore the everyday'
+), ' ');
+
+const menuClasses = new PixelArtTarget(centeredMsg(
+    'barista classes\n' +
+    'may twentieth\n' +
+    'june twelfth\n' +
+    'two pm\n' +
+    'all ingredients included'
+), ' ');
+
+// ── Menu cases ────────────────────────────────────────────────────────────────
+
+// flip each line together and then flip away from it and keep flipping 
+const menuCases: EvalCase[] = [
+    sfCase('menu-spring', (sfhw) =>
+        new FlipSyncLastFlipTogether().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, sfhw)
+    ),
+    sfCase('menu-spring-to-slogans', (sfhw) =>
+        new FlipSyncLastFlipTogether().generateGroupActions(menuSpring, menuSlogans, 30, sfhw)
+    ),
+    sfCase('menu-slogans-to-classes', (sfhw) =>
+        new FlipSyncLastFlipTogether().generateGroupActions(menuSlogans, menuClasses, 30, sfhw)
+    ),
+    sfCase('menu-cycle', (sfhw) => {
+        const hold = 60;
+        const t = () => new FlipSyncLastFlipTogether();
+
+        const a1 = t().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, sfhw);
+        const end1 = Math.max(...a1.map(ga => ga.tPlus)) + hold;
+
+        const a2 = delayGroupActions(t().generateGroupActions(menuSpring, menuSlogans, 30, sfhw), end1);
+        const end2 = Math.max(...a2.map(ga => ga.tPlus)) + hold;
+
+        const a3 = delayGroupActions(t().generateGroupActions(menuSlogans, menuClasses, 30, sfhw), end2);
+
+        return [...a1, ...a2, ...a3];
+    }),
+];
+
 // ── 32×6 cases ────────────────────────────────────────────────────────────────
 
 const cases: EvalCase[] = [
