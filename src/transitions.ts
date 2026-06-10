@@ -1245,6 +1245,49 @@ export class WaveTransition3D implements Transition {
     }
 }
 
+// Far edge (max order value): flips at T/3, 2T/3, T.
+// Rest of diff units: flip once at T - flipTime.
+export class FarEdgeTripleTransition implements Transition {
+    constructor(private readonly order: GridOrder) {}
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        const flip = diffIndices(o1, o2, h);
+        if (flip.length === 0) return [];
+
+        const [mask, x, y] = generateMaskFromCoords(flip, h);
+        const [maskTime] = this.order.applyMask(mask as boolean[][]);
+
+        const frameMap = new Map<number, UnitId[]>();
+        for (let r = 0; r < maskTime.length; r++) {
+            for (let c = 0; c < maskTime[r].length; c++) {
+                const val = maskTime[r][c];
+                if (val < 0) continue;
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(val)) frameMap.set(val, []);
+                frameMap.get(val)!.push(id);
+            }
+        }
+
+        const sortedVals = Array.from(frameMap.keys()).sort((a, b) => a - b);
+        const maxVal = sortedVals[sortedVals.length - 1];
+
+        const farEdge = frameMap.get(maxVal)!;
+        const farEdgeSet = new Set(farEdge);
+        const rest = flip.filter(id => !farEdgeSet.has(id));
+
+        const result: GroupAction[] = [
+            new GroupAction(t / 3,     [[Action.FLIP, farEdge]]),
+            new GroupAction(2 * t / 3, [[Action.FLIP, farEdge]]),
+            new GroupAction(t,         [[Action.FLIP, farEdge]]),
+        ];
+        const flipTime = h.actionDurations.get(Action.FLIP) ?? 1;
+        if (rest.length > 0) {
+            result.push(new GroupAction(t - flipTime, [[Action.FLIP, rest]]));
+        }
+        return result.sort((a, b) => (a.tPlus as number) - (b.tPlus as number));
+    };
+}
+
 export class WaveTransition implements Transition {
     order: GridOrder;
 
@@ -2678,6 +2721,74 @@ export class AlternatingFlapTransition implements Transition {
 
         return actions;
     }
+}
+
+// Like TrickleKeepFlipping but keeps cycling all accumulated units at the same
+// pace after the initial pass. `pause` is the gap between each ordered step;
+// `t` is the total duration (same contract as OneByOneKeepFlipping).
+export class TrickleKeepFlipping implements Transition {
+    constructor(private order: GridOrder, private pause: Time = 10) {}
+
+    generateGroupActions = (o1: Target, o2: Target, t: Duration, h: HardwareInterface): GroupAction[] => {
+        const flip = diffIndices(o1, o2, h);
+        const diffSet = new Set(flip);
+        const [mask, x, y] = generateMaskFromCoords(flip, h);
+        const [maskTime] = this.order.applyMask(mask as boolean[][]);
+
+        const rows = maskTime.length;
+        const cols = maskTime[0]?.length ?? 0;
+        const flipTime = h.actionDurations.get(Action.FLIP) ?? 1;
+        const step = Math.max(flipTime, this.pause);
+
+        const frameMap = new Map<number, UnitId[]>();
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const orderVal = maskTime[r][c];
+                if (orderVal === -1 || orderVal === undefined) continue;
+                const id = h.coordToIndex([c + (x as number), r + (y as number)]);
+                if (!frameMap.has(orderVal)) frameMap.set(orderVal, []);
+                frameMap.get(orderVal)!.push(id);
+            }
+        }
+
+        const sortedVals = Array.from(frameMap.keys()).sort((a, b) => a - b);
+        const result: GroupAction[] = [];
+        let currentTime: Time = 0;
+        let accumulated: UnitId[] = [];
+
+        for (const val of sortedVals) {
+            const stepUnits = frameMap.get(val)!;
+            currentTime += step;
+            result.push(new GroupAction(currentTime, [[Action.FLIP, [...stepUnits, ...accumulated]]]));
+            accumulated = accumulated.concat(stepUnits);
+        }
+
+        while (currentTime < t) {
+            currentTime += step;
+            result.push(new GroupAction(currentTime, [[Action.FLIP, [...accumulated]]]));
+        }
+
+        // Parity correction: diff units must have an odd flip count, others even.
+        const unitLastGA = new Map<UnitId, number>();
+        for (let gi = 0; gi < result.length; gi++) {
+            const fa = result[gi].actions.find(a => a[0] === Action.FLIP);
+            if (fa) for (const uid of fa[1]) unitLastGA.set(uid, gi);
+        }
+        const flipCount = new Map<UnitId, number>();
+        for (const ga of result) {
+            const fa = ga.actions.find(a => a[0] === Action.FLIP);
+            if (fa) for (const uid of fa[1]) flipCount.set(uid, (flipCount.get(uid) ?? 0) + 1);
+        }
+        for (const [uid, count] of flipCount) {
+            if (diffSet.has(uid) !== (count % 2 === 1)) {
+                const fa = result[unitLastGA.get(uid)!].actions.find(a => a[0] === Action.FLIP)!;
+                const idx = fa[1].indexOf(uid);
+                if (idx !== -1) fa[1].splice(idx, 1);
+            }
+        }
+
+        return result.filter(ga => ga.actions.some(a => a[0] !== Action.FLIP || a[1].length > 0));
+    };
 }
 
 // An Order where every cell matching a supplied set of [col, row] coordinates

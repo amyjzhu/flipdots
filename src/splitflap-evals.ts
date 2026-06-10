@@ -1,4 +1,4 @@
-import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, SplitflapHardware, delayGroupActions } from './hardware';
+import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, SplitflapHardware, SplitflapState, delayGroupActions } from './hardware';
 import { CircleTarget, PixelArtTarget, RectangleTarget, generateAnimationToGroupAction } from './language2';
 import {
 Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre, GrowFromPoint, InterpolationOrder, RightToLeft,
@@ -7,14 +7,15 @@ Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre
     PropagateFromObject,
     RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow,
     TopDown,
+    Ring2,
 } from './order';
 import {
     AcceleratingCascadeTransition,
-    AlternatingFlapTransition, AndThenFlipTo, BeatTransition, CascadeImage, EvenOddRhythmTransition, FittedWaveTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
+    AlternatingFlapTransition, AndThenFlipTo, BeatTransition, CascadeImage, EvenOddRhythmTransition, FarEdgeTripleTransition, FittedWaveTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
     FlipSyncLastFlipTogether,
     LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, PulseTransition, RotateRevealTransition, SnapTransition,
     StaggeredRateTransition,
-    StochasticTransition, Transition, VerticalDriftRateTransition,
+    StochasticTransition, Transition, TrickleKeepFlipping, VerticalDriftRateTransition,
     WaveTransition,
 } from './transitions';
 import { EvalCase, EvalRunner, HardwareSpec } from './eval';
@@ -27,11 +28,11 @@ const SW = 32;
 const SH = 6;
 
 const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
-// const CAPTURE  = { video: true, pngIntervalMs: 50 };
+const CAPTURE  = { video: false, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
 // const CAPTURE  = { video: false, gif: { fps: 15, maxFrames: 200 }};
 // const CAPTURE  = { video: false};
-const CAPTURE  = { video: true};
+// const CAPTURE  = { video: true};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,11 @@ const cases: EvalCase[] = [
     sfCase('shallow-diagonal',    keepFlipping(new ShallowDiagonal())),
     sfCase('line-diagonal',       keepFlipping(new LineDiagonal(), 200)),
     sfCase('top-down',            keepFlipping(new TopDown(), 200)),
+    sfCase('ring',            keepFlipping(new Ring2(), 50)),
+
+    sfCase('trickle-keep-matrix', (_sfhw, rect) =>
+        new TrickleKeepFlipping(new MatrixDown(), 3).generateGroupActions(new PixelArtTarget([], ''), rect, 120, _sfhw)
+    ),
 
     sfCase('and-then-flip-to', (sfhw, rect) => {
         const flipAnim = new OneByOneKeepFlipping(new LineDiagonal())
@@ -260,7 +266,6 @@ const logoCases: EvalCase[] = [
     // logoCase('logo-wave-random',   () => new WaveTransition(new RandomOrder(20))),
     logoCase('logo-experimental',      () => new CascadeImage(new TopDown())),
     // logoCase('logo-cascade-ltr',      () => new CascadeImage(new AllAtOnce())),
-
 ];
 
 // Plays through `frames` in order, snapping to the first frame then applying
@@ -473,6 +478,10 @@ const flipdotCases: EvalCase[] = [
 
     waveCase('wave'),
     waveCase('wave-inverted', WAVE_HW_INVERTED),
+    animationCase('wave-far-edge-triple', WAVE_HW, waveFrames, {
+        transition: new FarEdgeTripleTransition(new InterpolationOrder(new LeftToRight())),
+        spaceBetween: 6,
+    }),
 
     {
         name: 'wave-direct',
@@ -661,7 +670,7 @@ const ThreeByThreeMatrixCases: EvalCase[] = [
     // asyncLogoCase('logo-wipe-allatonce', () => new WaveTransition(new AllAtOnce())),
 
 
-    // asyncLogoBgCase('logo-pulse-topdown', () => new PulseTransition(new TopDown(), 20)),
+    asyncLogoCase('logo-pulse-topdown', () => new PulseTransition(new TopDown(), 15)),
     // asyncLogoCase('logo-pulse-contour-fg', () => new PulseTransition(new GrowAlongContoursParallel([logoW/2, logoH/2]), 20)),
     // asyncLogoCase('logo-pulse-random', () => new PulseTransition(new RandomOrder(20), 200)),
     // asyncLogoCase('logo-pulse-allatonce', () => new PulseTransition(new AllAtOnce())),
@@ -795,17 +804,19 @@ const brixelCases: EvalCase[] = [
 
 // export const runner = new EvalRunner().register(...thinkingCases);
 // export const runner = new EvalRunner().register(...brixelCases);
-// export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
-export const runner = new EvalRunner().register(...asyncFlipdotCases);
+export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
+// export const runner = new EvalRunner().register(...cases, ...asyncFlipdotCases);
 // export const runner = new EvalRunner().register(...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
 if (typeof window !== 'undefined') {
     // runner.run('beat').catch(err => console.error('[eval] failed:', err));
-    // runner.run('wave-direct-interp-more').catch(err => console.error('[eval] failed:', err));
+    // runner.run('ring').catch(err => console.error('[eval] failed:', err));
+    // runner.run('wave-far-edge-triple').catch(err => console.error('[eval] failed:', err));
     // runner.run('diagonal-box-moving-noise').catch(err => console.error('[eval] failed:', err));
-    runner.run().catch(err => console.error('[eval] failed:', err));
+    // runner.run('trickle-keep-matrix').catch(err => console.error('[eval] failed:', err));
+    runner.run('').catch(err => console.error('[eval] failed:', err));
 }
 
 // ── GrowAlongContoursParallel heatmap visualization ───────────────────────────
@@ -827,20 +838,20 @@ if (typeof window !== 'undefined') {
         const canvas = document.createElement('canvas');
         canvas.width = logoW * CW;
         canvas.height = logoH * CH;
-        canvas.style.cssText = 'display:block; border:1px solid #333; image-rendering:pixelated;';
+        canvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
         const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#111';
+        ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         for (let row = 0; row < logoH; row++) {
             for (let col = 0; col < logoW; col++) {
                 const val = timeGrid[row][col];
                 if (val < 0) {
-                    ctx.fillStyle = diff[row][col] ? '#2a1a2a' : '#111';
+                    ctx.fillStyle = diff[row][col] ? '#e8e0e8' : '#f4f4f4';
                 } else {
                     const ratio = (val - minVal) / span;
                     const hue = Math.round(240 - ratio * 240);
-                    ctx.fillStyle = `hsl(${hue}, 85%, 45%)`;
+                    ctx.fillStyle = `hsl(${hue}, 80%, 38%)`;
                 }
                 ctx.fillRect(col * CW, row * CH, CW - 1, CH - 1);
             }
@@ -848,7 +859,7 @@ if (typeof window !== 'undefined') {
 
         const label = document.createElement('div');
         label.textContent = `logo — GrowAlongContoursParallel (seed: centre)`;
-        label.style.cssText = 'color:#888; font-size:11px; margin-bottom:4px; font-family:monospace;';
+        label.style.cssText = 'color:#555; font-size:11px; margin-bottom:4px; font-family:monospace;';
 
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
@@ -878,20 +889,20 @@ if (typeof window !== 'undefined') {
         const canvas = document.createElement('canvas');
         canvas.width = eW * CW;
         canvas.height = eH * CH;
-        canvas.style.cssText = 'display:block; border:1px solid #333; image-rendering:pixelated;';
+        canvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
         const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#111';
+        ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         for (let row = 0; row < eH; row++) {
             for (let col = 0; col < eW; col++) {
                 const val = timeGrid[row][col];
                 if (val < 0) {
-                    ctx.fillStyle = '#111';
+                    ctx.fillStyle = '#f4f4f4';
                 } else {
                     const ratio = (val - minVal) / span;
                     const hue = Math.round(240 - ratio * 240);
-                    ctx.fillStyle = `hsl(${hue}, 85%, 45%)`;
+                    ctx.fillStyle = `hsl(${hue}, 80%, 38%)`;
                 }
                 ctx.fillRect(col * CW, row * CH, CW - 2, CH - 2);
             }
@@ -899,13 +910,132 @@ if (typeof window !== 'undefined') {
 
         const label = document.createElement('div');
         label.textContent = 'SpiralOrder — "e" (e2.png, spiral from bounding-box centre)';
-        label.style.cssText = 'color:#888; font-size:11px; margin-bottom:4px; font-family:monospace;';
+        label.style.cssText = 'color:#555; font-size:11px; margin-bottom:4px; font-family:monospace;';
 
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
         wrapper.appendChild(label);
         wrapper.appendChild(canvas);
         viz.appendChild(wrapper);
+    }
+}
+
+// ── Transition timeline visualization ────────────────────────────────────────
+
+if (typeof window !== 'undefined') {
+    const timelineContainer = document.getElementById('timeline-viz');
+    if (timelineContainer) {
+        const NUM_UNITS = 6;
+        const tlHw = SplitflapHardware.Headless(NUM_UNITS, 1,
+            () => ' abcdefghijklmnopqrstuvwxyz!?*'.split('').map((s: string) => new SplitflapState(s)),
+        );
+        const tlO1 = new PixelArtTarget([], ' ');
+        const tlO2 = new RectangleTarget(NUM_UNITS, 1, [0, 0], [NUM_UNITS, 1]);
+        const TL_DURATION = 30;
+
+        const transitionDefs: { name: string; gas: GroupAction[] }[] = [
+            {
+                name: 'OneByOneKeepFlipping (LeftToRight)',
+                gas: new OneByOneKeepFlipping(new LeftToRight())
+                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+            },
+            {
+                name: 'SnapTransition',
+                gas: new SnapTransition()
+                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+            },
+            {
+                name: 'PulseTransition (LeftToRight, pulse=2)',
+                gas: new PulseTransition(new LeftToRight(), 2)
+                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+            },
+            {
+                name: 'BeatTransition: heartbeat [6, 2]',
+                gas: new BeatTransition(new LeftToRight(), [6, 2])
+                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+            },
+            {
+                name: 'BeatTransition: fibonacci [1, 1, 2, 3, 5]',
+                gas: new BeatTransition(new LeftToRight(), [1, 1, 2, 3, 5])
+                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+            },
+        ];
+
+        const UNIT_COLORS = ['#0077cc', '#cc5500', '#228833', '#8822cc', '#bb8800', '#cc2244'];
+        const TW = 680, TH = 12;
+
+        for (const { name, gas } of transitionDefs) {
+            // Collect per-unit tick times from all GroupActions
+            const unitTicks = new Map<number, number[]>();
+            for (const ga of gas) {
+                const tick = ga.tPlus as number;
+                for (const [action, ids] of ga.actions) {
+                    if (action !== Action.FLIP) continue;
+                    for (const uid of ids) {
+                        if (!unitTicks.has(uid)) unitTicks.set(uid, []);
+                        unitTicks.get(uid)!.push(tick);
+                    }
+                }
+            }
+
+            const allTimes = gas.map(ga => ga.tPlus as number);
+            const maxT = allTimes.length > 0 ? Math.max(...allTimes) : TL_DURATION;
+
+            const header = document.createElement('div');
+            header.style.cssText = 'color:#222; font-size:11px; margin:16px 0 4px; font-weight:bold;';
+            header.textContent = name;
+            timelineContainer.appendChild(header);
+
+            // Time ruler
+            const ruler = document.createElement('div');
+            ruler.style.cssText = 'position:relative; height:10px; margin-left:44px; margin-bottom:2px;';
+            const rulerStep = Math.ceil(maxT / 8);
+            for (let t = 0; t <= maxT; t += rulerStep) {
+                const lbl = document.createElement('span');
+                lbl.style.cssText = `color:#aaa; font-size:8px; position:absolute; left:${Math.round((t / maxT) * TW)}px;`;
+                lbl.textContent = String(t);
+                ruler.appendChild(lbl);
+            }
+            timelineContainer.appendChild(ruler);
+
+            for (let uid = 0; uid < NUM_UNITS; uid++) {
+                const ticks = unitTicks.get(uid) ?? [];
+                const color = UNIT_COLORS[uid % UNIT_COLORS.length];
+
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:6px; margin-bottom:2px;';
+
+                const lbl = document.createElement('span');
+                lbl.style.cssText = `color:${color}; font-size:9px; width:38px; text-align:right; flex-shrink:0;`;
+                lbl.textContent = `u${uid}`;
+                row.appendChild(lbl);
+
+                const canvas = document.createElement('canvas');
+                canvas.width = TW;
+                canvas.height = TH;
+                canvas.style.cssText = 'display:block; flex-shrink:0;';
+                const ctx = canvas.getContext('2d')!;
+
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, TW, TH);
+                ctx.fillStyle = '#ddd';
+                ctx.fillRect(0, (TH / 2) | 0, TW, 1);
+
+                ctx.fillStyle = color;
+                for (const tick of ticks) {
+                    const x = maxT > 0 ? Math.round((tick / maxT) * (TW - 2)) : 0;
+                    ctx.fillRect(x, 0, 2, TH);
+                }
+
+                const countLbl = document.createElement('span');
+                countLbl.style.cssText = `color:${color}; font-size:9px; flex-shrink:0; opacity:0.6;`;
+                countLbl.textContent = `×${ticks.length}`;
+
+                row.appendChild(canvas);
+                row.appendChild(countLbl);
+                timelineContainer.appendChild(row);
+            }
+        }
     }
 }
 
@@ -925,11 +1055,11 @@ if (typeof window !== 'undefined') {
 //     canvas.height = height * CH;
 //     const ctx = canvas.getContext('2d')!;
 
-//     ctx.fillStyle = '#111';
+//     ctx.fillStyle = '#fff';
 //     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 //     const [timeGrid] = order.applyMask(diff);
-//     const activeVals = timeGrid.flat().filter(v => v >= 0);
+//     const activeVals = timeGrid.flat().filter((v: number) => v >= 0);
 //     const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
 //     const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
 //     const span = maxVal - minVal || 1;
@@ -938,11 +1068,11 @@ if (typeof window !== 'undefined') {
 //         for (let col = 0; col < width; col++) {
 //             const val = timeGrid[row][col];
 //             if (val < 0) {
-//                 ctx.fillStyle = diff[row][col] ? '#2a1a2a' : '#111';
+//                 ctx.fillStyle = diff[row][col] ? '#e8e0e8' : '#f4f4f4';
 //             } else {
 //                 const ratio = (val - minVal) / span;
 //                 const hue = Math.round(240 - ratio * 240);
-//                 ctx.fillStyle = `hsl(${hue}, 85%, 45%)`;
+//                 ctx.fillStyle = `hsl(${hue}, 80%, 38%)`;
 //             }
 //             ctx.fillRect(col * CW, row * CH, CW - 1, CH - 1);
 //         }
@@ -953,6 +1083,45 @@ if (typeof window !== 'undefined') {
 //     const viz = document.getElementById('interpolation-viz');
 //     if (viz) {
 //         const order = new InterpolationOrder(new LeftToRight());
+
+//         // Full-grid order heatmap — shows the order pattern independent of any diff
+//         {
+//             const refDraw = waveFrames[0].draw();
+//             const H = refDraw.length, W = refDraw[0]?.length ?? 0;
+//             const fullMask: boolean[][] = Array.from({ length: H }, () => Array(W).fill(true));
+//             const [fullTimeGrid] = order.applyMask(fullMask);
+//             const flatVals = fullTimeGrid.flat().filter((v: number) => v >= 0);
+//             const fMax = Math.max(...flatVals, 1);
+//             const fMin = Math.min(...flatVals);
+//             const fSpan = fMax - fMin || 1;
+
+//             const CW = 10, CH = 10;
+//             const orderCanvas = document.createElement('canvas');
+//             orderCanvas.width = W * CW;
+//             orderCanvas.height = H * CH;
+//             orderCanvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
+//             const octx = orderCanvas.getContext('2d')!;
+//             octx.fillStyle = '#fff';
+//             octx.fillRect(0, 0, orderCanvas.width, orderCanvas.height);
+//             for (let r = 0; r < H; r++) {
+//                 for (let c = 0; c < W; c++) {
+//                     const val = fullTimeGrid[r][c];
+//                     const ratio = val >= 0 ? (val - fMin) / fSpan : 0;
+//                     const hue = Math.round(240 - ratio * 240);
+//                     octx.fillStyle = `hsl(${hue}, 80%, 38%)`;
+//                     octx.fillRect(c * CW, r * CH, CW - 1, CH - 1);
+//                 }
+//             }
+
+//             const orderLabel = document.createElement('div');
+//             orderLabel.textContent = 'InterpolationOrder(LeftToRight) — full grid';
+//             orderLabel.style.cssText = 'color:#555; font-size:11px; margin-bottom:4px; font-family:monospace;';
+//             const orderWrapper = document.createElement('div');
+//             orderWrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
+//             orderWrapper.appendChild(orderLabel);
+//             orderWrapper.appendChild(orderCanvas);
+//             viz.appendChild(orderWrapper);
+//         }
 
 //         for (let i = 0; i < waveFrames.length - 1; i++) {
 //             const f0 = waveFrames[i].draw();
@@ -971,7 +1140,7 @@ if (typeof window !== 'undefined') {
 //             label.style.cssText = 'color:#888; font-size:11px; margin-bottom:4px; font-family:monospace;';
 
 //             const canvas = document.createElement('canvas');
-//             canvas.style.cssText = 'display:block; border:1px solid #333; image-rendering:pixelated;';
+//             canvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
 
 //             wrapper.appendChild(label);
 //             wrapper.appendChild(canvas);

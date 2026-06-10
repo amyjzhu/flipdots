@@ -178,7 +178,14 @@ export class EvalRunner {
             const audioCtx = (sim as { listener?: { context: AudioContext } }).listener?.context;
             console.log(`[eval] audioStream:`, audioStream, 'audioCtx state:', audioCtx?.state);
             if (audioCtx && audioCtx.state !== 'running') {
-                await audioCtx.resume();
+                try {
+                    await Promise.race([
+                        audioCtx.resume(),
+                        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('timeout')), 500)),
+                    ]);
+                } catch {
+                    console.warn(`[eval] ${c.name}: audio context could not be resumed (no user interaction?) — recording without audio`);
+                }
             }
             console.log(`[eval] audioCtx state after resume:`, audioCtx?.state);
             await new Promise<void>(resolve => {
