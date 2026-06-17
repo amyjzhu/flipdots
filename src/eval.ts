@@ -167,7 +167,7 @@ export class EvalRunner {
             }
             const captureSpec = c.capture ?? {};
             const estimatedMs = (hw as { estimatedDurationMs?: number }).estimatedDurationMs ?? 0;
-            const durationMs = (captureSpec.durationMs ?? estimatedMs * 1.15) * 1;
+            const durationMs = (captureSpec.durationMs ?? estimatedMs * 1.15) * 1.4;
             if (durationMs <= 0) {
                 console.warn(`[eval] ${c.name}: estimated duration is 0 — skipping capture`);
                 return;

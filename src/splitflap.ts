@@ -67,7 +67,7 @@ export class SplitFlapDisplay {
         this.height = height;
         this.reel = reel ?? ALPHABET_WITH_EXCLAMATION.split('');
         this.scene = new THREE.Scene();
-        const targetEl = container ?? document.body;
+        const targetEl = container ?? document.getElementById('render') ?? document.body;
         const targetW = container ? (container.clientWidth || 640) : window.innerWidth;
         const targetH = container ? (container.clientHeight || 300) : window.innerHeight;
         this.camera = new THREE.PerspectiveCamera(75, targetW / targetH, 0.1, 1000);

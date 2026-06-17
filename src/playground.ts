@@ -11,6 +11,7 @@ import {
 import { Colour, PixelArtTarget } from './language2';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
 import { frameDisplay } from './util';
+import { Recorder } from './recorder';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const SW = 32;
@@ -1634,6 +1635,35 @@ function buildPreviewControls() {
             stopAnimation();
             playBtn.click(); // restart at new speed
         }
+    });
+
+    const recordBtn = document.getElementById('record-btn') as HTMLButtonElement;
+    recordBtn.addEventListener('click', () => {
+        if (!is3dMode || !hw3d?.sim) {
+            alert('Switch to 3D Sim mode to record.');
+            return;
+        }
+        const sim = hw3d.sim;
+        if (sim.recorder?.isRecording) {
+            sim.recorder.abort();
+            recordBtn.textContent = '⏺ Rec';
+            recordBtn.classList.remove('recording');
+            return;
+        }
+        const durationMs = hw3d.estimatedDurationMs > 0 ? hw3d.estimatedDurationMs : 5000;
+        sim.recorder = new Recorder(sim.renderer);
+        sim.recorder.start({
+            durationMs,
+            video: true,
+            gif: { fps: 15 },
+            name: 'playground',
+            onDone: () => {
+                recordBtn.textContent = '⏺ Rec';
+                recordBtn.classList.remove('recording');
+            },
+        });
+        recordBtn.textContent = '⏹ Stop';
+        recordBtn.classList.add('recording');
     });
 }
 

@@ -12,7 +12,7 @@ Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre
 import {
     AcceleratingCascadeTransition,
     AlternatingFlapTransition, AndThenFlipTo, BeatTransition, CascadeImage, EvenOddRhythmTransition, FarEdgeTripleTransition, FittedWaveTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
-    FlipSyncLastFlipTogether,
+    FlipSyncLastFlipTogether, RowSyncSpinTransition,
     LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, PulseTransition, RotateRevealTransition, SnapTransition,
     StaggeredRateTransition,
     StochasticTransition, Transition, TrickleKeepFlipping, VerticalDriftRateTransition,
@@ -21,6 +21,7 @@ import {
 import { EvalCase, EvalRunner, HardwareSpec } from './eval';
 import { generateSplitflapState, getImages } from './util';
 import { EffectType, GenericEffect, Instantaneous } from './effect';
+import { ALPHABET_WITH_EXCLAMATION } from './constants';
 
 const BASE = import.meta.env.BASE_URL; // e.g. '/flipdots/' — set in vite.config
 
@@ -28,11 +29,11 @@ const SW = 32;
 const SH = 6;
 
 const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
-const CAPTURE  = { video: false, pngIntervalMs: 50 };
+// const CAPTURE  = { video: true, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
-// const CAPTURE  = { video: false, gif: { fps: 15, maxFrames: 200 }};
+// const CAPTURE  = { video: true, gif: { fps: 15, maxFrames: 200 }, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false};
-// const CAPTURE  = { video: true};
+const CAPTURE  = { video: true};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -66,29 +67,43 @@ function centeredMsg(msg: string): string[][] {
     return grid;
 }
 
+function offsetCenteredMsg(msg: string): string[][] {
+    let msgstate = centeredMsg(msg);
+    let bank = ALPHABET_WITH_EXCLAMATION.split("");
+    // cipher it...
+    msgstate = msgstate.map(r => r.map(c => {
+        let idx = bank.findIndex(t => t == c);
+        if (idx == -1) {
+            throw new Error("message can't be parsed")
+        }
+        return bank[(idx+2) % bank.length]
+    }))
+    return msgstate
+}
+
 // ── Menu / signage content ────────────────────────────────────────────────────
 
-const menuSpring = new PixelArtTarget(centeredMsg(
-    'spring specials\n' +
-    'lime cold brew\n' +
-    'matcha tonic\n' +
-    'horchata cold foam\n' +
-    'na dark and stormy\n' +
+const menuSpring = new PixelArtTarget(offsetCenteredMsg(
+    'spring specials      \n' +
+    'lime cold brew       \n' +
+    'matcha tonic         \n' +
+    'horchata cold foam   \n' +
+    'na dark and stormy   \n' +
     'lavender latte'
 ), ' ');
 
-const menuSlogans = new PixelArtTarget(centeredMsg(
-    'drink coffee\n' +
-    'live better\n' +
-    'open your mind\n' +
+const menuSlogans = new PixelArtTarget(offsetCenteredMsg(
+    '   drink coffee\n' +
+    'live better        \n' +
+    '         open your mind\n' +
     'explore the everyday'
 ), ' ');
 
-const menuClasses = new PixelArtTarget(centeredMsg(
-    'barista classes\n' +
+const menuClasses = new PixelArtTarget(offsetCenteredMsg(
+    'barista classes      \n' +
     'may twentieth\n' +
-    'june twelfth\n' +
-    'two pm\n' +
+    'june twelfth         \n' +
+    'two pm          \n' +
     'all ingredients included'
 ), ' ');
 
@@ -96,15 +111,31 @@ const menuClasses = new PixelArtTarget(centeredMsg(
 
 // flip each line together and then flip away from it and keep flipping 
 const menuCases: EvalCase[] = [
-    sfCase('menu-spring', (sfhw) =>
-        new FlipSyncLastFlipTogether().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, sfhw)
-    ),
-    sfCase('menu-spring-to-slogans', (sfhw) =>
-        new FlipSyncLastFlipTogether().generateGroupActions(menuSpring, menuSlogans, 30, sfhw)
-    ),
-    sfCase('menu-slogans-to-classes', (sfhw) =>
-        new FlipSyncLastFlipTogether().generateGroupActions(menuSlogans, menuClasses, 30, sfhw)
-    ),
+    // sfCase('menu-spring', (sfhw) =>
+    //     new FlipSyncLastFlipTogether().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, sfhw)
+    // ),
+    // sfCase('menu-spring-to-slogans', (sfhw) =>
+    //     new FlipSyncLastFlipTogether().generateGroupActions(menuSpring, menuSlogans, 30, sfhw)
+    // ),
+    // sfCase('menu-slogans-to-classes', (sfhw) =>
+    //     new FlipSyncLastFlipTogether().generateGroupActions(menuSlogans, menuClasses, 30, sfhw)
+    // ),
+    sfCase('menu-spring-to-classes-row-sync', (sfhw) => {
+        const a1 = new FlipSyncLastFlipTogether().generateGroupActions(
+            new PixelArtTarget([], ' '), menuSpring, 30, sfhw
+        );
+        const end1 = Math.max(...a1.map(ga => ga.tPlus)) + 30;
+        const a2 = delayGroupActions(
+            new RowSyncSpinTransition(1, 20).generateGroupActions(menuSpring, menuClasses, 0, sfhw),
+            end1
+        );
+        return [...a1, ...a2];
+    }),
+    sfCase('veni-vidi-vici', (sfhw) => {
+        const o1 = new PixelArtTarget(centeredMsg('xgpk xkfk xkek'), ' ');
+        const o2 = new PixelArtTarget([], ' ');
+        return new RowSyncSpinTransition(1, 5).generateGroupActions(o1, o2, 0, sfhw);
+    }),
     sfCase('menu-cycle', (sfhw) => {
         const hold = 60;
         const t = () => new FlipSyncLastFlipTogether();
@@ -207,8 +238,8 @@ function thinkingCase(name: string, makeTransition: () => Transition): EvalCase 
 }
 
 const thinkingCases: EvalCase[] = [
-    // thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
-    // thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
+    thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
+    thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
     // thinkingCase('thinking-flip-sync-end',        () => new FlipSyncEnd()),
     thinkingCase('thinking-flip-sync-end',        () => new FlipSyncLastFlipTogether()),
 ];
@@ -859,9 +890,9 @@ const brixelCases: EvalCase[] = [
 
 // export const runner = new EvalRunner().register(...thinkingCases);
 // export const runner = new EvalRunner().register(...brixelCases);
-export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
-// export const runner = new EvalRunner().register(...cases, ...asyncFlipdotCases);
-// export const runner = new EvalRunner().register(...flipdotCases);
+// export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
+// export const runner = new EvalRunner().register(...cases, ...asyncFlipdotCases, ...menuCases);
+export const runner = new EvalRunner().register(...menuCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
@@ -869,9 +900,11 @@ if (typeof window !== 'undefined') {
     // runner.run('beat').catch(err => console.error('[eval] failed:', err));
     // runner.run('ring').catch(err => console.error('[eval] failed:', err));
     // runner.run('wave-far-edge-triple').catch(err => console.error('[eval] failed:', err));
-    // runner.run('diagonal-box-moving-noise').catch(err => console.error('[eval] failed:', err));
+    // runner.run('wave-direct').catch(err => console.error('[eval] failed:', err));
+    runner.run('veni-vidi-vici').catch(err => console.error('[eval] failed:', err));
     // runner.run('trickle-keep-matrix').catch(err => console.error('[eval] failed:', err));
-    runner.run('').catch(err => console.error('[eval] failed:', err));
+    // runner.run('menu-spring-to-classes-row-sync').catch(err => console.error('[eval] failed:', err));
+    // runner.run('').catch(err => console.error('[eval] failed:', err));
 }
 
 // ── GrowAlongContoursParallel heatmap visualization ───────────────────────────

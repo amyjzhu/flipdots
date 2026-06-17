@@ -1561,9 +1561,9 @@ export class CascadeImage implements Transition {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const frame = maskTime[r][c];
+                if (frame === -1 || frame === undefined) continue;
 
                 let id = h.coordToIndex([c + (x as number), r + (y as number)]);
-
 
                 if (!frameMap.has(frame)) {
                     frameMap.set(frame, []);
@@ -2118,9 +2118,10 @@ function flipsFromCount(flips: number, maxFlips: number, dt: number): Time[] {
     if (flips === 1) return [endTime];
     const spacing = endTime / (flips - 1);
     const times: Time[] = [];
-    for (let i = 0; i < flips; i++) {
+    for (let i = 0; i < flips - 1; i++) {
         times.push(i * spacing);
     }
+    times.push(endTime); // pin last element to exact endTime — avoids float drift
     return times;
 }
 
@@ -2186,6 +2187,114 @@ export class FlipSyncLastFlipTogether implements Transition {
         console.log(acts);
         return acts;
 
+    }
+}
+
+// Two-phase row-by-row spin transition:
+//   Phase 1 (per row): FlipSyncEndAfterNFlips — spin to the o1 (middle) state,
+//     where N = sum of maxFlips from all previous rows. Rows land top-to-bottom.
+//   Phase 2 (per row): starts `hold` flip-intervals after phase 1. Padded with
+//     full reel rotations so that no row's phase 2 ends before the last row's
+//     phase 1 ends (minFlips2 = lastMaxDist1 - maxDist1_r - hold).
+export class RowSyncSpinTransition implements Transition {
+    // hold: pause between phase 1 and phase 2, in flip-count units (multiples of 1/flipsPerSecond).
+    constructor(readonly flipsPerSecond: number = 1, readonly hold: number = 0) {}
+
+    generateGroupActions(o1: Target, o2: Target, _t: Duration, h: HardwareInterface): GroupAction[] {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("RowSyncSpinTransition requires splitflap hardware");
+        }
+
+        const d1 = o1.draw();
+        const d2 = o2.draw();
+        const numRows = Math.max(d1.length, d2.length);
+        const numCols = Math.max(d1[0]?.length ?? 0, d2[0]?.length ?? 0);
+        const dt = 1 / this.flipsPerSecond;
+
+        type RowEntry = { id: UnitId; dist1: number; o1Idx: number; o2Idx: number; reelLength: number };
+
+        // Pass 1: compute phase 1 flip counts for every row.
+        let cumulativeN = 0;
+        const allRows: RowEntry[][] = [];
+        const allMaxDist1: number[] = [];
+
+        for (let row = 0; row < numRows; row++) {
+            const N = cumulativeN;
+            const rowEntries: RowEntry[] = [];
+            let maxDist1 = 0;
+
+            for (let col = 0; col < numCols; col++) {
+                const id = h.coordToIndex([col, row]);
+                const unit = h.units.find(u => u.id === id) as SplitflapUnit | undefined;
+                if (!unit) continue;
+
+                const reel = unit.states[0][1] as SplitflapState[];
+                const reelLength = reel.length;
+                const ch1 = String(d1[row]?.[col] ?? ' ');
+                const ch2 = String(d2[row]?.[col] ?? ' ');
+                if (ch1 === ' ' && ch2 === ' ') continue;
+
+                const o1Idx = reel.findIndex(s => s.id === new SplitflapState(ch1).id);
+                const o2Idx = reel.findIndex(s => s.id === new SplitflapState(ch2).id);
+                if (o1Idx === -1 || o2Idx === -1) continue;
+
+                let dist1 = ch1 === ' ' ? 0 : h.computeFlipDistance(unit, new SplitflapState(ch1));
+                while (dist1 < N) dist1 += reelLength;
+
+                if (dist1 > maxDist1) maxDist1 = dist1;
+                rowEntries.push({ id, dist1, o1Idx, o2Idx, reelLength });
+            }
+
+            allRows.push(rowEntries);
+            allMaxDist1.push(maxDist1);
+            cumulativeN += maxDist1;
+        }
+
+        // max across all rows (not just the last row, which may be blank)
+        const lastMaxDist1 = allMaxDist1.reduce((a, b) => Math.max(a, b), 0);
+
+        // Pass 2: build the schedule.
+        const schedule = new Map<UnitId, Time[]>();
+
+        for (let row = 0; row < numRows; row++) {
+            const maxDist1 = allMaxDist1[row];
+            // Phase 2 starts after this row's phase 1 plus the hold gap.
+            const phase2Start = (maxDist1 + this.hold) * dt;
+            // The hold eats into the minimum phase 2 window, so reduce minFlips2 accordingly.
+            const minFlips2 = Math.max(0, lastMaxDist1 - maxDist1 - this.hold);
+
+            for (const { id, dist1, o1Idx, o2Idx, reelLength } of allRows[row]) {
+                const times = schedule.get(id) ?? [];
+
+                // Phase 1: synchronized spin to o1 middle state
+                if (dist1 > 0) times.push(...flipsFromCount(dist1, maxDist1, dt));
+
+                // Phase 2: constant-speed from o1 to o2, padded so it ends no
+                // earlier than the last row's phase 1.
+                let dist2 = (o2Idx - o1Idx + reelLength) % reelLength;
+                while (dist2 < minFlips2) dist2 += reelLength;
+                for (let k = 0; k < dist2; k++) times.push(phase2Start + k * dt);
+
+                schedule.set(id, times);
+            }
+        }
+
+        // Spin all unscheduled units (blank rows + blank spots within rows) freely.
+        if (schedule.size > 0) {
+            let tEnd = 0;
+            for (const ts of schedule.values()) {
+                if (ts.length > 0) tEnd = Math.max(tEnd, ts[ts.length - 1]);
+            }
+            const freeTimes: Time[] = [];
+            for (let t = 0; t * dt <= tEnd; t++) freeTimes.push(t * dt);
+            if (freeTimes.length > 0) {
+                for (const unit of h.units) {
+                    if (!schedule.has(unit.id)) schedule.set(unit.id, [...freeTimes]);
+                }
+            }
+        }
+
+        return buildTimeline(schedule);
     }
 }
 
@@ -2297,6 +2406,60 @@ export class FlipSyncEnd implements Transition {
         }
     }
 
+}
+
+// Like FlipSyncEnd (startTogether), but each unit's flip count is padded with
+// full reel rotations until it is at least minFlips, so every unit spins visibly
+// before landing on the target character.
+export class FlipSyncEndAfterNFlips implements Transition {
+    constructor(
+        readonly minFlips: number,
+        readonly flipsPerSecond: number = 1,
+    ) {}
+
+    generateGroupActions(_o1: Target, o2: Target, _t: Duration, h: HardwareInterface): GroupAction[] {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("FlipSyncEndAfterNFlips requires splitflap hardware");
+        }
+
+        const d2 = o2.draw();
+        const units = h.units;
+
+        const d2AsUnits: [number, Colour][] = d2
+            .map((row, i) => row.map((col, j) => [h.coordToIndex([j, i]), col] as [number, Colour]))
+            .flat();
+        const unitOrder = units.map(u => u.id);
+        d2AsUnits.sort((a, b) =>
+            unitOrder.findIndex(c => c == a[0]) - unitOrder.findIndex(c => c == b[0])
+        );
+
+        const relevantUnits = d2AsUnits.filter(a => a[1] !== ' ');
+
+        const required = new Map<UnitId, number>();
+        let maxRequired = 0;
+
+        for (const toSpin of relevantUnits) {
+            const target = new SplitflapState(`${toSpin[1]}`);
+            const unit = units.find(u => toSpin[0] == u.id)!;
+            const reelLength = (unit as SplitflapUnit).states[0][1].length;
+
+            let flips = h.computeFlipDistance(unit as SplitflapUnit, target);
+            while (flips < this.minFlips) flips += reelLength;
+
+            required.set(unit.id, flips);
+            if (flips > maxRequired) maxRequired = flips;
+        }
+
+        const dt = 1 / this.flipsPerSecond;
+        const schedule = new Map<UnitId, Time[]>();
+
+        for (const toSpin of relevantUnits) {
+            const unit = units.find(u => toSpin[0] == u.id)!;
+            schedule.set(unit.id, flipsFromCount(required.get(unit.id)!, maxRequired, dt));
+        }
+
+        return buildTimeline(schedule);
+    }
 }
 
 // ---------------------------------------------------------------------------
