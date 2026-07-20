@@ -1,4 +1,5 @@
-import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, SplitflapHardware, SplitflapState, SplitflapUnit, delayGroupActions } from './hardware';
+import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, RynxHardware, SplitflapHardware, SplitflapState, SplitflapUnit, delayGroupActions } from './hardware';
+import { textToColumns, deBruijn, WINDOW_ROWS } from './rynx';
 import { CircleTarget, PixelArtTarget, RectangleTarget, generateAnimationToGroupAction } from './language2';
 import {
 Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre, GrowFromPoint, InterpolationOrder, RightToLeft,
@@ -32,7 +33,7 @@ const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
 // const CAPTURE  = { video: true, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
 // const CAPTURE  = { video: true, gif: { fps: 15, maxFrames: 200 }, pngIntervalMs: 50 };
-const CAPTURE  = { video: true};
+const CAPTURE  = { video: false};
 // const CAPTURE  = { video: true};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -300,10 +301,57 @@ function thinkingCase(name: string, makeTransition: () => Transition): EvalCase 
 }
 
 const thinkingCases: EvalCase[] = [
-    // thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
-    // thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
-    // thinkingCase('thinking-flip-sync-end',        () => new FlipSyncEnd()),
+    thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
+    thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
+    thinkingCase('thinking-flip-sync-end',        () => new FlipSyncEnd()),
     thinkingCase('thinking-flip-sync-lastfliptogether',        () => new FlipSyncLastFlipTogether()),
+];
+
+// ── Rynx cases ────────────────────────────────────────────────────────────────
+// A Rynx is one row of 32-segment wheels behind 5-pixel windows: each wheel is a
+// 1x5 pixel column, and one FLIP steps it one segment. The flip-based transitions
+// drive it unchanged — a Rynx target is a 1-row grid whose cells are the 5-bit
+// window strings (top row first) that match each wheel's reel states (see
+// rynxReel in hardware.ts). Blank columns are "00000" = reel state 0, the wheel's
+// home position, so padding never moves while the message flips in.
+
+const RYNX_PATTERN = deBruijn(2, WINDOW_ROWS);
+const RYNX_WHEELS = 24; // fits "RYNX!" (21 columns) with room to spare
+const RYNX_HW = { type: 'rynx' as const, numWheels: RYNX_WHEELS, wheelPattern: RYNX_PATTERN };
+
+const RYNX_BLANK_COL = '0'.repeat(WINDOW_ROWS);
+
+// Text → a 1-row PixelArtTarget of 5-bit window strings, centred across the wheels.
+function rynxTextTarget(text: string, numWheels = RYNX_WHEELS): PixelArtTarget {
+    const columns = textToColumns(text);
+    const pad = Math.max(0, Math.floor((numWheels - columns.length) / 2));
+    const row = Array.from({ length: numWheels }, (_, i) => {
+        const col = columns[i - pad];
+        return col ? col.join('') : RYNX_BLANK_COL;
+    });
+    return new PixelArtTarget([row], RYNX_BLANK_COL);
+}
+
+const rynxBlank = () =>
+    new PixelArtTarget([Array(RYNX_WHEELS).fill(RYNX_BLANK_COL)], RYNX_BLANK_COL);
+
+function rynxCase(name: string, makeTransition: () => Transition, text = 'RYNX!'): EvalCase {
+    return {
+        name,
+        hardware: RYNX_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const rhw = hw as RynxHardware;
+            return makeTransition().generateGroupActions(rynxBlank(), rynxTextTarget(text), 1, rhw);
+        },
+    };
+}
+
+const rynxCases: EvalCase[] = [
+    rynxCase('rynx-flip-constant-speed',          () => new FlipConstantSpeed()),
+    rynxCase('rynx-flip-directional-ltr',         () => new FlipDirectional(new LeftToRight())),
+    rynxCase('rynx-flip-sync-end',                () => new FlipSyncEnd()),
+    rynxCase('rynx-flip-sync-lastfliptogether',   () => new FlipSyncLastFlipTogether()),
 ];
 
 // ── Flipdot DSL cases ─────────────────────────────────────────────────────────
@@ -955,7 +1003,8 @@ const brixelCases: EvalCase[] = [
 // export const runner = new EvalRunner().register(...brixelCases);
 // export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
 // export const runner = new EvalRunner().register(...cases, ...asyncFlipdotCases, ...menuCases);
-export const runner = new EvalRunner().register(...menuCases);
+// export const runner = new EvalRunner().register(...menuCases);
+export const runner = new EvalRunner().register(...rynxCases, ...thinkingCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
@@ -968,8 +1017,8 @@ if (typeof window !== 'undefined') {
     // runner.run('trickle-keep-matrix').catch(err => console.error('[eval] failed:', err));
     // runner.run('menu-cycle').catch(err => console.error('[eval] failed:', err));
     // runner.run('menu-spring-to-classes-row-sync').catch(err => console.error('[eval] failed:', err));
-    runner.run('menu-spring-to-classes-spin-hold').catch(err => console.error('[eval] failed:', err));
-    // runner.run('').catch(err => console.error('[eval] failed:', err));
+    // runner.run('rynx-flip-sync-lastfliptogether').catch(err => console.error('[eval] failed:', err));
+    runner.run('').catch(err => console.error('[eval] failed:', err));
 }
 
 // // ── GrowAlongContoursParallel heatmap visualization ───────────────────────────

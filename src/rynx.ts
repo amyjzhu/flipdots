@@ -134,6 +134,11 @@ const SEGMENT_SIZE = 2 * WHEEL_RADIUS * Math.sin(SEG_ANGLE / 2);
 const WHEEL_GAP = 0.8;
 const CASING_RADIUS = WHEEL_RADIUS + 4;
 
+// A step schedule, mirroring splitflap's setNextFlips: maps the number of
+// steps a wheel has completed so far to the number of frames it should hold
+// before taking its next one-segment step; undefined = stop stepping.
+export type StepSchedule = (stepsSoFar: number) => (wheel: number) => number | undefined;
+
 export interface RynxOptions {
     numWheels: number;
     // where to mount the canvas; defaults to #render, then document.body
@@ -158,8 +163,17 @@ export class RynxDisplay {
     wheels: THREE.Group[] = [];
     // index (0..31) of the wheel segment currently at the TOP of the window
     positions: number[] = [];
-    targets: number[] = [];
-    // frames elapsed within the current one-segment step
+
+    // ── step schedule (mirrors splitflap's setNextFlips/perPixelPauses) ──
+    // After wheel i completes its s-th step, animate() asks
+    // setNextSteps(s)(i) how many frames to hold before the NEXT step;
+    // undefined means the wheel is done and stays put.
+    setNextSteps: StepSchedule = () => () => undefined;
+    // frames each wheel still holds before its next step (undefined = idle)
+    perWheelPauses: (number | undefined)[] = [];
+    // steps completed per wheel since the last resetAnimation
+    totalSteps: number[] = [];
+    // frames elapsed within the current hold+step cycle
     stepCounters: number[] = [];
 
     // frames it takes to advance one segment
@@ -270,7 +284,8 @@ export class RynxDisplay {
             this.scene.add(wheel);
             this.wheels.push(wheel);
             this.positions.push(0);
-            this.targets.push(0);
+            this.perWheelPauses.push(undefined);
+            this.totalSteps.push(0);
             this.stepCounters.push(0);
             this.applyRotation(i, 0);
         }
@@ -362,11 +377,39 @@ export class RynxDisplay {
         return best;
     }
 
-    // Set a target column per wheel. Extra columns are dropped; missing ones blank.
-    setColumns(columns: Column[]) {
+    // If a wheel is mid-motion, land it on the position it was stepping to, so
+    // a new schedule starts from whole positions. (Snaps at most one segment;
+    // a no-op when the display is settled.)
+    private commitInFlightSteps() {
         for (let i = 0; i < this.numWheels; i++) {
-            this.targets[i] = this.findPositionFor(columns[i] ?? BLANK_COLUMN);
+            const pause = this.perWheelPauses[i];
+            if (pause !== undefined && this.stepCounters[i] > pause) {
+                this.positions[i] = (this.positions[i] + 1) % SEGMENTS_PER_WHEEL;
+            }
+            this.stepCounters[i] = 0;
+            this.applyRotation(i, 0);
         }
+    }
+
+    // Install a new step schedule, like splitflap's resetAnimation: step
+    // counters restart at 0 and each wheel's first hold comes from newSteps(0).
+    resetAnimation = (newSteps: StepSchedule) => {
+        this.commitInFlightSteps();
+        this.setNextSteps = newSteps;
+        this.totalSteps = this.wheels.map(() => 0);
+        this.perWheelPauses = this.wheels.map((_, i) => newSteps(0)(i));
+    }
+
+    // Spin each wheel to a target column (the default "just show it" schedule:
+    // every wheel steps continuously until it arrives). Extra columns are
+    // dropped; missing ones blank.
+    setColumns(columns: Column[]) {
+        this.commitInFlightSteps();
+        const stepsNeeded = Array.from({ length: this.numWheels }, (_, i) => {
+            const target = this.findPositionFor(columns[i] ?? BLANK_COLUMN);
+            return (target - this.positions[i] + SEGMENTS_PER_WHEEL) % SEGMENTS_PER_WHEEL;
+        });
+        this.resetAnimation(s => i => (s < stepsNeeded[i] ? this.pauseFrames : undefined));
     }
 
     // Render a string with the 4x5 font, centred across the wheels.
@@ -381,28 +424,40 @@ export class RynxDisplay {
     }
 
     scramble() {
-        for (let i = 0; i < this.numWheels; i++) {
-            this.targets[i] = Math.floor(Math.random() * SEGMENTS_PER_WHEEL);
-        }
+        const steps = Array.from({ length: this.numWheels },
+            () => Math.floor(Math.random() * SEGMENTS_PER_WHEEL));
+        this.resetAnimation(s => i => (s < steps[i] ? this.pauseFrames : undefined));
     }
 
     isSettled(): boolean {
-        return this.positions.every((p, i) => p === this.targets[i]);
+        return this.perWheelPauses.every(p => p === undefined);
     }
 
     animate = () => {
         for (let i = 0; i < this.numWheels; i++) {
-            if (this.positions[i] === this.targets[i]) continue;
+            const pause = this.perWheelPauses[i];
+            if (pause === undefined) continue;
 
-            this.stepCounters[i]++;
-            const moving = Math.min(this.stepCounters[i], this.framesPerStep);
-            this.applyRotation(i, moving / this.framesPerStep);
+            const counter = this.stepCounters[i];
+            if (counter < pause) {
+                // Phase A: hold
+                this.stepCounters[i]++;
+            } else {
+                // Phase B: move one segment over framesPerStep frames
+                const progress = counter - pause + 1;
+                this.applyRotation(i, progress / this.framesPerStep);
 
-            if (this.stepCounters[i] >= this.framesPerStep + this.pauseFrames) {
-                // step complete: commit the new position (wheels only spin forward)
-                this.positions[i] = (this.positions[i] + 1) % SEGMENTS_PER_WHEEL;
-                this.stepCounters[i] = 0;
-                this.applyRotation(i, 0);
+                if (progress >= this.framesPerStep) {
+                    // step complete: commit the new position (wheels only spin
+                    // forward) and ask the schedule for the next hold
+                    this.positions[i] = (this.positions[i] + 1) % SEGMENTS_PER_WHEEL;
+                    this.applyRotation(i, 0);
+                    this.totalSteps[i] += 1;
+                    this.perWheelPauses[i] = this.setNextSteps(this.totalSteps[i])(i);
+                    this.stepCounters[i] = 0;
+                } else {
+                    this.stepCounters[i]++;
+                }
             }
         }
 
@@ -529,4 +584,5 @@ function initRynxPage() {
     }
 }
 
-initRynxPage();
+// guard so headless (node) importers of this module don't crash on `document`
+if (typeof document !== 'undefined') initRynxPage();

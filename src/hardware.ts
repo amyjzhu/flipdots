@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { RynxDisplay, StepSchedule, deBruijn, WINDOW_ROWS } from './rynx';
 import { RowOfDiscs } from './flipdisc';
 import { RowOfDiscsAsync } from './flipdisc-3';
 import { BrixelDisplay } from './brixel';
@@ -572,6 +573,250 @@ export class SplitflapHardware implements HardwareInterface {
 
     }
 
+}
+
+///////////////
+// Rynx: a row of 32-segment wheels behind 5-pixel windows. One FLIP = one
+// one-segment step of a wheel (the bottom window pixel moves up, a new one
+// enters from below). A unit's states are the 32 window contents readable
+// off the wheel's painted reel — with the default de Bruijn pattern every
+// 5-bit column appears exactly once, so all 32 states are distinct and any
+// column is reachable.
+
+export class RynxState implements State {
+    // the window content, top row first, e.g. "10110"
+    id: string;
+    getId(): StateId {
+        return this.id;
+    }
+
+    constructor(description: string) {
+        this.id = description;
+    }
+}
+
+// the state whose window shows `column` (5 bits, top row first)
+export let rynxStateFor = (column: number[]): RynxState => new RynxState(column.join(''));
+
+// The reel of states a wheel steps through: state k is the window visible
+// when segment k sits at the top row. This is where the underlying reel
+// sequence turns into hardware states.
+export let rynxReel = (wheelPattern: number[]): RynxState[] =>
+    wheelPattern.map((_, k) =>
+        new RynxState([...new Array(WINDOW_ROWS).keys()]
+            .map(r => wheelPattern[(k + r) % wheelPattern.length]).join('')));
+
+export class RynxUnit implements Unit {
+    id: number;
+    actions: Action[];
+    actionTiming: [Action, number][];
+    states: [Action, State[]][];
+    currentIndex: number;
+
+    constructor(id: number, reel: RynxState[], currIndex: number = 0) {
+        this.id = id;
+        this.actions = [Action.FLIP];
+        this.actionTiming = [[Action.FLIP, 1]];
+        this.states = [[Action.FLIP, reel]];
+        this.currentIndex = currIndex;
+    }
+
+    clone(): RynxUnit {
+        return new RynxUnit(this.id, this.states[0][1] as RynxState[], this.currentIndex);
+    }
+}
+
+export let isRynxHardware = (x: HardwareInterface): x is RynxHardware => {
+    return x instanceof RynxHardware;
+}
+
+export class RynxHardware implements HardwareInterface {
+    units: Unit[];
+    actionDurations: Map<Action, number>;
+    coordToIndex: (coord: [number, number]) => number;
+    indexToCoord: Map<number, [number, number]>;
+    timeFrontier: (start: number, dir: [number, number]) => (t: Time) => UnitId[];
+    unitAdjacency: (toCheck: UnitId) => UnitId[];
+    allowedNextActive: (action: Action, id: UnitId[], time: Time) => [UnitId[], Time][];
+    actionsToHardwareAction: (action: Action, id: UnitId[], time: Time) => [UnitId, State][];
+
+    dirsToTime: Map<string, (t: Time) => number[]> = new Map();
+    idsToStates: Map<UnitId, State>;
+    sim: RynxDisplay | null;
+    estimatedDurationMs: number = 0;
+
+    constructor(units: RynxUnit[], indexToCoord: Map<number, [number, number]>, unitAdjacency: (toCheck: UnitId) => UnitId[], sim: RynxDisplay | null) {
+        this.units = units;
+        this.actionDurations = new Map();
+        this.actionDurations.set(units[0].actionTiming[0][0], units[0].actionTiming[0][1]);
+        this.indexToCoord = indexToCoord;
+        this.coordToIndex = (coord: [number, number]) => this.indexToCoord.entries().find(([k, v]) => v[0] == coord[0] && v[1] == coord[1])![0];
+        this.unitAdjacency = unitAdjacency;
+        this.allowedNextActive = (action: Action, ids: UnitId[], time: Time) => {
+            let otherIds = [...new Set(this.units.map(r => r.id).flat()).difference(new Set(ids))];
+            return [[otherIds, time],
+            [ids, incrementTime(time, this.actionDurations.get(Action.FLIP)!)]] as [UnitId[], Time][];
+        }
+
+        this.idsToStates = new Map(units.map(u => [u.id, u.states[0][1][u.currentIndex] as State]));
+
+        this.timeFrontier = (start: number, dir: [number, number]): (t: Time) => UnitId[] => {
+            let key = `${start}|${dir[0]}|${dir[1]}`
+            if (this.dirsToTime.has(key)) {
+                return this.dirsToTime.get(key)!;
+            } else {
+                let fn = generateDirection(start, dir, this);
+                this.dirsToTime.set(key, fn.atTime);
+                return fn.atTime;
+            }
+        }
+
+        this.actionsToHardwareAction = (_action: Action, id: UnitId[], _time: Time): [UnitId, State][] => {
+            // one FLIP advances the wheel one segment: the next state is simply
+            // the next window along the reel, wrapping at the end
+            let actions: [UnitId, State][] = [];
+            for (let i of id) {
+                let unit: RynxUnit = this.units.find(u => u.id == i)! as RynxUnit;
+                const reel = unit.states[0][1];
+                unit.currentIndex = (unit.currentIndex + 1) % reel.length;
+                const newState = reel[unit.currentIndex];
+                this.idsToStates.set(i, newState);
+                actions.push([i, newState]);
+            }
+            return actions;
+        }
+
+        this.sim = sim;
+    }
+
+    // FLIPs needed to spin from the current window to `target` — wheels only
+    // spin forward, so this is the forward distance around the reel. Named to
+    // match SplitflapHardware so the flip-based transitions (which gate on
+    // isSplitflapHardware and call computeFlipDistance) drive Rynx unchanged.
+    computeFlipDistance(unit: RynxUnit, target: RynxState): number {
+        const states = unit.states[0][1];
+        const end = states.findIndex(s => s.id == target.id);
+        if (end === -1) {
+            throw new Error(`state ${target.id} is not on unit ${unit.id}'s reel`);
+        }
+        return (end - unit.currentIndex + states.length) % states.length;
+    }
+
+    // a Rynx display is one row of wheels (each wheel is a 1x5 column of pixels)
+    static Row(numWheels: number, container?: HTMLElement, wheelPattern?: number[]) {
+        const pattern = wheelPattern ?? deBruijn(2, WINDOW_ROWS);
+        const reel = rynxReel(pattern);
+        const indexToCoord = new Map<number, [number, number]>();
+        const unitList = [...new Array(numWheels).keys()].map(i => {
+            indexToCoord.set(i, [i, 0]);
+            return new RynxUnit(i, reel);
+        });
+
+        const adjacency = (i: UnitId) =>
+            [i - 1, i + 1].filter(n => n >= 0 && n < numWheels);
+
+        return new RynxHardware(unitList, indexToCoord, adjacency,
+            new RynxDisplay({ numWheels, container, wheelPattern: pattern }));
+    }
+
+    static Headless(numWheels: number, wheelPattern?: number[]) {
+        const pattern = wheelPattern ?? deBruijn(2, WINDOW_ROWS);
+        const reel = rynxReel(pattern);
+        const indexToCoord = new Map<number, [number, number]>();
+        const unitList = [...new Array(numWheels).keys()].map(i => {
+            indexToCoord.set(i, [i, 0]);
+            return new RynxUnit(i, reel);
+        });
+        const adjacency = (i: UnitId) =>
+            [i - 1, i + 1].filter(n => n >= 0 && n < numWheels);
+
+        return new RynxHardware(unitList, indexToCoord, adjacency, null);
+    }
+
+    getRealTiming(time: Time): number {
+        if (typeof time == "number") {
+            return time;
+        } else {
+            return time[0] * this.actionDurations.get(Action.FLIP)! + time[2];
+        }
+    }
+
+    /**
+     * Turn a GroupAction schedule (logical flip-time units on tPlus) into the
+     * StepSchedule that RynxDisplay.animate() consumes.
+     *
+     * Timing model, following SplitflapHardware.compile: one logical time unit
+     * spans exactly one full step, i.e. framesPerStep animation ticks. So FLIPs
+     * scheduled 1 unit apart run back to back (hold 0), and a gap of g units
+     * becomes a hold of (g - 1) * framesPerStep ticks — the realized period is
+     * exactly g logical units, with no cumulative drift.
+     */
+    compile(groupActions: GroupAction[]) {
+        if (!this.sim) throw new Error('Cannot compile: use RynxHardware.Row() to get a hardware with a display.');
+
+        const flipDuration = this.actionDurations.get(Action.FLIP)!; // logical units per step
+        const ticksPerUnit = this.sim.framesPerStep;
+
+        let unitAvailableAt: Map<UnitId, number | undefined> = new Map();
+        this.units.forEach(u => unitAvailableAt.set(u.id, 0));
+
+        // when each unit flips, in logical time
+        const flipTimes = new Map<UnitId, number[]>();
+
+        const sorted = [...groupActions].sort((a, b) => a.tPlus - b.tPlus);
+        for (const ga of sorted) {
+            const time = this.getRealTiming(ga.tPlus);
+            for (const [actionType, ids] of ga.actions) {
+                for (const id of ids) {
+                    const unit = this.units.find(u => u.id == id)! as RynxUnit;
+                    if (!(unit.actions.includes(actionType) &&
+                        unitAvailableAt.get(id) != undefined && unitAvailableAt.get(id)! <= time)) {
+                        console.log("id, time, availableAt, action", id, time, unitAvailableAt.get(id), getActionStr(actionType));
+                        throw new Error("could not compile");
+                    }
+                    if (!flipTimes.has(id)) flipTimes.set(id, []);
+                    flipTimes.get(id)!.push(time);
+                }
+
+                // advance the reel bookkeeping so idsToStates tracks what the
+                // display will show after this action
+                this.actionsToHardwareAction(actionType, ids, time);
+
+                let nextAvailable = this.allowedNextActive(actionType, ids, time);
+                unitAvailableAt.keys().map(k => unitAvailableAt.set(k, undefined));
+                for (let [nextIds, interval] of nextAvailable) {
+                    nextIds.forEach(id => unitAvailableAt.set(id, this.getRealTiming(interval)));
+                }
+            }
+        }
+
+        // per-unit holds before each step, in animation ticks
+        const tickSchedule = new Map<UnitId, number[]>();
+        let lastEnd = 0;
+        for (const [id, times] of flipTimes) {
+            times.sort((a, b) => a - b);
+            const holds: number[] = [];
+            let prevEnd = 0; // logical time the previous step's motion finishes
+            for (const t of times) {
+                const start = Math.max(t, prevEnd);
+                holds.push(Math.round((start - prevEnd) * ticksPerUnit));
+                prevEnd = start + flipDuration;
+            }
+            tickSchedule.set(id, holds);
+            lastEnd = Math.max(lastEnd, prevEnd);
+        }
+
+        const schedule: StepSchedule = s => i => {
+            const holds = tickSchedule.get(i);
+            if (!holds || s >= holds.length) return undefined;
+            return holds[s];
+        };
+
+        // last logical end × ticks/unit ÷ 60fps
+        this.estimatedDurationMs = lastEnd * ticksPerUnit / 60 * 1000;
+
+        this.sim.resetAnimation(schedule);
+    }
 }
 
 ///////////////

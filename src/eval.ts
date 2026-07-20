@@ -1,4 +1,4 @@
-import { BrixelSimHardware, FlipdotSimAsyncHardware, FlipdotSimHardware, GroupAction, SplitflapHardware, SplitflapState } from './hardware';
+import { BrixelSimHardware, FlipdotSimAsyncHardware, FlipdotSimHardware, GroupAction, RynxHardware, SplitflapHardware, SplitflapState } from './hardware';
 import { parseToGroupAction } from './language2';
 import { Recorder } from './recorder';
 import { ALPHABET_WITH_EXCLAMATION } from './constants';
@@ -6,6 +6,7 @@ import { getImages } from './util';
 import { RowOfDiscs } from './flipdisc';
 import { RowOfDiscsAsync } from './flipdisc-3';
 import { SplitFlapDisplay } from './splitflap';
+import { RynxDisplay } from './rynx';
 
 // ── Hardware specs ─────────────────────────────────────────────────────────────
 
@@ -38,7 +39,16 @@ export type BrixelSpec = {
     height: number;
 };
 
-export type HardwareSpec = FlipdotSpec | SplitflapSpec | BrixelSpec;
+export type RynxSpec = {
+    type: 'rynx';
+    // a Rynx is one row of wheels; each wheel is a 1x5 pixel column
+    numWheels: number;
+    container?: HTMLElement;
+    // 32-entry black/white paint job around every wheel; defaults to de Bruijn
+    wheelPattern?: number[];
+};
+
+export type HardwareSpec = FlipdotSpec | SplitflapSpec | BrixelSpec | RynxSpec;
 
 // ── Capture spec ───────────────────────────────────────────────────────────────
 
@@ -76,14 +86,14 @@ export interface EvalCase {
      *   2. Call ctx.fromDSL(program) — compile is called inside; return nothing.
      */
     build(
-        hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware,
+        hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware | RynxHardware,
         ctx: EvalContext,
     ): Promise<GroupAction[] | void> | GroupAction[] | void;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware {
+function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware | RynxHardware {
     if (spec.type === 'flipdot') {
         if (spec.async) {
             return new FlipdotSimAsyncHardware([], () => [], [spec.height, spec.width]);
@@ -92,6 +102,9 @@ function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncH
     }
     if (spec.type === 'brixel') {
         return BrixelSimHardware.Rectangular(spec.width, spec.height);
+    }
+    if (spec.type === 'rynx') {
+        return RynxHardware.Row(spec.numWheels, spec.container, spec.wheelPattern);
     }
     const reel = spec.reel ?? ALPHABET_WITH_EXCLAMATION.split('');
     return SplitflapHardware.Rectangular(
@@ -103,11 +116,12 @@ function makeHardware(spec: HardwareSpec): FlipdotSimHardware | FlipdotSimAsyncH
 }
 
 function getSimulation(
-    hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware,
-): RowOfDiscs | RowOfDiscsAsync | SplitFlapDisplay | undefined {
+    hw: FlipdotSimHardware | FlipdotSimAsyncHardware | SplitflapHardware | BrixelSimHardware | RynxHardware,
+): RowOfDiscs | RowOfDiscsAsync | SplitFlapDisplay | RynxDisplay | undefined {
     if (hw instanceof FlipdotSimAsyncHardware) return hw.simulation;
     if (hw instanceof FlipdotSimHardware) return hw.simulation;
     if (hw instanceof SplitflapHardware)  return hw.sim ?? undefined;
+    if (hw instanceof RynxHardware)       return hw.sim ?? undefined;
     return undefined;
 }
 
