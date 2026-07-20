@@ -308,9 +308,43 @@ export class SplitflapHardware implements HardwareInterface {
         }
     }
 
+    /**
+     * Turn a GroupAction schedule (in logical flip-time units) into the per-unit
+     * hold/delay arrays that `SplitFlapDisplay.animate()` consumes.
+     *
+     * Timing model — there are three time bases that must stay consistent:
+     *
+     *   - Logical flip-time units: the times carried on GroupAction.tPlus (e.g.
+     *     `t * dt` from the transitions). One unit is the schedule's notion of
+     *     "one flip slot".
+     *   - Ticks: animation frames inside `animate()` (one per requestAnimationFrame).
+     *   - The conversion is `framesPerMs` ticks per logical unit (logical units are
+     *     treated as milliseconds, msPerTick = 1 / framesPerMs).
+     *
+     * The critical invariant: ONE FULL FLIP IN animate() TAKES (numFramesRotating +
+     * riseFrames) TICKS — fall (numFramesRotating) then rise (riseFrames), run
+     * sequentially; see SplitFlapDisplay.animate(). Two values below must both reflect
+     * that, or flips drift late / don't physically fit and units desync:
+     *
+     *   - `framesPerMs = numFramesRotating + riseFrames` so one logical flip-time unit
+     *     spans exactly one full flip. If framesPerMs were smaller than the flip
+     *     length, back-to-back flips (1 logical unit apart) couldn't finish in their
+     *     slot — the "not enough time" throw below. Tied to the flip length so it
+     *     adapts to any rotation speed (e.g. NUM_FRAMES_ROTATING = slowishFrames).
+     *   - `animationDurationMs = (numFramesRotating + riseFrames) * msPerTick` so the
+     *     delay between consecutive flips reserves the whole fall+rise motion.
+     *
+     * With both set, a scheduled gap of g logical units produces
+     *   hold = (g - 1) * (numFramesRotating + riseFrames) ticks,
+     * and the realized per-flip period is hold + (fall + rise) = g * (numFramesRotating
+     * + riseFrames) ticks = exactly g logical units — no cumulative drift.
+     */
     compile(groupActions: GroupAction[]) {
         if (!this.sim) throw new Error('Cannot compile: use SplitflapHardware.Rectangular() to get a hardware with a display.');
         console.log(groupActions)
+        // framesPerMs ticks per logical flip-time unit = one full flip (fall + rise),
+        // so it tracks the rotation speed and a flip always fits its slot. See doc above.
+        // let framesPerMs = this.sim.numFramesRotating + this.sim.riseFrames;
         let framesPerMs = 10;
 
         let allStates: number[][] = [];
@@ -450,8 +484,10 @@ export class SplitflapHardware implements HardwareInterface {
         let tickSchedule = new Map<UnitId, number[]>();
         for (let [i, timeline] of scheduled.entries()) {
             const msPerTick = 1 / framesPerMs;
-            // setting this to +1 fixes the thinking sync, but breaks motion animation somehow 
-            const animationDurationMs = (this.sim.numFramesRotating + 0) * msPerTick;
+            // Reserve exactly the motion animate() spends per flip: fall (numFramesRotating)
+            // + rise (riseFrames). Matching this kills the per-flip drift. Must stay
+            // <= framesPerMs so back-to-back flips fit one logical slot without throwing.
+            const animationDurationMs = (this.sim.numFramesRotating + this.sim.riseFrames) * msPerTick;
 
             let timelineMs = timeline[0];
             // Precompute delays (fail fast if invalid)

@@ -1,4 +1,4 @@
-import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, SplitflapHardware, SplitflapState, delayGroupActions } from './hardware';
+import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, SplitflapHardware, SplitflapState, SplitflapUnit, delayGroupActions } from './hardware';
 import { CircleTarget, PixelArtTarget, RectangleTarget, generateAnimationToGroupAction } from './language2';
 import {
 Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre, GrowFromPoint, InterpolationOrder, RightToLeft,
@@ -12,7 +12,7 @@ Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre
 import {
     AcceleratingCascadeTransition,
     AlternatingFlapTransition, AndThenFlipTo, BeatTransition, CascadeImage, EvenOddRhythmTransition, FarEdgeTripleTransition, FittedWaveTransition, FlipConstantSpeed, FlipDirectional, FlipSyncEnd,
-    FlipSyncLastFlipTogether, RowSyncSpinTransition,
+    FlipSyncLastFlipTogether, RowSyncSpinTransition, SpinHoldFlipTogether,
     LayerForeBackTransition, OneByOne, OneByOneKeepFlipping, PulseTransition, RotateRevealTransition, SnapTransition,
     StaggeredRateTransition,
     StochasticTransition, Transition, TrickleKeepFlipping, VerticalDriftRateTransition,
@@ -32,8 +32,8 @@ const HARDWARE = { type: 'splitflap' as const, width: SW, height: SH };
 // const CAPTURE  = { video: true, pngIntervalMs: 50 };
 // const CAPTURE  = { video: false, pngIntervalMs: 100 };
 // const CAPTURE  = { video: true, gif: { fps: 15, maxFrames: 200 }, pngIntervalMs: 50 };
-// const CAPTURE  = { video: false};
 const CAPTURE  = { video: true};
+// const CAPTURE  = { video: true};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -83,29 +83,76 @@ function offsetCenteredMsg(msg: string): string[][] {
 
 // ── Menu / signage content ────────────────────────────────────────────────────
 
-const menuSpring = new PixelArtTarget(offsetCenteredMsg(
+// The splitflap display renders grid row 0 at the BOTTOM, so flip the rows here
+// to make the lines read top-to-bottom on screen. Local workaround — the display
+// mapping itself is unchanged.
+const flipRows = (grid: string[][]): string[][] => [...grid].reverse();
+
+const menuSpring = new PixelArtTarget(flipRows(offsetCenteredMsg(
     'spring specials      \n' +
     'lime cold brew       \n' +
     'matcha tonic         \n' +
     'horchata cold foam   \n' +
     'na dark and stormy   \n' +
     'lavender latte'
-), ' ');
+)), ' ');
 
-const menuSlogans = new PixelArtTarget(offsetCenteredMsg(
+const menuSlogans = new PixelArtTarget(flipRows(offsetCenteredMsg(
     '   drink coffee\n' +
     'live better        \n' +
     '         open your mind\n' +
     'explore the everyday'
-), ' ');
+)), ' ');
 
-const menuClasses = new PixelArtTarget(offsetCenteredMsg(
+const menuClasses = new PixelArtTarget(flipRows(offsetCenteredMsg(
     'barista classes      \n' +
     'may twentieth\n' +
     'june twelfth         \n' +
     'two pm          \n' +
     'all ingredients included'
-), ' ');
+)), ' ');
+
+// ── Sequence helper ───────────────────────────────────────────────────────────
+// Run several transitions back-to-back on the same hardware, threading the
+// on-screen state between them. GroupAction flips are *relative* reel advances,
+// and transitions read each unit's currentIndex (via computeFlipDistance) to
+// decide how far to spin. So between steps we must advance currentIndex to
+// reflect what the previous steps left on the display — otherwise a later step
+// is generated against a blank reel while the screen shows something else, and
+// every unit lands offset by that mismatch. (Mirrors playground's playSequence;
+// duplicated here on purpose to keep the eval harness self-contained.)
+type SeqStep = (hw: SplitflapHardware) => GroupAction[];
+
+function advanceState(hw: SplitflapHardware, actions: GroupAction[]): void {
+    for (const ga of actions) {
+        for (const [, unitIds] of ga.actions) {
+            for (const id of unitIds) {
+                const unit = hw.units.find(u => u.id === id) as SplitflapUnit;
+                const numStates = unit.states[0][1].length;
+                unit.currentIndex = (unit.currentIndex + 1) % numStates;
+            }
+        }
+    }
+}
+
+// `gap` is the pause (in flip-time units) inserted after each step before the
+// next begins — e.g. to hold a menu on screen before transitioning away.
+function runSequence(hw: SplitflapHardware, steps: SeqStep[], gap = 0): GroupAction[] {
+    let all: GroupAction[] = [];
+    for (const step of steps) {
+        const offset = all.length > 0
+            ? Math.ceil(Math.max(...all.map(ga => ga.tPlus))) + 1 + gap
+            : 0;
+        const raw = step(hw);
+        const actions = offset > 0 ? delayGroupActions(raw, offset) : raw;
+        all = [...all, ...actions];
+        advanceState(hw, actions);
+    }
+    // Playback renders from the construction-time (blank) snapshot, so restore
+    // currentIndex to 0 to stay consistent with it.
+    for (const unit of hw.units) (unit as SplitflapUnit).currentIndex = 0;
+    return all;
+}
 
 // ── Menu cases ────────────────────────────────────────────────────────────────
 
@@ -120,35 +167,49 @@ const menuCases: EvalCase[] = [
     // sfCase('menu-slogans-to-classes', (sfhw) =>
     //     new FlipSyncLastFlipTogether().generateGroupActions(menuSlogans, menuClasses, 30, sfhw)
     // ),
-    sfCase('menu-spring-to-classes-row-sync', (sfhw) => {
-        const a1 = new FlipSyncLastFlipTogether().generateGroupActions(
-            new PixelArtTarget([], ' '), menuSpring, 30, sfhw
-        );
-        const end1 = Math.max(...a1.map(ga => ga.tPlus)) + 30;
-        const a2 = delayGroupActions(
-            new RowSyncSpinTransition(1, 20).generateGroupActions(menuSpring, menuClasses, 0, sfhw),
-            end1
-        );
-        return [...a1, ...a2];
-    }),
+    sfCase('menu-spring-to-classes-row-sync', (sfhw) =>
+        // Two separate transitions, chained with state threaded between them:
+        //   1. Initial flip-in of the spring menu (blank → menuSpring).
+        //   2. RowSyncSpinTransition starting FROM menuSpring:
+        //        Phase 1 row-cascades menuSpring → menuSlogans (rows land
+        //          top-to-bottom),
+        //        Phase 2 spins menuSlogans → menuClasses.
+        // runSequence sets currentIndex to menuSpring before step 2, so Phase 1's
+        // distances (spring → slogans) are real and the row cascade is preserved.
+        // (o1 = menuSlogans differs from the start menuSpring, so Phase 1 is not
+        // flattened to zero — unlike spinning to the message already on screen.)
+        runSequence(sfhw, [
+            hw => new FlipSyncLastFlipTogether().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, hw),
+            hw => new RowSyncSpinTransition(1, 20).generateGroupActions(menuSlogans, menuClasses, 0, hw),
+        ], 30)
+    ),
+    sfCase('menu-spring-to-classes-spin-hold', (sfhw) =>
+        // Whole-grid cousin of the row-sync case: flip in the spring menu, then
+        // SpinHoldFlipTogether spins menuSlogans → menuClasses. Background flaps
+        // land on their pre-goal state together and hold; the message flaps keep
+        // spinning for at least 15s longer, then everything reveals in one beat.
+        runSequence(sfhw, [
+            hw => new FlipSyncLastFlipTogether().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, hw),
+            hw => new SpinHoldFlipTogether(1, 15).generateGroupActions(menuSlogans, menuClasses, 0, hw),
+        ], 30)
+    ),
     sfCase('veni-vidi-vici', (sfhw) => {
         const o1 = new PixelArtTarget(centeredMsg('xgpk xkfk xkek'), ' ');
         const o2 = new PixelArtTarget([], ' ');
-        return new RowSyncSpinTransition(1, 5).generateGroupActions(o1, o2, 0, sfhw);
+        return new RowSyncSpinTransition(1, 10).generateGroupActions(o1, o2, 0, sfhw);
     }),
     sfCase('menu-cycle', (sfhw) => {
         const hold = 60;
         const t = () => new FlipSyncLastFlipTogether();
 
-        const a1 = t().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, sfhw);
-        const end1 = Math.max(...a1.map(ga => ga.tPlus)) + hold;
-
-        const a2 = delayGroupActions(t().generateGroupActions(menuSpring, menuSlogans, 30, sfhw), end1);
-        const end2 = Math.max(...a2.map(ga => ga.tPlus)) + hold;
-
-        const a3 = delayGroupActions(t().generateGroupActions(menuSlogans, menuClasses, 30, sfhw), end2);
-
-        return [...a1, ...a2, ...a3];
+        // Each leg is generated from the previous leg's end state (threaded by
+        // runSequence), so e.g. menuSpring→menuSlogans measures its flips from
+        // menuSpring rather than from blank.
+        return runSequence(sfhw, [
+            hw => t().generateGroupActions(new PixelArtTarget([], ' '), menuSpring, 30, hw),
+            hw => t().generateGroupActions(menuSpring, menuSlogans, 30, hw),
+            hw => t().generateGroupActions(menuSlogans, menuClasses, 30, hw),
+        ], hold);
     }),
 ];
 
@@ -232,16 +293,17 @@ function thinkingCase(name: string, makeTransition: () => Transition): EvalCase 
             const anim = makeTransition().generateGroupActions(
                 new PixelArtTarget([], ''), thinkingMsgTarget, 1, sfhw,
             );
+
             return [frame1, frame2, ...delayGroupActions(anim, 4)];
         },
     };
 }
 
 const thinkingCases: EvalCase[] = [
-    thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
-    thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
+    // thinkingCase('thinking-flip-constant-speed',  () => new FlipConstantSpeed()),
+    // thinkingCase('thinking-flip-directional-ltr', () => new FlipDirectional(new LeftToRight())),
     // thinkingCase('thinking-flip-sync-end',        () => new FlipSyncEnd()),
-    thinkingCase('thinking-flip-sync-end',        () => new FlipSyncLastFlipTogether()),
+    thinkingCase('thinking-flip-sync-lastfliptogether',        () => new FlipSyncLastFlipTogether()),
 ];
 
 // ── Flipdot DSL cases ─────────────────────────────────────────────────────────
@@ -889,6 +951,7 @@ const brixelCases: EvalCase[] = [
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 // export const runner = new EvalRunner().register(...thinkingCases);
+// export const runner = new EvalRunner().register(...cases);
 // export const runner = new EvalRunner().register(...brixelCases);
 // export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
 // export const runner = new EvalRunner().register(...cases, ...asyncFlipdotCases, ...menuCases);
@@ -901,231 +964,233 @@ if (typeof window !== 'undefined') {
     // runner.run('ring').catch(err => console.error('[eval] failed:', err));
     // runner.run('wave-far-edge-triple').catch(err => console.error('[eval] failed:', err));
     // runner.run('wave-direct').catch(err => console.error('[eval] failed:', err));
-    runner.run('veni-vidi-vici').catch(err => console.error('[eval] failed:', err));
+    // runner.run('veni-vidi-vici').catch(err => console.error('[eval] failed:', err));
     // runner.run('trickle-keep-matrix').catch(err => console.error('[eval] failed:', err));
+    // runner.run('menu-cycle').catch(err => console.error('[eval] failed:', err));
     // runner.run('menu-spring-to-classes-row-sync').catch(err => console.error('[eval] failed:', err));
+    runner.run('menu-spring-to-classes-spin-hold').catch(err => console.error('[eval] failed:', err));
     // runner.run('').catch(err => console.error('[eval] failed:', err));
 }
 
-// ── GrowAlongContoursParallel heatmap visualization ───────────────────────────
+// // ── GrowAlongContoursParallel heatmap visualization ───────────────────────────
 
-if (typeof window !== 'undefined') {
-    const viz = document.getElementById('contour-parallel-viz');
-    if (viz) {
-        const order = new GrowAlongContoursParallel([Math.floor(logoW / 2), Math.floor(logoH / 2)]);
-        const src = logoSource.draw();
-        const diff: boolean[][] = src.map(row => row.map(cell => cell !== ' '));
+// if (typeof window !== 'undefined') {
+//     const viz = document.getElementById('contour-parallel-viz');
+//     if (viz) {
+//         const order = new GrowAlongContoursParallel([Math.floor(logoW / 2), Math.floor(logoH / 2)]);
+//         const src = logoSource.draw();
+//         const diff: boolean[][] = src.map(row => row.map(cell => cell !== ' '));
 
-        const [timeGrid] = order.applyMask(diff);
-        const activeVals = timeGrid.flat().filter(v => v >= 0);
-        const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
-        const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
-        const span = maxVal - minVal || 1;
+//         const [timeGrid] = order.applyMask(diff);
+//         const activeVals = timeGrid.flat().filter(v => v >= 0);
+//         const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
+//         const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
+//         const span = maxVal - minVal || 1;
 
-        const CW = 10, CH = 10;
-        const canvas = document.createElement('canvas');
-        canvas.width = logoW * CW;
-        canvas.height = logoH * CH;
-        canvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
-        const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+//         const CW = 10, CH = 10;
+//         const canvas = document.createElement('canvas');
+//         canvas.width = logoW * CW;
+//         canvas.height = logoH * CH;
+//         canvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
+//         const ctx = canvas.getContext('2d')!;
+//         ctx.fillStyle = '#fff';
+//         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        for (let row = 0; row < logoH; row++) {
-            for (let col = 0; col < logoW; col++) {
-                const val = timeGrid[row][col];
-                if (val < 0) {
-                    ctx.fillStyle = diff[row][col] ? '#e8e0e8' : '#f4f4f4';
-                } else {
-                    const ratio = (val - minVal) / span;
-                    const hue = Math.round(240 - ratio * 240);
-                    ctx.fillStyle = `hsl(${hue}, 80%, 38%)`;
-                }
-                ctx.fillRect(col * CW, row * CH, CW - 1, CH - 1);
-            }
-        }
+//         for (let row = 0; row < logoH; row++) {
+//             for (let col = 0; col < logoW; col++) {
+//                 const val = timeGrid[row][col];
+//                 if (val < 0) {
+//                     ctx.fillStyle = diff[row][col] ? '#e8e0e8' : '#f4f4f4';
+//                 } else {
+//                     const ratio = (val - minVal) / span;
+//                     const hue = Math.round(240 - ratio * 240);
+//                     ctx.fillStyle = `hsl(${hue}, 80%, 38%)`;
+//                 }
+//                 ctx.fillRect(col * CW, row * CH, CW - 1, CH - 1);
+//             }
+//         }
 
-        const label = document.createElement('div');
-        label.textContent = `logo — GrowAlongContoursParallel (seed: centre)`;
-        label.style.cssText = 'color:#555; font-size:11px; margin-bottom:4px; font-family:monospace;';
+//         const label = document.createElement('div');
+//         label.textContent = `logo — GrowAlongContoursParallel (seed: centre)`;
+//         label.style.cssText = 'color:#555; font-size:11px; margin-bottom:4px; font-family:monospace;';
 
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
-        wrapper.appendChild(label);
-        wrapper.appendChild(canvas);
-        viz.appendChild(wrapper);
-    }
-}
+//         const wrapper = document.createElement('div');
+//         wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
+//         wrapper.appendChild(label);
+//         wrapper.appendChild(canvas);
+//         viz.appendChild(wrapper);
+//     }
+// }
 
-// ── SpiralOrder "E" shape visualization ──────────────────────────────────────
+// // ── SpiralOrder "E" shape visualization ──────────────────────────────────────
 
-if (typeof window !== 'undefined') {
-    const viz = document.getElementById('spiral-order-viz');
-    if (viz) {
-        const eShape: boolean[][] = eRgb[0].map(row =>
-            row.map(([r, g, b]) => r !== 255 || g !== 255 || b !== 255)
-        );
+// if (typeof window !== 'undefined') {
+//     const viz = document.getElementById('spiral-order-viz');
+//     if (viz) {
+//         const eShape: boolean[][] = eRgb[0].map(row =>
+//             row.map(([r, g, b]) => r !== 255 || g !== 255 || b !== 255)
+//         );
 
-        const order = new SpiralOrder();
-        const [timeGrid] = order.applyMask(eShape);
-        const activeVals = timeGrid.flat().filter(v => v >= 0);
-        const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
-        const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
-        const span = maxVal - minVal || 1;
+//         const order = new SpiralOrder();
+//         const [timeGrid] = order.applyMask(eShape);
+//         const activeVals = timeGrid.flat().filter(v => v >= 0);
+//         const maxVal = activeVals.length > 0 ? Math.max(...activeVals) : 1;
+//         const minVal = activeVals.length > 0 ? Math.min(...activeVals) : 0;
+//         const span = maxVal - minVal || 1;
 
-        const CW = 20, CH = 20;
-        const canvas = document.createElement('canvas');
-        canvas.width = eW * CW;
-        canvas.height = eH * CH;
-        canvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
-        const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+//         const CW = 20, CH = 20;
+//         const canvas = document.createElement('canvas');
+//         canvas.width = eW * CW;
+//         canvas.height = eH * CH;
+//         canvas.style.cssText = 'display:block; border:1px solid #ccc; image-rendering:pixelated;';
+//         const ctx = canvas.getContext('2d')!;
+//         ctx.fillStyle = '#fff';
+//         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        for (let row = 0; row < eH; row++) {
-            for (let col = 0; col < eW; col++) {
-                const val = timeGrid[row][col];
-                if (val < 0) {
-                    ctx.fillStyle = '#f4f4f4';
-                } else {
-                    const ratio = (val - minVal) / span;
-                    const hue = Math.round(240 - ratio * 240);
-                    ctx.fillStyle = `hsl(${hue}, 80%, 38%)`;
-                }
-                ctx.fillRect(col * CW, row * CH, CW - 2, CH - 2);
-            }
-        }
+//         for (let row = 0; row < eH; row++) {
+//             for (let col = 0; col < eW; col++) {
+//                 const val = timeGrid[row][col];
+//                 if (val < 0) {
+//                     ctx.fillStyle = '#f4f4f4';
+//                 } else {
+//                     const ratio = (val - minVal) / span;
+//                     const hue = Math.round(240 - ratio * 240);
+//                     ctx.fillStyle = `hsl(${hue}, 80%, 38%)`;
+//                 }
+//                 ctx.fillRect(col * CW, row * CH, CW - 2, CH - 2);
+//             }
+//         }
 
-        const label = document.createElement('div');
-        label.textContent = 'SpiralOrder — "e" (e2.png, spiral from bounding-box centre)';
-        label.style.cssText = 'color:#555; font-size:11px; margin-bottom:4px; font-family:monospace;';
+//         const label = document.createElement('div');
+//         label.textContent = 'SpiralOrder — "e" (e2.png, spiral from bounding-box centre)';
+//         label.style.cssText = 'color:#555; font-size:11px; margin-bottom:4px; font-family:monospace;';
 
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
-        wrapper.appendChild(label);
-        wrapper.appendChild(canvas);
-        viz.appendChild(wrapper);
-    }
-}
+//         const wrapper = document.createElement('div');
+//         wrapper.style.cssText = 'display:inline-block; margin:8px; text-align:center; vertical-align:top;';
+//         wrapper.appendChild(label);
+//         wrapper.appendChild(canvas);
+//         viz.appendChild(wrapper);
+//     }
+// }
 
-// ── Transition timeline visualization ────────────────────────────────────────
+// // ── Transition timeline visualization ────────────────────────────────────────
 
-if (typeof window !== 'undefined') {
-    const timelineContainer = document.getElementById('timeline-viz');
-    if (timelineContainer) {
-        const NUM_UNITS = 6;
-        const tlHw = SplitflapHardware.Headless(NUM_UNITS, 1,
-            () => ' abcdefghijklmnopqrstuvwxyz!?*'.split('').map((s: string) => new SplitflapState(s)),
-        );
-        const tlO1 = new PixelArtTarget([], ' ');
-        const tlO2 = new RectangleTarget(NUM_UNITS, 1, [0, 0], [NUM_UNITS, 1]);
-        const TL_DURATION = 30;
+// if (typeof window !== 'undefined') {
+//     const timelineContainer = document.getElementById('timeline-viz');
+//     if (timelineContainer) {
+//         const NUM_UNITS = 6;
+//         const tlHw = SplitflapHardware.Headless(NUM_UNITS, 1,
+//             () => ' abcdefghijklmnopqrstuvwxyz!?*'.split('').map((s: string) => new SplitflapState(s)),
+//         );
+//         const tlO1 = new PixelArtTarget([], ' ');
+//         const tlO2 = new RectangleTarget(NUM_UNITS, 1, [0, 0], [NUM_UNITS, 1]);
+//         const TL_DURATION = 30;
 
-        const transitionDefs: { name: string; gas: GroupAction[] }[] = [
-            {
-                name: 'OneByOneKeepFlipping (LeftToRight)',
-                gas: new OneByOneKeepFlipping(new LeftToRight())
-                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
-            },
-            {
-                name: 'SnapTransition',
-                gas: new SnapTransition()
-                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
-            },
-            {
-                name: 'PulseTransition (LeftToRight, pulse=2)',
-                gas: new PulseTransition(new LeftToRight(), 2)
-                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
-            },
-            {
-                name: 'BeatTransition: heartbeat [6, 2]',
-                gas: new BeatTransition(new LeftToRight(), [6, 2])
-                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
-            },
-            {
-                name: 'BeatTransition: fibonacci [1, 1, 2, 3, 5]',
-                gas: new BeatTransition(new LeftToRight(), [1, 1, 2, 3, 5])
-                    .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
-            },
-        ];
+//         const transitionDefs: { name: string; gas: GroupAction[] }[] = [
+//             {
+//                 name: 'OneByOneKeepFlipping (LeftToRight)',
+//                 gas: new OneByOneKeepFlipping(new LeftToRight())
+//                     .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+//             },
+//             {
+//                 name: 'SnapTransition',
+//                 gas: new SnapTransition()
+//                     .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+//             },
+//             {
+//                 name: 'PulseTransition (LeftToRight, pulse=2)',
+//                 gas: new PulseTransition(new LeftToRight(), 2)
+//                     .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+//             },
+//             {
+//                 name: 'BeatTransition: heartbeat [6, 2]',
+//                 gas: new BeatTransition(new LeftToRight(), [6, 2])
+//                     .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+//             },
+//             {
+//                 name: 'BeatTransition: fibonacci [1, 1, 2, 3, 5]',
+//                 gas: new BeatTransition(new LeftToRight(), [1, 1, 2, 3, 5])
+//                     .generateGroupActions(tlO1, tlO2, TL_DURATION, tlHw),
+//             },
+//         ];
 
-        const UNIT_COLORS = ['#0077cc', '#cc5500', '#228833', '#8822cc', '#bb8800', '#cc2244'];
-        const TW = 680, TH = 12;
+//         const UNIT_COLORS = ['#0077cc', '#cc5500', '#228833', '#8822cc', '#bb8800', '#cc2244'];
+//         const TW = 680, TH = 12;
 
-        for (const { name, gas } of transitionDefs) {
-            // Collect per-unit tick times from all GroupActions
-            const unitTicks = new Map<number, number[]>();
-            for (const ga of gas) {
-                const tick = ga.tPlus as number;
-                for (const [action, ids] of ga.actions) {
-                    if (action !== Action.FLIP) continue;
-                    for (const uid of ids) {
-                        if (!unitTicks.has(uid)) unitTicks.set(uid, []);
-                        unitTicks.get(uid)!.push(tick);
-                    }
-                }
-            }
+//         for (const { name, gas } of transitionDefs) {
+//             // Collect per-unit tick times from all GroupActions
+//             const unitTicks = new Map<number, number[]>();
+//             for (const ga of gas) {
+//                 const tick = ga.tPlus as number;
+//                 for (const [action, ids] of ga.actions) {
+//                     if (action !== Action.FLIP) continue;
+//                     for (const uid of ids) {
+//                         if (!unitTicks.has(uid)) unitTicks.set(uid, []);
+//                         unitTicks.get(uid)!.push(tick);
+//                     }
+//                 }
+//             }
 
-            const allTimes = gas.map(ga => ga.tPlus as number);
-            const maxT = allTimes.length > 0 ? Math.max(...allTimes) : TL_DURATION;
+//             const allTimes = gas.map(ga => ga.tPlus as number);
+//             const maxT = allTimes.length > 0 ? Math.max(...allTimes) : TL_DURATION;
 
-            const header = document.createElement('div');
-            header.style.cssText = 'color:#222; font-size:11px; margin:16px 0 4px; font-weight:bold;';
-            header.textContent = name;
-            timelineContainer.appendChild(header);
+//             const header = document.createElement('div');
+//             header.style.cssText = 'color:#222; font-size:11px; margin:16px 0 4px; font-weight:bold;';
+//             header.textContent = name;
+//             timelineContainer.appendChild(header);
 
-            // Time ruler
-            const ruler = document.createElement('div');
-            ruler.style.cssText = 'position:relative; height:10px; margin-left:44px; margin-bottom:2px;';
-            const rulerStep = Math.ceil(maxT / 8);
-            for (let t = 0; t <= maxT; t += rulerStep) {
-                const lbl = document.createElement('span');
-                lbl.style.cssText = `color:#aaa; font-size:8px; position:absolute; left:${Math.round((t / maxT) * TW)}px;`;
-                lbl.textContent = String(t);
-                ruler.appendChild(lbl);
-            }
-            timelineContainer.appendChild(ruler);
+//             // Time ruler
+//             const ruler = document.createElement('div');
+//             ruler.style.cssText = 'position:relative; height:10px; margin-left:44px; margin-bottom:2px;';
+//             const rulerStep = Math.ceil(maxT / 8);
+//             for (let t = 0; t <= maxT; t += rulerStep) {
+//                 const lbl = document.createElement('span');
+//                 lbl.style.cssText = `color:#aaa; font-size:8px; position:absolute; left:${Math.round((t / maxT) * TW)}px;`;
+//                 lbl.textContent = String(t);
+//                 ruler.appendChild(lbl);
+//             }
+//             timelineContainer.appendChild(ruler);
 
-            for (let uid = 0; uid < NUM_UNITS; uid++) {
-                const ticks = unitTicks.get(uid) ?? [];
-                const color = UNIT_COLORS[uid % UNIT_COLORS.length];
+//             for (let uid = 0; uid < NUM_UNITS; uid++) {
+//                 const ticks = unitTicks.get(uid) ?? [];
+//                 const color = UNIT_COLORS[uid % UNIT_COLORS.length];
 
-                const row = document.createElement('div');
-                row.style.cssText = 'display:flex; align-items:center; gap:6px; margin-bottom:2px;';
+//                 const row = document.createElement('div');
+//                 row.style.cssText = 'display:flex; align-items:center; gap:6px; margin-bottom:2px;';
 
-                const lbl = document.createElement('span');
-                lbl.style.cssText = `color:${color}; font-size:9px; width:38px; text-align:right; flex-shrink:0;`;
-                lbl.textContent = `u${uid}`;
-                row.appendChild(lbl);
+//                 const lbl = document.createElement('span');
+//                 lbl.style.cssText = `color:${color}; font-size:9px; width:38px; text-align:right; flex-shrink:0;`;
+//                 lbl.textContent = `u${uid}`;
+//                 row.appendChild(lbl);
 
-                const canvas = document.createElement('canvas');
-                canvas.width = TW;
-                canvas.height = TH;
-                canvas.style.cssText = 'display:block; flex-shrink:0;';
-                const ctx = canvas.getContext('2d')!;
+//                 const canvas = document.createElement('canvas');
+//                 canvas.width = TW;
+//                 canvas.height = TH;
+//                 canvas.style.cssText = 'display:block; flex-shrink:0;';
+//                 const ctx = canvas.getContext('2d')!;
 
-                ctx.fillStyle = '#fff';
-                ctx.fillRect(0, 0, TW, TH);
-                ctx.fillStyle = '#ddd';
-                ctx.fillRect(0, (TH / 2) | 0, TW, 1);
+//                 ctx.fillStyle = '#fff';
+//                 ctx.fillRect(0, 0, TW, TH);
+//                 ctx.fillStyle = '#ddd';
+//                 ctx.fillRect(0, (TH / 2) | 0, TW, 1);
 
-                ctx.fillStyle = color;
-                for (const tick of ticks) {
-                    const x = maxT > 0 ? Math.round((tick / maxT) * (TW - 2)) : 0;
-                    ctx.fillRect(x, 0, 2, TH);
-                }
+//                 ctx.fillStyle = color;
+//                 for (const tick of ticks) {
+//                     const x = maxT > 0 ? Math.round((tick / maxT) * (TW - 2)) : 0;
+//                     ctx.fillRect(x, 0, 2, TH);
+//                 }
 
-                const countLbl = document.createElement('span');
-                countLbl.style.cssText = `color:${color}; font-size:9px; flex-shrink:0; opacity:0.6;`;
-                countLbl.textContent = `×${ticks.length}`;
+//                 const countLbl = document.createElement('span');
+//                 countLbl.style.cssText = `color:${color}; font-size:9px; flex-shrink:0; opacity:0.6;`;
+//                 countLbl.textContent = `×${ticks.length}`;
 
-                row.appendChild(canvas);
-                row.appendChild(countLbl);
-                timelineContainer.appendChild(row);
-            }
-        }
-    }
-}
+//                 row.appendChild(canvas);
+//                 row.appendChild(countLbl);
+//                 timelineContainer.appendChild(row);
+//             }
+//         }
+//     }
+// }
 
 // ── InterpolationOrder heatmap visualization ──────────────────────────────────
 

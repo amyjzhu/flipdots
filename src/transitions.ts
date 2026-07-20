@@ -2113,7 +2113,10 @@ export class FlipDirectional implements Transition {
 
 
 function flipsFromCount(flips: number, maxFlips: number, dt: number): Time[] {
-    if (flips === 0) return [];
+    // <= 0 means the unit is already on its target (computeFlipDistance 0, which
+    // callers may pass as -1) — it must stay put. The old `=== 0` guard let a
+    // negative count fall through to the loop below and emit one phantom flip.
+    if (flips <= 0) return [];
     const endTime = (maxFlips - 1) * dt;
     if (flips === 1) return [endTime];
     const spacing = endTime / (flips - 1);
@@ -2154,7 +2157,6 @@ export class FlipSyncLastFlipTogether implements Transition {
             let target = new SplitflapState(`${toSpin[1]}`);
             let unit = units.find(u => toSpin[0] == u.id)!;
             const flips = h.computeFlipDistance(unit as SplitflapUnit, target) - 1;
-            console.log(flips)
             required.set(unit.id, flips);
             maxRequired = Math.max(maxRequired, flips);
         }
@@ -2183,9 +2185,7 @@ export class FlipSyncLastFlipTogether implements Transition {
         }
 
 
-        let acts = buildTimeline(schedule);
-        console.log(acts);
-        return acts;
+        return buildTimeline(schedule);
 
     }
 }
@@ -2211,15 +2211,53 @@ export class RowSyncSpinTransition implements Transition {
         const numCols = Math.max(d1[0]?.length ?? 0, d2[0]?.length ?? 0);
         const dt = 1 / this.flipsPerSecond;
 
+        // The "blank" background isn't always ' ': callers may cipher it to another
+        // reel glyph that just renders empty. Detect it as the most common char
+        // across both frames so we can tell which rows carry no message.
+        const freq = new Map<string, number>();
+        for (const d of [d1, d2])
+            for (const row of d)
+                for (const ch of row) freq.set(String(ch), (freq.get(String(ch)) ?? 0) + 1);
+        let blankChar = ' ';
+        let blankFreq = -1;
+        for (const [ch, n] of freq) if (n > blankFreq) { blankFreq = n; blankChar = ch; }
+        const isBlank = (ch: string) => ch === ' ' || ch === blankChar;
+
+        // Phase 1 only cascades rows that carry a message in o1. A row that is
+        // blank in o1 has nothing to settle on mid-transition, so instead of
+        // landing on blank it keeps flipping (scheduled separately below) and
+        // simply lands on its o2 state at the end.
+        const o1HasMessage: boolean[] = [];
+        for (let row = 0; row < numRows; row++) {
+            let hasMsg = false;
+            for (let col = 0; col < numCols && !hasMsg; col++) {
+                if (!isBlank(String(d1[row]?.[col] ?? ' '))) hasMsg = true;
+            }
+            o1HasMessage.push(hasMsg);
+        }
+
         type RowEntry = { id: UnitId; dist1: number; o1Idx: number; o2Idx: number; reelLength: number };
 
-        // Pass 1: compute phase 1 flip counts for every row.
-        let cumulativeN = 0;
-        const allRows: RowEntry[][] = [];
-        const allMaxDist1: number[] = [];
+        // Pass 1: compute phase 1 flip counts for every o1-message row.
+        // Each row is floored to finish no earlier than the previous row (not the
+        // cumulative total of all prior rows), so the cascade stays roughly linear
+        // instead of doubling per row.
+        let prevRowDist = 0;
+        const allRows: RowEntry[][] = new Array(numRows);
+        const allMaxDist1: number[] = new Array(numRows);
 
-        for (let row = 0; row < numRows; row++) {
-            const N = cumulativeN;
+        // Cascade top-to-bottom on screen: accumulate the cascade floor from the
+        // bottom row upward, so the bottom row has the largest distance and the
+        // top row (smallest) settles first. (Reversed from the original order.)
+        for (let row = numRows - 1; row >= 0; row--) {
+            // Blank-o1 rows don't settle in phase 1 and don't advance the cascade
+            // floor — they're scheduled as continuous spinners after Pass 2.
+            if (!o1HasMessage[row]) {
+                allRows[row] = [];
+                allMaxDist1[row] = 0;
+                continue;
+            }
+            const N = prevRowDist;
             const rowEntries: RowEntry[] = [];
             let maxDist1 = 0;
 
@@ -2245,15 +2283,15 @@ export class RowSyncSpinTransition implements Transition {
                 rowEntries.push({ id, dist1, o1Idx, o2Idx, reelLength });
             }
 
-            allRows.push(rowEntries);
-            allMaxDist1.push(maxDist1);
-            cumulativeN += maxDist1;
+            allRows[row] = rowEntries;
+            allMaxDist1[row] = maxDist1;
+            prevRowDist = maxDist1;
         }
 
         // max across all rows (not just the last row, which may be blank)
         const lastMaxDist1 = allMaxDist1.reduce((a, b) => Math.max(a, b), 0);
 
-        // Pass 2: build the schedule.
+        // Pass 2: schedule the cascading (o1-message) rows.
         const schedule = new Map<UnitId, Time[]>();
 
         for (let row = 0; row < numRows; row++) {
@@ -2266,7 +2304,9 @@ export class RowSyncSpinTransition implements Transition {
             for (const { id, dist1, o1Idx, o2Idx, reelLength } of allRows[row]) {
                 const times = schedule.get(id) ?? [];
 
-                // Phase 1: synchronized spin to o1 middle state
+                // Phase 1: every flap in the row starts flipping together at t=0
+                // and flips at a non-constant rate (fewer flips => slower) so the
+                // whole row lands on o1 at the same instant.
                 if (dist1 > 0) times.push(...flipsFromCount(dist1, maxDist1, dt));
 
                 // Phase 2: constant-speed from o1 to o2, padded so it ends no
@@ -2279,7 +2319,41 @@ export class RowSyncSpinTransition implements Transition {
             }
         }
 
-        // Spin all unscheduled units (blank rows + blank spots within rows) freely.
+        // The end of the cascade; blank-o1 rows flip continuously up to here.
+        let globalEnd = 0;
+        for (const ts of schedule.values())
+            for (const t of ts) if (t > globalEnd) globalEnd = t;
+
+        // Blank-o1 rows: keep flipping from t=0 at a constant rate, landing on
+        // their o2 state (a message, or blank) exactly at globalEnd.
+        for (let row = 0; row < numRows; row++) {
+            if (o1HasMessage[row]) continue;
+            for (let col = 0; col < numCols; col++) {
+                const id = h.coordToIndex([col, row]);
+                const unit = h.units.find(u => u.id === id) as SplitflapUnit | undefined;
+                if (!unit) continue;
+
+                const reel = unit.states[0][1] as SplitflapState[];
+                const reelLength = reel.length;
+                const o2State = new SplitflapState(String(d2[row]?.[col] ?? ' '));
+                if (reel.findIndex(s => s.id === o2State.id) === -1) continue;
+
+                // base = flips from the current face to o2; pad with whole reel
+                // rotations to fill the window so the row visibly keeps flipping.
+                const base = h.computeFlipDistance(unit, o2State);
+                const maxK = Math.floor(globalEnd / dt) + 1;
+                let K = base;
+                if (maxK > base) K = base + Math.floor((maxK - base) / reelLength) * reelLength;
+                if (K <= 0) continue;
+
+                // Spread the K flips over [0, globalEnd] so every blank-o1 flap
+                // starts spinning at t=0 and they all land on o2 together (a
+                // non-constant rate, like phase 1).
+                schedule.set(id, flipsFromCount(K, maxK, dt));
+            }
+        }
+
+        // Spin any still-unscheduled units (e.g. off-grid) freely.
         if (schedule.size > 0) {
             let tEnd = 0;
             for (const ts of schedule.values()) {
@@ -2456,6 +2530,112 @@ export class FlipSyncEndAfterNFlips implements Transition {
         for (const toSpin of relevantUnits) {
             const unit = units.find(u => toSpin[0] == u.id)!;
             schedule.set(unit.id, flipsFromCount(required.get(unit.id)!, maxRequired, dt));
+        }
+
+        return buildTimeline(schedule);
+    }
+}
+
+// Two-group synchronized spin-and-reveal (a whole-grid cousin of
+// RowSyncSpinTransition, sharing FlipSyncLastFlipTogether's single-beat reveal):
+//   Phase 1 — background flaps (blank in o2) all spin and land on the state ONE
+//     flip before their o2 target at the same instant (tA), then hold there.
+//   Phase 2 — message flaps (non-blank in o2) keep spinning, padded with whole
+//     reel rotations, and all land on their own pre-goal state together at tB,
+//     where tB >= tA + activeHoldSeconds. The extra rounds keep the message
+//     units visibly animating together after the background has settled.
+//   Phase 3 — every unit flips exactly once together at tB + dt, revealing o2 in
+//     one synchronized beat.
+export class SpinHoldFlipTogether implements Transition {
+    // activeHoldSeconds (M): the message group lands on its pre-goal state at
+    // least this many seconds after the background group does.
+    constructor(
+        readonly flipsPerSecond: number = 1,
+        readonly activeHoldSeconds: number = 1,
+    ) {}
+
+    generateGroupActions(o1: Target, o2: Target, _t: Duration, h: HardwareInterface): GroupAction[] {
+        if (!isSplitflapHardware(h)) {
+            throw new Error("SpinHoldFlipTogether requires splitflap hardware");
+        }
+
+        const d1 = o1.draw();
+        const d2 = o2.draw();
+        const numRows = Math.max(d1.length, d2.length);
+        const numCols = Math.max(d1[0]?.length ?? 0, d2[0]?.length ?? 0);
+        const dt = 1 / this.flipsPerSecond;
+
+        // Detect the "blank" glyph the way RowSyncSpinTransition does: the most
+        // common char across both frames (callers may cipher blank to a reel
+        // glyph that renders empty), so "not in o2" means "background".
+        const freq = new Map<string, number>();
+        for (const d of [d1, d2])
+            for (const row of d)
+                for (const ch of row) freq.set(String(ch), (freq.get(String(ch)) ?? 0) + 1);
+        let blankChar = ' ';
+        let blankFreq = -1;
+        for (const [ch, n] of freq) if (n > blankFreq) { blankFreq = n; blankChar = ch; }
+        const isBlank = (ch: string) => ch === ' ' || ch === blankChar;
+
+        type Entry = { id: UnitId; preGoalDist: number; reelLength: number };
+        const background: Entry[] = [];
+        const message: Entry[] = [];
+
+        for (let row = 0; row < numRows; row++) {
+            for (let col = 0; col < numCols; col++) {
+                const id = h.coordToIndex([col, row]);
+                const unit = h.units.find(u => u.id === id) as SplitflapUnit | undefined;
+                if (!unit) continue;
+
+                const reel = unit.states[0][1] as SplitflapState[];
+                const reelLength = reel.length;
+                const ch2 = String(d2[row]?.[col] ?? ' ');
+                const goal = new SplitflapState(ch2);
+                if (reel.findIndex(s => s.id === goal.id) === -1) continue;
+
+                // Flips to reach the state ONE before the goal; the shared final
+                // flip lands on the goal. A unit already on its goal walks a full
+                // reel round (reelLength-1) so it too flips at the reveal.
+                const fullDist = h.computeFlipDistance(unit, goal);
+                const preGoalDist = (fullDist - 1 + reelLength) % reelLength;
+
+                (isBlank(ch2) ? background : message).push({ id, preGoalDist, reelLength });
+            }
+        }
+
+        // Phase 1: background lands on pre-goal together at tA. flipsFromCount
+        // slows the shorter-distance units so the whole group arrives at once.
+        const maxBg = background.reduce((m, e) => Math.max(m, e.preGoalDist), 0);
+        const tA = Math.max(0, (maxBg - 1) * dt);
+
+        // Phase 2: the message group must land no earlier than tA +
+        // activeHoldSeconds. Pad each message unit with whole reel rotations up to
+        // that floor so they keep spinning at a roughly constant rate (all counts
+        // land within one reel of each other) and arrive together at tB.
+        const minMsgFlips = Math.ceil((tA + this.activeHoldSeconds) / dt) + 1;
+        const msgFlips = new Map<UnitId, number>();
+        let maxMsg = 0;
+        for (const e of message) {
+            let flips = e.preGoalDist;
+            while (flips < minMsgFlips) flips += e.reelLength;
+            msgFlips.set(e.id, flips);
+            if (flips > maxMsg) maxMsg = flips;
+        }
+        const tB = Math.max(tA, (maxMsg - 1) * dt);
+
+        // Phase 3: one synchronized reveal flip, a single interval after tB.
+        const tReveal = tB + dt;
+
+        const schedule = new Map<UnitId, Time[]>();
+        for (const e of background) {
+            const times = flipsFromCount(e.preGoalDist, maxBg, dt);
+            times.push(tReveal);
+            schedule.set(e.id, times);
+        }
+        for (const e of message) {
+            const times = flipsFromCount(msgFlips.get(e.id)!, maxMsg, dt);
+            times.push(tReveal);
+            schedule.set(e.id, times);
         }
 
         return buildTimeline(schedule);

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Rynx</title>
+    <style>
+      body { margin: 0; background: #111; color: #ddd; font-family: monospace; }
+      #controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid #333;
+      }
+      #controls label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #888;
+      }
+      #rynx-input {
+        background: #1c1c1c;
+        color: #ddd;
+        border: 1px solid #444;
+        padding: 6px 8px;
+        font-family: monospace;
+        font-size: 14px;
+        text-transform: uppercase;
+        width: 12ch;
+      }
+      button {
+        background: #2a2a2a;
+        color: #ddd;
+        border: 1px solid #555;
+        padding: 6px 12px;
+        font-family: monospace;
+        cursor: pointer;
+      }
+      button:hover { background: #3a3a3a; }
+      #render { width: 100vw; height: 55vh; }
+      #clock-render, #message-clock-render { width: 100vw; height: 38vh; }
+      #render canvas, #clock-render canvas, #message-clock-render canvas { display: block; }
+      #clock-section h2, #message-clock-section h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #888;
+        margin: 0;
+        padding: 12px 16px 8px;
+        border-top: 1px solid #333;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <input id="rynx-input" maxlength="5" placeholder="RYNX!">
+      <button id="rynx-show">Show</button>
+      <button id="rynx-scramble">Scramble</button>
+      <button id="rynx-clear">Clear</button>
+      <label for="rynx-speed">Speed</label>
+      <input id="rynx-speed" type="range" min="1" max="20" value="15">
+      <button id="rynx-record">Record 10s</button>
+    </div>
+    <div id="render"></div>
+    <div id="clock-section">
+      <h2>Clock — 2&times; realtime <button id="clock-record">Record 35s</button></h2>
+      <div id="clock-render"></div>
+    </div>
+    <div id="message-clock-section">
+      <h2>Clock with message — shows RYNX! from :20 to :40 <button id="message-clock-record">Record 35s</button></h2>
+      <div id="message-clock-render"></div>
+    </div>
+    <script type="module" src="/src/rynx.ts"></script>
+  </body>
+</html>

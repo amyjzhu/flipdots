@@ -43,7 +43,8 @@ export class SplitFlapDisplay {
 
     basicMaterial = new THREE.MeshPhongMaterial({ color: "black" });
 
-    numFramesRotating = NUM_FRAMES_ROTATING;
+    numFramesRotating = NUM_FRAMES_ROTATING;   // fall duration (ticks)
+    riseFrames = 3;                            // rise duration (ticks), after the fall lands
     splitFlapCycleLength = SPLIT_FLAP_CYCLE_LENGTH;
 
     // this should be just the offsets
@@ -152,13 +153,17 @@ export class SplitFlapDisplay {
         this.scene.add(directionalLight2);
 */
 
-        // Ambient fill (soft base light)
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
+        // Ambient fill (soft base light) — kept low so cast shadows keep contrast.
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.12);
         this.scene.add(ambientLight);
 
-        // MAIN SHADOW LIGHT (sun from skybox top center)
-        const sun = new THREE.DirectionalLight(0xffffff, 2);
-        sun.position.set(0, 200, 0);   // directly above scene
+        // MAIN SHADOW LIGHT — front-top, NOT straight overhead. A straight-down light
+        // rakes parallel to the vertical flap faces and casts no visible shadow on
+        // them (the shadow would land on a non-existent floor). Coming from the
+        // front-top, a forward-leaning falling flap occludes it and drops a shadow
+        // onto the +Z face of the flap below — visible to the front camera.
+        const sun = new THREE.DirectionalLight(0xffffff, 4.0);
+        sun.position.set(0, 220, 140);   // above and in front of the display
         sun.target.position.set(0, 0, 0);
 
         sun.castShadow = true;
@@ -179,18 +184,27 @@ export class SplitFlapDisplay {
         sun.shadow.mapSize.width = 4096;
         sun.shadow.mapSize.height = 4096;
 
-        // VERY important: shrink the shadow volume
+        // The orthographic shadow camera defaults to a tiny ±5-unit frustum — far
+        // smaller than the board (~hundreds of units wide), so almost nothing landed
+        // inside the shadow volume. THIS is why the sun "did nothing" when active.
+        // Size the frustum to cover the whole display.
         sun.shadow.camera.near = 50;
         sun.shadow.camera.far = 350;
+        sun.shadow.camera.left = -200;
+        sun.shadow.camera.right = 200;
+        sun.shadow.camera.top = 200;
+        sun.shadow.camera.bottom = -200;
+        sun.shadow.camera.updateProjectionMatrix();
         sun.shadow.bias = -0.0002;
         sun.shadow.normalBias = 0.02;
         sun.shadow.intensity = 1.3; // default is 1
 
-        // this.scene.add(sun);
-        // this.scene.add(sun.target);
+        this.scene.add(sun);
+        this.scene.add(sun.target);
 
-        // FRONT FILL LIGHT (for readability)
-        const frontLight = new THREE.DirectionalLight(0xffffff, 3.5);
+        // FRONT FILL LIGHT (for readability) — lowered so it doesn't flood the sun's
+        // cast shadows flat. Raise back up if the display reads too dark.
+        const frontLight = new THREE.DirectionalLight(0xffffff, 1.0);
 
         // place in front of display, pointing inward
         // frontLight.position.set(0, 50, 200);
@@ -278,6 +292,7 @@ export class SplitFlapDisplay {
             rising.rotation.x = 0;
             falling.rotation.x = 0;
             stepping.rotation.x = newFlip(0)(i)[0] !== undefined ? rotFlapBack : 0;
+            stepping.visible = false; // hidden until the step phase begins
 
             // reset materials to the original materials
             // from claude -- there might be a conceptually better way to do this
@@ -455,105 +470,93 @@ export class SplitFlapDisplay {
 
     runningCount = 0;
     animate = () => {
-        // let OFFSET = this.numFramesRotating / 3;
-
         let PAUSE_DEFAULT = Math.floor(this.numFramesRotating / 3);
 
         for (let idx = 0; idx < this.flaps.length; idx++) {
             let perPixelPause = this.perPixelPauses.length > idx ? this.perPixelPauses[idx] : PAUSE_DEFAULT;
-            if (perPixelPause == undefined) {
-                // skip this one
-                // console.log("undefined")
-                continue;
-            }
+            if (perPixelPause == undefined) continue;
 
-            let perPixelCycleLength = perPixelPause + this.numFramesRotating;
+            const holdFrames = perPixelPause;
+            const fallFrames = this.numFramesRotating;
+            // riseFrames only controls rise SPEED, not the total angle: Phase C adds
+            // (π - 0.5) split over riseFrames ticks, so the per-piece accumulation stays
+            // π + (π-0.5) + 0.5 = 2π over the 3-cycle period regardless of this value.
+            // Kept short (2) so the post-fall "breath" is brief.
+            const riseFrames = this.riseFrames;
+            const totalFrames = holdFrames + fallFrames + riseFrames;
 
             let [falling, rising, stepping] = this.flaps[idx];
+            const counter = this.animationFrameCounters[idx];
 
-            if (this.animationFrameCounters[idx] < perPixelPause) {
-                stepping.rotation.x += rotFlapBack * -1 / perPixelPause;
-            } else if (this.animationFrameCounters[idx] >= perPixelPause && this.animationFrameCounters[idx] < perPixelCycleLength) {
-                // This is NOT stepping down the correct amount each time
-                // maybe related to e.g. 24 and 54. If I only flip down 24 the first time... then 6 from there... then 30... the six from there... 
-                rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating);
-                falling.rotation.x += Math.PI / (this.numFramesRotating)
+            if (counter < holdFrames) {
+                // Phase A: Hold — stepping stays hidden, no rotation changes
+                stepping.visible = false;
 
-            }
+            } else if (counter < holdFrames + fallFrames) {
+                // Phase B: Fall + Step simultaneously (incremental, no resets)
+                stepping.visible = true;
+                stepping.rotation.x += (rotFlapBack * -1) / fallFrames;  // +0.5 total over fallFrames
+                falling.rotation.x  += Math.PI / fallFrames;             // +π total over fallFrames
 
+            } else if (counter < totalFrames) {
+                // Phase C: Rising starts immediately when fall ends
+                const t = counter - holdFrames - fallFrames;
 
-            if (this.animationFrameCounters[idx] >= perPixelCycleLength) {
+                if (t === 0) {
+                    // Texture changes as rising board begins to move (requirement 4)
+                    let nextIdx = this.flapPos[idx] + 1 >= this.flipCycle[idx].length ? 0 : this.flapPos[idx] + 1;
+                    let front = this.canvases[this.flipCycle[idx][this.flapPos[idx]]];
+                    let back  = this.canvasBacks[this.flipCycle[idx][nextIdx]];
+                    this.flapPos[idx] = nextIdx;
 
-                // console.log("completing: ",  this.flaps[idx].map(f => rad2deg(f.rotation.x)))
-                // problem: this actually just checks to see if the current can be retrieved. if we reset it right away, we won't know if it's the last one
-                // if YOUR cycle is longer than flapPos, it flips forever
-                let nextIdx = this.flapPos[idx] + 1 >= this.flipCycle[idx].length ? 0 : this.flapPos[idx] + 1;
-                // console.log(this.flapPos[idx], this.flipCycle[idx]);
+                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
+                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = back;
 
-                let front = this.canvases[this.flipCycle[idx][this.flapPos[idx]]];
-                let back = this.canvasBacks[this.flipCycle[idx][nextIdx]];
-                this.flapPos[idx] = nextIdx;
-
-                ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = front;
-                ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = back;
-
-                if (this.flapPos[idx] % 3 == 0) {
-                    let backTexture = (back as THREE.MeshBasicMaterial).map!;
-                    backTexture.center.set(0.5, 0.5);  // rotate around the center
-                    backTexture.rotation = Math.PI;    // 180 degrees
-                    backTexture.needsUpdate = true;
-
-                } else if (this.flapPos[idx] % 3 == 1) {
-                    let texture = (front as THREE.MeshBasicMaterial).map!;
-                    texture.center.set(0.5, 0.5);  // rotate around the center
-                    texture.rotation = Math.PI;    // 180 degrees
-                    texture.needsUpdate = true;
-                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = back;
-                    ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = front;
-
-                } else if (this.flapPos[idx] % 3 == 2) {
-                    let backTexture = (back as THREE.MeshBasicMaterial).map!;
-                    backTexture.center.set(0.5, 0.5);  // rotate around the center
-                    backTexture.rotation = Math.PI;    // 180 degrees
-                    backTexture.needsUpdate = true;
+                    if (this.flapPos[idx] % 3 == 0) {
+                        let backTexture = (back as THREE.MeshBasicMaterial).map!;
+                        backTexture.center.set(0.5, 0.5);
+                        backTexture.rotation = Math.PI;
+                        backTexture.needsUpdate = true;
+                    } else if (this.flapPos[idx] % 3 == 1) {
+                        let texture = (front as THREE.MeshBasicMaterial).map!;
+                        texture.center.set(0.5, 0.5);
+                        texture.rotation = Math.PI;
+                        texture.needsUpdate = true;
+                        ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[4] = back;
+                        ((rising.children[0] as THREE.Mesh).material as THREE.Material[])[5] = front;
+                    } else if (this.flapPos[idx] % 3 == 2) {
+                        let backTexture = (back as THREE.MeshBasicMaterial).map!;
+                        backTexture.center.set(0.5, 0.5);
+                        backTexture.rotation = Math.PI;
+                        backTexture.needsUpdate = true;
+                    }
                 }
 
-                // I need to figure out something about how to advance this.
-                // start with the first next flips... 
+                // +(π-0.5) total over riseFrames — preserves 3-cycle accumulation
+                rising.rotation.x += (Math.PI - (rotFlapBack * -1)) / riseFrames;
+            }
+
+            // Complete on the LAST motion tick (counter == totalFrames - 1), whose
+            // Phase C rise increment has just run above. Completing here instead of on
+            // a separate counter == totalFrames tick avoids burning one idle "dead"
+            // tick per flip. That dead tick added +1 tick to every flip's period, which
+            // compile() does not account for — so units with more flips drifted later
+            // and the synchronized final flip stopped starting on the same tick.
+            if (counter >= totalFrames - 1) {
+                // Cycle complete — swap roles, NO rotation resets (accumulation must continue)
                 this.flaps[idx] = [stepping, falling, rising];
 
-                // console.log(stepping.rotation.x/Math.PI*180, falling.rotation.x/Math.PI/2*180, rising.rotation.x/Math.PI*180)
-                // ASSUMPTION BREAKDOWN: this is getting the nextflips from the current FLAPPOS perspective 
-                // and not from the GLOBAL FLIP perspective. the flappos perspective is lower because 
-                // it doesn't flip with every flap
-                // WAIT - flapPos is specific to the ALPHABET ROLL which is 28 long UGH 
                 this.totalFlips[idx] += 1;
                 let [newPause, newCycle] = this.setNextFlips(this.totalFlips[idx])(idx);
                 this.perPixelPauses[idx] = newPause;
-                // if (newPause != 24) console.log("new perpixel pause is", this.perPixelPauses[idx], idx)
 
-                // console.log("all done ", this.animationFrameCounters[idx])
-                // console.log(rad2deg(rotFlapBack), rad2deg((Math.PI - (rotFlapBack * -1)) / (this.numFramesRotating)), rad2deg(Math.PI / (this.numFramesRotating)), rad2deg( rotFlapBack * -1 / perPixelPause / 2), rad2deg( rotFlapBack * -1 / perPixelPause), this.flaps[idx].map(f => rad2deg(f.rotation.x)))
-                // console.log(this.flaps[idx].map(x => x.rotation.x / Math.PI))
                 this.animationFrameCounters[idx] = 0;
-                // rising, falling, stepping
-
-                // 
-                // this.flaps[idx][0].rotation.x = 0;
-                // this.flaps[idx][1].rotation.x = 0;
-                // this.flaps[idx][2].rotation.x = rotFlapBack;
-                // console.log("perpixelcyclelength is", perPixelCycleLength, this.animationFrameCounters[idx], perPixelPause, this.numFramesRotating);
-
-
             } else {
-
                 this.animationFrameCounters[idx] += 1;
             }
-
         }
 
         this.renderer.render(this.scene, this.camera);
         this.recorder?.tick();
-
     }
 }
