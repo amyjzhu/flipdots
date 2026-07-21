@@ -1,4 +1,4 @@
-import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, RynxHardware, SplitflapHardware, SplitflapState, SplitflapUnit, delayGroupActions } from './hardware';
+import { Action, BrixelSimHardware, FlipdotSimAsyncHardware, GroupAction, HardwareInterface, SplitflapHardware, SplitflapState, SplitflapUnit, delayGroupActions } from './hardware';
 import { textToColumns, deBruijn, WINDOW_ROWS } from './rynx';
 import { CircleTarget, PixelArtTarget, RectangleTarget, generateAnimationToGroupAction } from './language2';
 import {
@@ -55,6 +55,34 @@ function sfCase(
 function keepFlipping(order: GridOrder, duration = 50) {
     return (sfhw: SplitflapHardware, rect: RectangleTarget): GroupAction[] =>
         new OneByOneKeepFlipping(order).generateGroupActions(new PixelArtTarget([], ''), rect, duration, sfhw);
+}
+
+// Shared shape for a "run one transition from `from` to `to`" eval. The only
+// things that vary between the thinking (splitflap) and Rynx cases are the
+// hardware spec and the start/end states — plus an optional `prelude` of raw
+// GroupActions to play before the transition (thinking uses it to flip its
+// image in first) and `animDelay` to offset the transition after that prelude.
+function transitionCase(
+    name: string,
+    hardware: HardwareSpec,
+    from: PixelArtTarget,
+    to: PixelArtTarget,
+    makeTransition: () => Transition,
+    { duration = 1, prelude = [], animDelay = 0 }: {
+        duration?: number;
+        prelude?: GroupAction[];
+        animDelay?: number;
+    } = {},
+): EvalCase {
+    return {
+        name,
+        hardware,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const anim = makeTransition().generateGroupActions(from, to, duration, hw as HardwareInterface);
+            return [...prelude, ...(animDelay ? delayGroupActions(anim, animDelay) : anim)];
+        },
+    };
 }
 
 function centeredMsg(msg: string): string[][] {
@@ -283,21 +311,14 @@ const thinkingMsgTarget = new PixelArtTarget(thinkingMsgGrid, ' ');
 const IMG_HW = { type: 'splitflap' as const, width: imgW, height: imgH };
 
 function thinkingCase(name: string, makeTransition: () => Transition): EvalCase {
-    return {
-        name,
-        hardware: IMG_HW,
-        capture: CAPTURE,
-        build(hw): GroupAction[] {
-            const sfhw = hw as SplitflapHardware;
-            const frame1 = new GroupAction(1, [[Action.FLIP, imgFrameIds]]);
-            const frame2 = new GroupAction(2, [[Action.FLIP, imgFrameIds]]);
-            const anim = makeTransition().generateGroupActions(
-                new PixelArtTarget([], ''), thinkingMsgTarget, 1, sfhw,
-            );
-
-            return [frame1, frame2, ...delayGroupActions(anim, 4)];
-        },
-    };
+    // flip the thinking image in (frames at t=1,2), then transition blank → message
+    return transitionCase(name, IMG_HW, new PixelArtTarget([], ''), thinkingMsgTarget, makeTransition, {
+        prelude: [
+            new GroupAction(1, [[Action.FLIP, imgFrameIds]]),
+            new GroupAction(2, [[Action.FLIP, imgFrameIds]]),
+        ],
+        animDelay: 4,
+    });
 }
 
 const thinkingCases: EvalCase[] = [
@@ -336,15 +357,7 @@ const rynxBlank = () =>
     new PixelArtTarget([Array(RYNX_WHEELS).fill(RYNX_BLANK_COL)], RYNX_BLANK_COL);
 
 function rynxCase(name: string, makeTransition: () => Transition, text = 'RYNX!'): EvalCase {
-    return {
-        name,
-        hardware: RYNX_HW,
-        capture: CAPTURE,
-        build(hw): GroupAction[] {
-            const rhw = hw as RynxHardware;
-            return makeTransition().generateGroupActions(rynxBlank(), rynxTextTarget(text), 1, rhw);
-        },
-    };
+    return transitionCase(name, RYNX_HW, rynxBlank(), rynxTextTarget(text), makeTransition);
 }
 
 const rynxCases: EvalCase[] = [
@@ -363,6 +376,10 @@ const [logoW, logoH, logoRgb] = await getImages([
 const [dandelionW, dandelionH, dandelionRgb] = await getImages([
     `${BASE}animations/dandelion1.png`,
     `${BASE}animations/dandelion2.png`,
+]);
+const [dandelionColW, dandelionColH, dandelionColRgb] = await getImages([
+    `${BASE}animations/dandelion-col1.png`,
+    `${BASE}animations/dandelion-col2.png`,
 ]);
 const [golfW, golfH, golfRgb] = await getImages(
     Array.from({ length: 9 }, (_, i) => `${BASE}animations/golf-collide${i + 1}.png`)
@@ -400,6 +417,7 @@ const logoTarget = new PixelArtTarget(logoGrid(logoRgb[1], logoW, logoH), ' ');
 const waveFrames = waveRgb.map(frame => new PixelArtTarget(logoGrid(frame, waveW, waveH), ' '));
 const moonFrames = moonRgb.map(frame => new PixelArtTarget(logoGrid(frame, moonW, moonH), ' '));
 const GOLF_HW      = { type: 'flipdot' as const, width: golfW,      height: golfH      };
+const DANDELION_COL_HW = { type: 'flipdot' as const, width: dandelionColW, height: dandelionColH };
 
 // Extract pixels of a given RGB color from image frames as boolean PixelArtTargets.
 const matchColor = ([r, g, b]: [number, number, number]) =>
@@ -426,6 +444,9 @@ function chainInstantaneous(targets: PixelArtTarget[]): void {
     for (let i = 0; i < targets.length - 1; i++)
         targets[i].effect = new Instantaneous(targets[i], targets[i + 1], EffectType.Complete);
 }
+
+// Leaves the targets unchained: the object appears once and holds constant from start to finish.
+function chainNoOp(_targets: PixelArtTarget[]): void {}
 
 // Build a PixelArtTarget grid from a dandelion frame.
 // head: #222034 = rgb(34,32,52)   stem: #d77bba = rgb(215,123,186)
@@ -532,7 +553,44 @@ const dandelionCases: EvalCase[] = [
     // dandelionCase('dandelion-snap',          () => new SnapTransition()),
     // dandelionCase('dandelion-crescent-stochastic', () => new StochasticTransition(new CrescentOrder(0.4))),
     // dandelionCase('dandelion-centre-stochastic', () => new StochasticTransition(new FastCentrePulse())),
-    
+
+];
+
+// Direct-style dandelion case (like golf-direct): the head (#222034) animates away
+// while the pink stem (#d95763) is a separate, unchained object, so it stays constant
+// from start to finish. `chainHead` decides how the head moves between frames.
+function dandelionColCase(name: string, chainHead: (head: PixelArtTarget[]) => void): EvalCase {
+    return {
+        name,
+        hardware: DANDELION_COL_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const head = makeTargets(dandelionColRgb, matchColor([34,  32,  52 ]), 0, 1); // #222034
+            const stem = makeTargets(dandelionColRgb, matchColor([217, 87,  99 ]), 0, 0); // #d95763
+
+            chainHead(head);
+            chainNoOp(stem); // stem is the pink stalk — it stays constant from start to finish.
+
+            const timing = [30, 34];
+            return generateAnimationToGroupAction(
+                [[head[0]], [stem[0]]],
+                timing,
+                hw as HardwareInterface,
+            );
+        },
+    };
+}
+
+// Chain the head frames with a transition (as a GenericEffect), like wave-direct-interp.
+const chainWith = (makeTransition: () => Transition) => (head: PixelArtTarget[]): void => {
+    for (let i = 0; i < head.length - 1; i++)
+        head[i].effect = new GenericEffect(head[i], head[i + 1], makeTransition, EffectType.Complete);
+};
+
+const dandelionColCases: EvalCase[] = [
+    dandelionColCase('dandelion-col',                     chainInstantaneous),
+    dandelionColCase('dandelion-col-crescent-stochastic', chainWith(() => new StochasticTransition(new CrescentOrder(0.4)))),
+    dandelionColCase('dandelion-col-centre-stochastic',   chainWith(() => new StochasticTransition(new FastCentrePulse()))),
 ];
 
 // Frames for a solid box moving diagonally from top-left to bottom-right corner.
@@ -1004,7 +1062,9 @@ const brixelCases: EvalCase[] = [
 // export const runner = new EvalRunner().register(...ThreeByThreeMatrixCases);
 // export const runner = new EvalRunner().register(...cases, ...asyncFlipdotCases, ...menuCases);
 // export const runner = new EvalRunner().register(...menuCases);
-export const runner = new EvalRunner().register(...rynxCases, ...thinkingCases);
+// export const runner = new EvalRunner().register(...rynxCases, ...thinkingCases);
+// export const runner = new EvalRunner().register(...rynxCases);
+export const runner = new EvalRunner().register(...dandelionColCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 

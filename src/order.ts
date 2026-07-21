@@ -1121,8 +1121,11 @@ export let StutterOrder = (originalOrder: GridOrder): ((shape: boolean[][], proj
     // 
     return (shape: boolean[][], projection: Projection) => {
         console.log(shape)
-        // why should I apply mask to shape here? 
-        // how come order... hmmm 
+        // why should I apply mask to shape here?
+        // how come order... hmmm
+
+        // No diff between the two frames (e.g. GenericEffect holding a frame): nothing to flip.
+        if (!shape.length || !shape[0]?.length) return [[], []];
 
         let [grid, times] = originalOrder.applyMask(shape);
 
