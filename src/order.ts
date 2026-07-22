@@ -533,26 +533,91 @@ export class CentrePulse extends GridOrder {
  * @param harmonics  Relative amplitude of secondary harmonics — adds organic
  *                   irregularity without extra parameters (default 0.35).
  */
+// Second-order: takes a base `order` whose values set the sweep position, then
+// adds a sinusoidal "front" offset that undulates along the axis perpendicular
+// to the sweep — so the wipe advances in the order's direction but with a wavy
+// edge. With the default LeftToRight the sweep is horizontal and the wave runs
+// up/down (the original behaviour); pass a vertical order (TopDown / BottomUp)
+// to get an up/down sweep with a wave that runs left/right.
+//
+// `travel` makes the wave *evolve as it advances*: the sinusoid's phase drifts
+// by `travel` full cycles across the whole sweep, so the crests ripple sideways
+// while the front moves — a travelling wave rather than a rigid corrugated line
+// sliding straight across. travel = 0 is the original static curve.
+//
+// The numeric params live in an options object so each is independently
+// overrideable. By default `amplitude` auto-scales to the sweep span (so it
+// doesn't swamp the base gradient and scatter the fill into holes on small
+// grids); pass an explicit `amplitude` to override. `frequency` is already
+// resolution-independent — it counts wave cycles across the perpendicular axis.
+export interface CurvedWaveOpts {
+    amplitude?: number;
+    frequency?: number;
+    harmonics?: number;
+    travel?: number;
+}
+
 export class CurvedWave extends GridOrder {
+    private amplitude?: number;
+    private frequency: number;
+    private harmonics: number;
+    private travel: number;
+
     constructor(
-        private amplitude: number = 3,
-        private frequency: number = 1.5,
-        private harmonics: number = 0.35,
-    ) { super(); }
+        private order: GridOrder = new LeftToRight(),
+        opts: CurvedWaveOpts = {},
+    ) {
+        super();
+        this.amplitude = opts.amplitude;              // undefined ⇒ auto-scale
+        this.frequency = opts.frequency ?? 1.5;
+        this.harmonics = opts.harmonics ?? 0.35;
+        this.travel = opts.travel ?? 0;
+    }
 
     generateGrid(width: number, height: number): OrderedGrid {
-        const grid = Array.from({ length: height }, () => Array(width).fill(0));
+        const base = this.order.generateGrid(width, height);
 
-        for (let y = 0; y < height; y++) {
-            const t = 2 * Math.PI * this.frequency * y / height;
-            // Primary curve + two harmonics for organic irregularity.
-            const front = this.amplitude * (
-                Math.sin(t) +
-                this.harmonics * Math.sin(2 * t + 0.7) +
-                this.harmonics * 0.4 * Math.sin(3 * t + 1.9)
-            );
+        // Detect the sweep's principal axis: does the base order change more
+        // across columns (horizontal sweep) or down rows (vertical sweep)? The
+        // wave then undulates along the *other* axis.
+        let dx = 0, dy = 0;
+        for (let y = 0; y < height; y++)
             for (let x = 0; x < width; x++) {
-                grid[y][x] = Math.round(x + front);
+                if (x + 1 < width) dx += Math.abs(base[y][x + 1] - base[y][x]);
+                if (y + 1 < height) dy += Math.abs(base[y + 1][x] - base[y][x]);
+            }
+        const sweepHorizontal = dx >= dy;
+        const span = sweepHorizontal ? height : width;        // perpendicular axis
+        const sweepSpan = (sweepHorizontal ? width : height) || 1;
+
+        // Auto amplitude: a fraction of the sweep span, clamped so a travelling
+        // wave stays monotonic along the sweep (front slope < base's per-cell
+        // step of 1 ⇒ no scatter/holes). An explicit amplitude is used as-is.
+        let amplitude = this.amplitude;
+        if (amplitude === undefined) {
+            amplitude = sweepSpan / 8;
+            if (this.travel > 0)
+                amplitude = Math.min(amplitude, 0.9 * sweepSpan / (2 * Math.PI * this.travel));
+        }
+
+        const grid = Array.from({ length: height }, () => Array(width).fill(0));
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                // Phase runs along the axis perpendicular to the sweep; the
+                // `travel` term shifts it by how far along the sweep we are, so
+                // the wave crests move as the front advances.
+                const along = sweepHorizontal ? y : x;
+                const sweepPos = sweepHorizontal ? x : y;
+                const t = 2 * Math.PI * (
+                    this.frequency * along / span - this.travel * sweepPos / sweepSpan
+                );
+                // Primary curve + two harmonics for organic irregularity.
+                const front = amplitude * (
+                    Math.sin(t) +
+                    this.harmonics * Math.sin(2 * t + 0.7) +
+                    this.harmonics * 0.4 * Math.sin(3 * t + 1.9)
+                );
+                grid[y][x] = Math.round(base[y][x] + front);
             }
         }
 
@@ -1372,6 +1437,133 @@ export class InterpolationOrder extends GridOrder {
     }
 }
 
+
+// Boustrophedon (snake) fill that can begin at any of the four corners.
+// Like BackAndForth, but the start corner and traversal axis are configurable,
+// so the serpentine is seamless (a single continuous path with no jumps).
+//   corner: which corner the snake begins at.
+//   axis:   'row' snakes along rows (advancing vertically between them),
+//           'col' snakes along columns (advancing horizontally between them).
+export class CornerSnake extends GridOrder {
+    constructor(
+        private corner: 'tl' | 'tr' | 'bl' | 'br' = 'tl',
+        private axis: 'row' | 'col' = 'row',
+    ) {
+        super();
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        const grid = [...new Array(height)].map(_ => [...new Array(width)]);
+        // flipX: start from the right rather than the left.
+        // flipY: start from the bottom rather than the top.
+        const flipX = this.corner === 'tr' || this.corner === 'br';
+        const flipY = this.corner === 'bl' || this.corner === 'br';
+        let count = 0;
+
+        if (this.axis === 'row') {
+            for (let r = 0; r < height; r++) {
+                const i = flipY ? height - 1 - r : r;
+                // Alternate direction each line; honor the start corner's side.
+                const forward = (r % 2 === 0) !== flipX;
+                for (let c = 0; c < width; c++) {
+                    const j = forward ? c : width - 1 - c;
+                    grid[i][j] = count++;
+                }
+            }
+        } else {
+            for (let c = 0; c < width; c++) {
+                const j = flipX ? width - 1 - c : c;
+                const forward = (c % 2 === 0) !== flipY;
+                for (let r = 0; r < height; r++) {
+                    const i = forward ? r : height - 1 - r;
+                    grid[i][j] = count++;
+                }
+            }
+        }
+
+        return grid;
+    }
+}
+
+// Higher-order combinator: split the board into a grid of tiles and run
+// `subOrder` independently within each tile.
+//
+//   spec:     [rows, cols] — how many tiles down and across (e.g. [2, 3]).
+//   subOrder: the order generated inside each tile.
+//   mode:     'sequential' concatenates the tiles' time sequences so they play
+//               one after another (tile 0 finishes, then tile 1 begins, ...).
+//             'parallel' gives every tile the same relative timing, so all tiles
+//               animate simultaneously.
+//   tileOrder: iteration order of the tiles in sequential mode; 'reading'
+//              (default) is top-to-bottom rows, left-to-right within a row.
+//              'snake' alternates the column direction each tile-row. Ignored in
+//              parallel mode (all tiles start together).
+//
+// If width/height don't divide evenly, the remainder is absorbed into the last
+// tile of each row/column, so every cell belongs to exactly one tile.
+export class Tile extends GridOrder {
+    private rows: number;
+    private cols: number;
+
+    constructor(
+        spec: [number, number],
+        private subOrder: GridOrder,
+        private mode: 'sequential' | 'parallel' = 'sequential',
+        private tileOrder: 'reading' | 'snake' = 'reading',
+    ) {
+        super();
+        this.rows = Math.max(1, Math.floor(spec[0]));
+        this.cols = Math.max(1, Math.floor(spec[1]));
+    }
+
+    generateGrid(width: number, height: number): OrderedGrid {
+        // Never ask for more tiles than there are cells along an axis.
+        const rows = Math.min(this.rows, Math.max(1, height));
+        const cols = Math.min(this.cols, Math.max(1, width));
+        const baseW = Math.floor(width / cols);
+        const baseH = Math.floor(height / rows);
+
+        // Tile boundaries; the last row/column stretches to absorb the remainder.
+        const xEdge = (c: number) => c * baseW;
+        const yEdge = (r: number) => r * baseH;
+        const tileW = (c: number) => (c === cols - 1 ? width - xEdge(c) : baseW);
+        const tileH = (r: number) => (r === rows - 1 ? height - yEdge(r) : baseH);
+
+        const grid: OrderedGrid = [...new Array(height)].map(_ => [...new Array(width)]);
+
+        // Each tile's local times are normalised to start at 0. In sequential
+        // mode we then shift each tile past everything placed so far, so the
+        // whole thing reads back-to-back with no gaps; in parallel mode the
+        // offset stays 0 so every tile shares the same relative timing.
+        let offset = 0;
+        for (let tr = 0; tr < rows; tr++) {
+            // In snake mode, alternate the column direction every tile-row.
+            const forward = this.tileOrder === 'reading' || tr % 2 === 0;
+            for (let k = 0; k < cols; k++) {
+                const tc = forward ? k : cols - 1 - k;
+                const tw = tileW(tc), th = tileH(tr);
+                if (tw <= 0 || th <= 0) continue;
+
+                const sub = this.subOrder.generateGrid(tw, th);
+                let min = Infinity, max = -Infinity;
+                for (const row of sub) for (const v of row) {
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+                if (!isFinite(min)) min = max = 0;
+
+                const x0 = xEdge(tc), y0 = yEdge(tr);
+                for (let y = 0; y < th; y++)
+                    for (let x = 0; x < tw; x++)
+                        grid[y0 + y][x0 + x] = sub[y][x] - min + offset;
+
+                if (this.mode === 'sequential') offset += (max - min) + 1;
+            }
+        }
+
+        return grid;
+    }
+}
 
 export class Ring2 extends GridOrder {
     generateGrid(_width: number, _height: number): number[][] {

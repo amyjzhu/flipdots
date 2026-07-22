@@ -9,6 +9,8 @@ Diagonal, GridOrder, GrowAlongContour, GrowAlongContoursParallel, GrowFromCentre
     RandomOrder, RowByRowOverlap, ShallowDiagonal, SpiralIn, SpiralOrder, SpiralOut, StaggeredRow,
     TopDown,
     Ring2,
+    CornerSnake,
+    Tile,
 } from './order';
 import {
     AcceleratingCascadeTransition,
@@ -245,24 +247,38 @@ const menuCases: EvalCase[] = [
 // ── 32×6 cases ────────────────────────────────────────────────────────────────
 
 const cases: EvalCase[] = [
-    sfCase('matrix-down',         keepFlipping(new MatrixDown())),
-    sfCase('back-and-forth',      keepFlipping(new BackAndForth())),
-    sfCase('left-to-right',       keepFlipping(new LeftToRight())),
-    sfCase('out-from-centre',     keepFlipping(new OutFromCentre())),
-    sfCase('staggered-row',       keepFlipping(new StaggeredRow())),
-    sfCase('spiral-in',           keepFlipping(new SpiralIn())),
-    sfCase('row-by-row-overlap',  keepFlipping(new RowByRowOverlap())),
-    sfCase('random-order',        keepFlipping(new RandomOrder())),
-    sfCase('diagonal',            keepFlipping(new Diagonal())),
-    sfCase('spiral-out',          keepFlipping(new SpiralOut())),
-    sfCase('organic-ripple',      keepFlipping(new OrganicRipple())),
-    sfCase('centre-pulse',        keepFlipping(new CentrePulse())),
-    sfCase('ping-pong',           keepFlipping(new PingPong())),
-    sfCase('middle-out-diagonal', keepFlipping(new MiddleOutDiagonal())),
-    sfCase('shallow-diagonal',    keepFlipping(new ShallowDiagonal())),
-    sfCase('line-diagonal',       keepFlipping(new LineDiagonal(), 200)),
-    sfCase('top-down',            keepFlipping(new TopDown(), 200)),
-    sfCase('ring',            keepFlipping(new Ring2(), 50)),
+    // sfCase('matrix-down',         keepFlipping(new MatrixDown())),
+    // sfCase('back-and-forth',      keepFlipping(new BackAndForth())),
+    // sfCase('left-to-right',       keepFlipping(new LeftToRight())),
+    // sfCase('out-from-centre',     keepFlipping(new OutFromCentre())),
+    // sfCase('staggered-row',       keepFlipping(new StaggeredRow())),
+    // sfCase('spiral-in',           keepFlipping(new SpiralIn())),
+    // sfCase('row-by-row-overlap',  keepFlipping(new RowByRowOverlap())),
+    // sfCase('random-order',        keepFlipping(new RandomOrder())),
+    // sfCase('diagonal',            keepFlipping(new Diagonal())),
+    // sfCase('spiral-out',          keepFlipping(new SpiralOut())),
+    // sfCase('organic-ripple',      keepFlipping(new OrganicRipple())),
+    // sfCase('centre-pulse',        keepFlipping(new CentrePulse())),
+    // sfCase('ping-pong',           keepFlipping(new PingPong())),
+    // sfCase('middle-out-diagonal', keepFlipping(new MiddleOutDiagonal())),
+    // sfCase('shallow-diagonal',    keepFlipping(new ShallowDiagonal())),
+    // sfCase('line-diagonal',       keepFlipping(new LineDiagonal(), 200)),
+    // sfCase('top-down',            keepFlipping(new TopDown(), 200)),
+    // sfCase('ring',            keepFlipping(new Ring2(), 50)),
+
+    // sfCase('snake-tl',        keepFlipping(new CornerSnake('tl', 'row'))),
+    // sfCase('snake-tr',        keepFlipping(new CornerSnake('tr', 'row'))),
+    // sfCase('snake-bl',        keepFlipping(new CornerSnake('bl', 'row'))),
+    // sfCase('snake-br',        keepFlipping(new CornerSnake('br', 'row'))),
+    // sfCase('snake-br-col',    keepFlipping(new CornerSnake('br', 'col'))),
+
+    // sfCase('tile-2x3-seq',        keepFlipping(new Tile([2, 3], new LeftToRight(), 'sequential'))),
+    // sfCase('tile-2x3-seq-snake',  keepFlipping(new Tile([2, 3], new CornerSnake('tl', 'row'), 'sequential', 'snake'))),
+    // sfCase('tile-2x3-parallel',   keepFlipping(new Tile([2, 3], new LeftToRight(), 'parallel'))),
+    // sfCase('tile-3x4-par-spiral', keepFlipping(new Tile([3, 4], new SpiralIn(), 'parallel'))),
+
+    sfCase('curved-wave-ltr',     keepFlipping(new CurvedWave())),                 // default: horizontal sweep, up/down wave
+    sfCase('curved-wave-updown',  keepFlipping(new CurvedWave(new TopDown()))),    // vertical sweep, left/right wave
 
     sfCase('trickle-keep-matrix', (_sfhw, rect) =>
         new TrickleKeepFlipping(new MatrixDown(), 3).generateGroupActions(new PixelArtTarget([], ''), rect, 120, _sfhw)
@@ -381,6 +397,10 @@ const [dandelionColW, dandelionColH, dandelionColRgb] = await getImages([
     `${BASE}animations/dandelion-col1.png`,
     `${BASE}animations/dandelion-col2.png`,
 ]);
+const [physicalW, physicalH, physicalRgb] = await getImages([
+    `${BASE}animations/physical1.png`,
+    `${BASE}animations/physical2.png`,
+]);
 const [golfW, golfH, golfRgb] = await getImages(
     Array.from({ length: 9 }, (_, i) => `${BASE}animations/golf-collide${i + 1}.png`)
 );
@@ -483,6 +503,40 @@ const logoCases: EvalCase[] = [
     // logoCase('logo-wave-random',   () => new WaveTransition(new RandomOrder(20))),
     logoCase('logo-experimental',      () => new CascadeImage(new TopDown())),
     // logoCase('logo-cascade-ltr',      () => new CascadeImage(new AllAtOnce())),
+];
+
+// ── Physical flipdot cases (physical1.png → physical2.png) ─────────────────────
+// Binary flipdot hardware sized to the images. Each case bootstraps physical1
+// onto the display, then plays an order-based WaveTransition into physical2.
+// None of these need splitflaps — WaveTransition flips the diff cells on/off in
+// the order's sequence, which is exactly the flipdot's single-flip behaviour.
+const PHYSICAL_HW = { type: 'flipdot' as const, width: physicalW, height: physicalH };
+const physical1 = new PixelArtTarget(logoGrid(physicalRgb[0], physicalW, physicalH), ' ');
+const physical2 = new PixelArtTarget(logoGrid(physicalRgb[1], physicalW, physicalH), ' ');
+
+function physicalCase(name: string, makeTransition: () => Transition): EvalCase {
+    return {
+        name,
+        hardware: PHYSICAL_HW,
+        capture: CAPTURE,
+        build(hw): GroupAction[] {
+            const blank = new PixelArtTarget(physical1.draw().map(r => r.map(() => ' ')), ' ');
+            const bootstrap = new SnapTransition().generateGroupActions(blank, physical1, 0, hw);
+            const transition = makeTransition().generateGroupActions(physical1, physical2, 30, hw);
+            return [...bootstrap, ...delayGroupActions(transition, 1)];
+        },
+    };
+}
+
+const physicalCases: EvalCase[] = [
+    // [1, 2] tiling (1 row, 2 columns), snake within each tile from the top-right
+    // corner, both tiles animating in parallel.
+    physicalCase('physical-tile-snake',        () => new WaveTransition(new Tile([1, 2], new CornerSnake('tr'), 'parallel'))),
+    physicalCase('physical-matrix-down',       () => new WaveTransition(new MatrixDown())),
+    // amplitude auto-scales to the grid (and is clamped for travel so it won't
+    // scatter into holes); travel = 1 ripples the front sideways once as it
+    // sweeps down, so it still reads distinctly from the straight MatrixDown fill.
+    physicalCase('physical-curved-wave-updown', () => new WaveTransition(new CurvedWave(new TopDown(), { travel: 1, frequency: 0.5 }))),
 ];
 
 // Plays through `frames` in order, snapping to the first frame then applying
@@ -1064,7 +1118,8 @@ const brixelCases: EvalCase[] = [
 // export const runner = new EvalRunner().register(...menuCases);
 // export const runner = new EvalRunner().register(...rynxCases, ...thinkingCases);
 // export const runner = new EvalRunner().register(...rynxCases);
-export const runner = new EvalRunner().register(...dandelionColCases);
+// // export const runner = new EvalRunner().register(...dandelionColCases);
+export const runner = new EvalRunner().register(...physicalCases);
 // export const runner = new EvalRunner().register(...cases, ...logoCases, ...dandelionCases, ...flipdotCases);
 // export const runner = new EvalRunner().register(...cases, ...thinkingCases, ...flipdotCases);
 
@@ -1078,6 +1133,7 @@ if (typeof window !== 'undefined') {
     // runner.run('menu-cycle').catch(err => console.error('[eval] failed:', err));
     // runner.run('menu-spring-to-classes-row-sync').catch(err => console.error('[eval] failed:', err));
     // runner.run('rynx-flip-sync-lastfliptogether').catch(err => console.error('[eval] failed:', err));
+    // runner.run('curved-wave-ltr').catch(err => console.error('[eval] failed:', err));
     runner.run('').catch(err => console.error('[eval] failed:', err));
 }
 

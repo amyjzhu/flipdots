@@ -9,6 +9,7 @@ import { ALPHABET_WITH_EXCLAMATION, FULL_CYCLE_LENGTH, NUM_FRAMES_ROTATING } fro
 import { start } from 'repl';
 import { generateDirection } from './transitions';
 import { parseToGroupAction, Target, CircleTarget } from './language2';
+import type { DotField, Dot } from './uvdots';
 
 
 
@@ -1502,6 +1503,101 @@ export class FlipdotSimHardware implements HardwareInterface {
     }
 
 
+}
+
+// Build a FlipdotSimHardware from a UV DotField, using the UV grid coordinates
+// directly as the unit coordinate space.
+//
+// This is HEADLESS: it does NOT create a RowOfDiscs (whose constructor spins up
+// its own WebGLRenderer and appends a canvas to #render). The caller owns the
+// visual -- e.g. the 3d.ts viewer renders the discs itself. The returned
+// instance carries the mapping + timing logic (indexToCoord, coordToIndex,
+// unitAdjacency, timeFrontier), which is all the order/transition machinery
+// needs. simulation-driven methods (actionsToHardwareAction) are stubbed.
+//
+// Unit ids are indices into field.dots (== the InstancedMesh instance order),
+// so a UnitId from an order maps straight to a disc to light up.
+export function hardwareFromDotField(field: DotField): FlipdotSimHardware {
+    const dots = field.dots;
+    const dotId = new Map<Dot, number>();
+    dots.forEach((d, i) => dotId.set(d, i));
+
+    const units = dots.map((_, i) => new FlipdotUnit(i));
+
+    // indexToCoord: disc -> its UV grid cell. Merged discs use their
+    // representative cell's coord (a valid UV grid location).
+    const indexToCoord = new Map<number, [number, number]>(
+        dots.map((d, i) => [i, [d.gx, d.gy]] as [number, [number, number]])
+    );
+
+    // coordToIndex: UV grid cell -> disc id (-1 for gaps). Merged cells resolve
+    // to their shared disc automatically because grid[y][x] points at it.
+    const coordToIndex = ([x, y]: [number, number]): number => {
+        const row = field.grid[y];
+        const cell = row ? row[x] : undefined;
+        if (!cell) return -1;
+        const id = dotId.get(cell);
+        return id === undefined ? -1 : id;
+    };
+
+    // Adjacency: 8-neighbours on the UV grid, mapped to disc ids. Built by
+    // scanning the grid so edges from every cell of a merged disc are unioned.
+    const adj = new Map<number, Set<number>>();
+    units.forEach((u) => adj.set(u.id, new Set()));
+    for (let y = 0; y < field.height; y++) {
+        for (let x = 0; x < field.width; x++) {
+            const cell = field.grid[y][x];
+            if (!cell) continue;
+            const a = dotId.get(cell)!;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const ny = y + dy, nx = x + dx;
+                    if (ny < 0 || nx < 0 || ny >= field.height || nx >= field.width) continue;
+                    const ncell = field.grid[ny][nx];
+                    if (!ncell) continue;
+                    const b = dotId.get(ncell)!;
+                    if (b !== a) adj.get(a)!.add(b);
+                }
+            }
+        }
+    }
+    const unitAdjacency = (id: UnitId): UnitId[] => [...(adj.get(id) ?? [])];
+
+    // Assemble without running the heavy constructor (which would build a
+    // RowOfDiscs). We set every field the mapping/timing paths touch.
+    const hw: FlipdotSimHardware = Object.create(FlipdotSimHardware.prototype);
+    hw.flipDurationMS = 1;
+    hw.actionDurations = new Map([[Action.FLIP, 1]]);
+    hw.units = units;
+    hw.unitIdToUnit = new Map(units.map((u) => [u.id, u]));
+    hw.unitAdjacency = unitAdjacency;
+    hw.indexToCoord = indexToCoord;
+    hw.coordToIndex = coordToIndex;
+    hw.dirsToTime = new Map();
+    hw.totalNumFrames = 0;
+    hw.meshLocationStr = "";
+    hw.estimatedDurationMs = 0;
+    // Headless: no RowOfDiscs. Never dereferenced unless simulation-driven
+    // methods are called, which the viewer/order path does not do.
+    hw.simulation = null as unknown as RowOfDiscs;
+
+    hw.timeFrontier = (start: number, dir: [number, number]) => {
+        const key = `${start}|${dir[0]}|${dir[1]}`;
+        const cached = hw.dirsToTime.get(key);
+        if (cached) return cached;
+        const fn = generateDirection(start, dir, hw);
+        hw.dirsToTime.set(key, fn.atTime);
+        return fn.atTime;
+    };
+    hw.allowedNextActive = (_action: Action, ids: UnitId[], time: Time) => {
+        const otherIds = [...new Set(units.map((u) => u.id)).difference(new Set(ids))];
+        return [[otherIds, incrementTime(time, 0)],
+                [ids, incrementTime(time, hw.flipDurationMS)]] as [UnitId[], Time][];
+    };
+    hw.actionsToHardwareAction = () => []; // headless: no simulation to drive
+
+    return hw;
 }
 
 // Async counterpart of FlipdotSimHardware. Drives a RowOfDiscsAsync where

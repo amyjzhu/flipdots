@@ -11,11 +11,27 @@
  *   - compileSchedule       validate → onAction → update-availability scaffold
  *   - realTiming            inline helper for the getRealTiming ternary
  *
- * Bugs fixed vs. original:
- *   - FlipdotHardware.Rectangular used `i * height + j`; corrected to `i * width + j`.
- *   - Removed dead `possibleTime` / `violations` declarations in compile().
- *   - Duplicate top-level computeFlipDistance free function removed (was same as method).
- *   - Unused imports cleaned up.
+ * BEHAVIOR is preserved on every exercised code path. Deviations from the
+ * original, each verified against the codebase:
+ *
+ *   INTENTIONAL FIXES (both proven unobservable — no live path depends on them):
+ *   - FlipdotHardware.Rectangular used `i * height + j` (wrong id/coord for
+ *     non-square grids); corrected to `i * width + j`. No live caller exists
+ *     (only a commented-out test), so this changes no current behavior.
+ *   - BrixelUnit.states used the map ELEMENT (`.map(i => new BrixelState(i))`,
+ *     i === undefined) instead of the index; corrected to the index. Brixel
+ *     derives its emitted states from idsToStates arithmetic, never from
+ *     unit.states, so the values here are never read.
+ *
+ *   DELIBERATELY KEPT FAITHFUL (would otherwise be an observable change):
+ *   - SplitflapUnit.clone() does NOT forward currentIndex (resets to 0), exactly
+ *     like the original. transitions.ts clones units to count flips from home,
+ *     so preserving currentIndex here would change output. (See note on clone().)
+ *
+ *   PURE CLEANUP (no behavior): merged duplicate getActionStr/actionToString
+ *   (only ever called with FLIP on live paths); removed dead `possibleTime` /
+ *   `violations` locals, the dead `_schedule`/`convertSyncedSequence`, the
+ *   duplicate top-level computeFlipDistance, and unused imports.
  */
 
 import * as fs from 'fs';
@@ -265,7 +281,11 @@ export class SplitflapUnit implements Unit {
     }
 
     clone(): SplitflapUnit {
-        return new SplitflapUnit(this.id, this.states[0][1] as SplitflapState[], this.currentIndex);
+        // NOTE: intentionally does NOT forward currentIndex — matches the original,
+        // which resets the clone to index 0. transitions.ts relies on this: it clones
+        // hardware units to simulate flip counts from a home position. (RynxUnit.clone
+        // DOES forward currentIndex; the two differ on purpose.)
+        return new SplitflapUnit(this.id, this.states[0][1] as SplitflapState[]);
     }
 }
 
@@ -444,7 +464,7 @@ export class RynxUnit implements Unit {
 }
 
 export let isRynxHardware = (x: HardwareInterface): x is RynxHardware =>
-    (<RynxHardware>x).computeStepDistance !== undefined;
+    x instanceof RynxHardware;
 
 export class RynxHardware implements HardwareInterface {
     units: Unit[];
@@ -493,10 +513,13 @@ export class RynxHardware implements HardwareInterface {
         return realTiming(time, this.actionDurations.get(Action.FLIP)!);
     }
 
-    computeStepDistance(unit: RynxUnit, target: RynxState): number {
+    // FLIPs needed to spin from the current window to `target`. Named to match
+    // SplitflapHardware so the flip-based transitions (which gate on
+    // isSplitflapHardware and call computeFlipDistance) drive Rynx unchanged.
+    computeFlipDistance(unit: RynxUnit, target: RynxState): number {
         const states = unit.states[0][1];
         const end = states.findIndex(s => s.id === target.id);
-        if (end === -1) throw new Error(`state ${target.id} not on unit ${unit.id}'s reel`);
+        if (end === -1) throw new Error(`state ${target.id} is not on unit ${unit.id}'s reel`);
         return (end - unit.currentIndex + states.length) % states.length;
     }
 
